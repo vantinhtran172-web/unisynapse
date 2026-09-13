@@ -1,6 +1,44 @@
-const API_BASE = typeof window !== "undefined" 
-  ? "/api/v1" 
-  : (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1");
+const configuredApiBase = (process.env.API_UPSTREAM_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+const API_BASE = typeof window !== "undefined"
+  ? "/api/v1"
+  : (configuredApiBase.endsWith("/api/v1") ? configuredApiBase : `${configuredApiBase}/api/v1`);
+
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+function csrfHeaders(): Record<string, string> {
+  if (typeof document === "undefined") return {};
+  const token = document.cookie
+    .split("; ")
+    .find((part) => part.startsWith("unisynapse_csrf="))
+    ?.split("=")[1];
+  return token ? { "X-CSRF-Token": decodeURIComponent(token) } : {};
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (init.body && !(init.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
+  Object.entries(csrfHeaders()).forEach(([key, value]) => headers.set(key, value));
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers,
+    credentials: "include",
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = payload && typeof payload === "object" && "detail" in payload
+      ? String(payload.detail)
+      : `Request failed (${response.status})`;
+    throw new ApiError(response.status, detail);
+  }
+  return payload as T;
+}
 
 export interface UserProfile {
   id: string;
@@ -16,12 +54,15 @@ export interface TaskItem {
   title: string;
   description: string;
   category: string;
+  domain?: string;
   input_text: string;
+  context_snippet?: string;
   labels: string[];
   required_votes: number;
   consensus_threshold: number;
   reward_points: number;
   status: string;
+  total_submissions?: number;
   consensus?: string;
   user_submitted?: boolean;
   user_label?: string;
@@ -86,27 +127,134 @@ export interface LedgerEntry {
   reason: string;
   source_type: string;
   source_id: string;
-  proof_status: string;
+  proof_status: "unsubmitted" | "processing" | "submitted" | "retryable" | "failed" | "verified" | string;
   solana_signature?: string;
   proof_hash: string;
+  proof_attempts?: number;
+  proof_last_error?: string;
+  proof_submitted_at?: number;
+  proof_verified_at?: number;
+  proof_next_retry_at?: number;
   created_at: number;
   explorer_url?: string;
+  verification_reason?: string;
+}
+
+export interface WalletChallengeResponse {
+  nonce: string;
+  message: string;
+  expires_at: number;
+}
+
+export interface ApiUserResponse {
+  authenticated: boolean;
+  user?: UserProfile;
+  id?: string;
+  username?: string;
+  role?: string;
+  address?: string;
+}
+
+export interface DocumentUploadResponse {
+  success: boolean;
+  document_id: string;
+  filename: string;
+  status: string;
+  chunk_count: number;
+  reward_points: number;
+  reputation_gain: number;
+  solana_signature?: string;
+  explorer_url?: string;
+  steps: Record<string, string>;
+}
+
+export interface KnowledgeBaseResponse {
+  [key: string]: unknown;
+}
+
+export interface RewardsSummary {
+  unipoints: number;
+  reputation: number;
+  total_transactions: number;
+  total_earned: number;
+}
+
+export interface AdminStats {
+  users: number;
+  total_tasks: number;
+  open_tasks: number;
+  total_documents: number;
+  approved_documents: number;
+  pending_documents: number;
+  rejected_documents: number;
+  indexed_chunks: number;
+  solana_proofs: number;
+  total_unipoints: number;
+  total_labels_submitted: number;
+}
+
+export interface AdminDocument extends DocumentItem {
+  owner_name?: string;
+  owner_wallet?: string;
+}
+
+export interface AdminTask extends TaskItem {
+  total_submissions: number;
+  valid_votes: number;
+  label_breakdown: Array<{ label: string; count: number }>;
+}
+
+export interface AdminUser extends UserProfile {
+  created_at?: number;
+  tasks_completed?: number;
+  docs_submitted?: number;
+}
+
+export interface AdminLedgerEntry extends LedgerEntry {
+  username?: string;
+}
+
+export interface AuditEvent {
+  id: string;
+  event_type: string;
+  action?: string;
+  entity_id: string;
+  actor_id: string;
+  details: string;
+  created_at: number;
+  timestamp?: number;
+}
+
+export interface MutationResponse {
+  success: boolean;
+  message?: string;
+  [key: string]: unknown;
 }
 
 export const api = {
   async getMe(): Promise<UserProfile> {
-    const res = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
-    if (!res.ok) throw new Error("Không thể tải thông tin người dùng");
+    return request<UserProfile>("/auth/me");
+  },
+
+  async challengeWallet(publicKey: string): Promise<WalletChallengeResponse> {
+    const res = await fetch(`${API_BASE}/auth/wallet/challenge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
+      credentials: "include",
+      body: JSON.stringify({ publicKey }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || "Không thể tạo wallet challenge");
     return res.json();
   },
 
-  async connectWallet(publicKey: string, signature?: string, message?: string): Promise<any> {
-    const res = await fetch(`${API_BASE}/auth/connect-wallet`, {
+  async verifyWallet(publicKey: string, nonce: string, message: string, signature: string): Promise<ApiUserResponse> {
+    const res = await fetch(`${API_BASE}/auth/wallet/verify`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       credentials: "include",
-      body: JSON.stringify({ publicKey, signature, message }),
+      body: JSON.stringify({ publicKey, nonce, message, signature }),
     });
+    if (!res.ok) throw new Error((await res.json()).detail || "Xác thực wallet thất bại");
     return res.json();
   },
 
@@ -118,7 +266,7 @@ export const api = {
   async submitTask(taskId: string, label: string): Promise<TaskSubmissionResult> {
     const res = await fetch(`${API_BASE}/tasks/submit`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       credentials: "include",
       body: JSON.stringify({ taskId, label }),
     });
@@ -130,13 +278,14 @@ export const api = {
   },
 
 
-  async uploadDocument(file: File, permissionConfirmed = true): Promise<any> {
+  async uploadDocument(file: File, permissionConfirmed = true): Promise<DocumentUploadResponse> {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("permission_confirmed", permissionConfirmed ? "true" : "false");
 
     const res = await fetch(`${API_BASE}/documents/upload`, {
       method: "POST",
+      headers: csrfHeaders(),
       credentials: "include",
       body: formData,
     });
@@ -152,12 +301,12 @@ export const api = {
     return res.json();
   },
 
-  async askTutor(question: string, apiKey?: string, model?: string): Promise<TutorResponse> {
+  async askTutor(question: string, model?: string): Promise<TutorResponse> {
     const res = await fetch(`${API_BASE}/tutor/ask`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       credentials: "include",
-      body: JSON.stringify({ question, apiKey, model }),
+      body: JSON.stringify({ question, model }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -166,43 +315,41 @@ export const api = {
     return res.json();
   },
 
-  async getKnowledgeBase(): Promise<any> {
+  async getKnowledgeBase(): Promise<KnowledgeBaseResponse> {
     const res = await fetch(`${API_BASE}/tutor/knowledge-base`);
     return res.json();
   },
 
   async getLedger(): Promise<LedgerEntry[]> {
-    const res = await fetch(`${API_BASE}/rewards/ledger`, { credentials: "include" });
-    return res.json();
+    return request<LedgerEntry[]>("/rewards/ledger");
   },
 
-  async getRewardsSummary(): Promise<any> {
-    const res = await fetch(`${API_BASE}/rewards/summary`, { credentials: "include" });
-    return res.json();
+  async getRewardsSummary(): Promise<RewardsSummary> {
+    return request<RewardsSummary>("/rewards/summary");
   },
 
-  async getStats(): Promise<any> {
+  async getStats(): Promise<AdminStats> {
     const res = await fetch(`${API_BASE}/admin/stats`, { credentials: "include" });
     return res.json();
   },
 
   // Admin Portal APIs
-  async getAdminStats(): Promise<any> {
+  async getAdminStats(): Promise<AdminStats> {
     const res = await fetch(`${API_BASE}/admin/stats`, { credentials: "include" });
     if (!res.ok) throw new Error("Không thể tải thống kê hệ thống");
     return res.json();
   },
 
-  async getAdminDocuments(): Promise<any[]> {
+  async getAdminDocuments(): Promise<AdminDocument[]> {
     const res = await fetch(`${API_BASE}/admin/documents`, { credentials: "include" });
     if (!res.ok) throw new Error("Không thể tải danh sách tài liệu kiểm duyệt");
     return res.json();
   },
 
-  async approveDocument(docId: string): Promise<any> {
+  async approveDocument(docId: string): Promise<MutationResponse> {
     const res = await fetch(`${API_BASE}/admin/documents/${docId}/approve`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       credentials: "include"
     });
     if (!res.ok) {
@@ -212,10 +359,10 @@ export const api = {
     return res.json();
   },
 
-  async rejectDocument(docId: string, reason: string): Promise<any> {
+  async rejectDocument(docId: string, reason: string): Promise<MutationResponse> {
     const res = await fetch(`${API_BASE}/admin/documents/${docId}/reject`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       credentials: "include",
       body: JSON.stringify({ reason })
     });
@@ -226,7 +373,7 @@ export const api = {
     return res.json();
   },
 
-  async getAdminTasks(): Promise<any[]> {
+  async getAdminTasks(): Promise<AdminTask[]> {
     const res = await fetch(`${API_BASE}/admin/tasks`, { credentials: "include" });
     if (!res.ok) throw new Error("Không thể tải danh sách bài toán");
     return res.json();
@@ -240,10 +387,10 @@ export const api = {
     options: string[];
     gold_label?: string;
     reward_points?: number;
-  }): Promise<any> {
+  }): Promise<MutationResponse> {
     const res = await fetch(`${API_BASE}/admin/tasks`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       credentials: "include",
       body: JSON.stringify(taskData)
     });
@@ -254,19 +401,19 @@ export const api = {
     return res.json();
   },
 
-  async getAdminUsers(): Promise<any[]> {
+  async getAdminUsers(): Promise<AdminUser[]> {
     const res = await fetch(`${API_BASE}/admin/users`, { credentials: "include" });
     if (!res.ok) throw new Error("Không thể tải danh sách thành viên");
     return res.json();
   },
 
-  async getAdminLedger(): Promise<any[]> {
+  async getAdminLedger(): Promise<AdminLedgerEntry[]> {
     const res = await fetch(`${API_BASE}/admin/ledger`, { credentials: "include" });
     if (!res.ok) throw new Error("Không thể tải sổ cái hệ thống");
     return res.json();
   },
 
-  async getAdminAuditEvents(): Promise<any[]> {
+  async getAdminAuditEvents(): Promise<AuditEvent[]> {
     const res = await fetch(`${API_BASE}/admin/audit-events`, { credentials: "include" });
     if (!res.ok) throw new Error("Không thể tải nhật ký kiểm toán");
     return res.json();
