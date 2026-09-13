@@ -27,39 +27,18 @@ export default function AITutorChat() {
   const [ragStatus, setRagStatus] = useState<string | null>(null);
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
 
-  // Gemini Flash settings
-  const [geminiKey, setGeminiKey] = useState<string>("");
+  // Server-managed Gemini model selection
   const [geminiModel, setGeminiModel] = useState<string>("gemini-2.0-flash");
   const [showConfigModal, setShowConfigModal] = useState<boolean>(false);
-  const [keyInput, setKeyInput] = useState<string>("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Load saved Gemini settings from localStorage
-  useEffect(() => {
-    try {
-      const savedKey = localStorage.getItem("unisynapse_gemini_api_key") || "";
-      const savedModel = localStorage.getItem("unisynapse_gemini_model") || "gemini-2.0-flash";
-      setGeminiKey(savedKey);
-      setKeyInput(savedKey);
-      setGeminiModel(savedModel);
-    } catch {
-      // ignore
-    }
-  }, []);
+  const messageIdRef = useRef(0);
 
   const handleSaveGeminiConfig = () => {
-    const cleanKey = keyInput.trim();
-    setGeminiKey(cleanKey);
-    localStorage.setItem("unisynapse_gemini_api_key", cleanKey);
-    localStorage.setItem("unisynapse_gemini_model", geminiModel);
     setShowConfigModal(false);
   };
 
   const handleClearGeminiConfig = () => {
-    setGeminiKey("");
-    setKeyInput("");
-    localStorage.removeItem("unisynapse_gemini_api_key");
     setShowConfigModal(false);
   };
 
@@ -75,7 +54,7 @@ export default function AITutorChat() {
     const q = (questionText || input).trim();
     if (!q || isTyping) return;
 
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: q };
+    const userMsg: Message = { id: `user-${++messageIdRef.current}`, role: 'user', content: q };
     setMessages(prev => [...prev, userMsg]);
     setInput("");
     setIsTyping(true);
@@ -84,14 +63,12 @@ export default function AITutorChat() {
     setRagStatus("1. Tìm kiếm trong các tài liệu giáo trình đã kiểm định...");
     setTimeout(() => setRagStatus("2. Lọc ngữ cảnh và tính độ tương đồng vector Cosine..."), 350);
     setTimeout(() => setRagStatus("3. Kiểm tra tính trung thực & rào chắn chống Hallucination..."), 750);
-    if (geminiKey) {
-      setTimeout(() => setRagStatus(`4. Tổng hợp bài giảng sư phạm qua Google ${geminiModel}...`), 1100);
-    }
+    setTimeout(() => setRagStatus(`4. Tổng hợp bài giảng qua cấu hình server (${geminiModel})...`), 1100);
 
     try {
-      const res = await api.askTutor(q, geminiKey || undefined, geminiModel);
+      const res = await api.askTutor(q, geminiModel);
       const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: `ai-${++messageIdRef.current}`,
         role: 'ai',
         content: res.answer,
         citations: res.citations,
@@ -99,13 +76,14 @@ export default function AITutorChat() {
         engine: res.engine
       };
       setMessages(prev => [...prev, aiMsg]);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Lỗi không xác định";
       setMessages(prev => [
         ...prev,
         {
-          id: (Date.now() + 1).toString(),
+          id: `error-${++messageIdRef.current}`,
           role: 'ai',
-          content: `Lỗi kết nối tới máy chủ AI Tutor: ${err.message}. Vui lòng thử lại sau!`,
+          content: `Lỗi kết nối tới máy chủ AI Tutor: ${errorMessage}. Vui lòng thử lại sau!`,
           grounded: false
         }
       ]);
@@ -141,19 +119,15 @@ export default function AITutorChat() {
           </div>
         </div>
 
-        {/* Gemini Engine Toggle & Settings */}
+        {/* Server-managed AI engine settings */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowConfigModal(true)}
-            className={`text-xs px-3 py-1.5 rounded-full border flex items-center gap-1.5 transition-all shadow-sm ${
-              geminiKey
-                ? "bg-purple-950/60 hover:bg-purple-900/60 text-purple-200 border-purple-500/40 hover:border-purple-400 shadow-purple-500/20"
-                : "bg-slate-800 hover:bg-slate-750 text-slate-300 border-white/10 hover:border-white/20"
-            }`}
-            title="Cấu hình Google Gemini Flash API"
+            className="text-xs px-3 py-1.5 rounded-full border flex items-center gap-1.5 transition-all shadow-sm bg-purple-950/60 hover:bg-purple-900/60 text-purple-200 border-purple-500/40"
+            title="Cấu hình mô hình AI do máy chủ quản lý"
           >
-            <span className={`w-2 h-2 rounded-full ${geminiKey ? "bg-purple-400 animate-pulse" : "bg-blue-400"}`}></span>
-            <span className="font-semibold">{geminiKey ? "⚡ Gemini Flash (Đang bật)" : "⚙️ Cấu hình Gemini Key"}</span>
+            <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
+            <span className="font-semibold">⚡ AI Tutor ({geminiModel})</span>
           </button>
         </div>
       </div>
@@ -246,7 +220,7 @@ export default function AITutorChat() {
               📄 Đoạn trích từ: {activeCitation.document_name} ({activeCitation.page})
             </span>
             <p className="text-slate-300 mt-1 italic line-clamp-2">
-              "{activeCitation.excerpt}"
+               &quot;{activeCitation.excerpt}&quot;
             </p>
           </div>
           <button 
@@ -278,11 +252,7 @@ export default function AITutorChat() {
             type="text" 
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              geminiKey 
-                ? "Hỏi bài với Gemini 2.0 Flash (có trích dẫn nguồn giáo trình)..." 
-                : "Hỏi AI Tutor về con trỏ, malloc, bài giảng môn học..."
-            }
+            placeholder="Hỏi AI Tutor về con trỏ, malloc, bài giảng môn học..."
             className="w-full bg-slate-900/70 border border-slate-700 rounded-full py-2.5 pl-4 pr-12 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
           />
           <button 
@@ -295,98 +265,55 @@ export default function AITutorChat() {
         </form>
       </div>
 
-      {/* Gemini Configuration Modal */}
+      {/* Server-managed AI Configuration Modal */}
       {showConfigModal && (
         <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-purple-500/30 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-purple-600/20 border border-purple-500/40 flex items-center justify-center text-purple-300">
-                  ⚡
-                </div>
-                <div>
-                  <h3 className="font-bold text-white text-sm">Cấu Hình Google Gemini Flash</h3>
-                  <p className="text-[11px] text-purple-300">Nâng cấp bài giảng sư phạm thông minh</p>
-                </div>
+              <div>
+                <h3 className="font-bold text-white text-sm">Cấu hình AI Tutor</h3>
+                <p className="text-[11px] text-purple-300">Grounded RAG với thông tin xác thực từ máy chủ</p>
               </div>
-              <button 
+              <button
                 onClick={() => setShowConfigModal(false)}
                 className="text-slate-400 hover:text-white text-sm p-1"
+                aria-label="Đóng cấu hình AI Tutor"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-3 text-xs text-slate-300">
-              <p className="leading-relaxed">
-                UniSynapse kết hợp mô hình <b>Google Gemini 2.0 Flash</b> với kiến trúc <b>Grounded RAG</b>: 
-                Sinh viên được giải thích bài học sâu sắc, có ví dụ minh họa và luôn bắt buộc gắn thẻ trích dẫn <b>[Tên tài liệu, Trang X]</b>.
-              </p>
+            <p className="text-xs leading-relaxed text-slate-300">
+              API credentials được quản lý an toàn ở backend và không được nhập, lưu hoặc gửi từ trình duyệt.
+              Bạn chỉ có thể chọn model được deployment cho phép.
+            </p>
 
-              <div className="p-3 bg-purple-950/40 border border-purple-500/30 rounded-xl space-y-1">
-                <p className="font-semibold text-purple-200">🔑 Chưa có Gemini API Key?</p>
-                <p className="text-[11px] text-slate-400">
-                  Lấy Key hoàn toàn miễn phí (không cần thẻ ngân hàng) tại:
-                </p>
-                <a
-                  href="https://aistudio.google.com/app/apikey"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-blue-400 hover:text-blue-300 underline font-mono text-[11px] block mt-1"
-                >
-                  https://aistudio.google.com/app/apikey ↗
-                </a>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-semibold text-slate-200 block text-xs">Mô hình:</label>
-                <select
-                  value={geminiModel}
-                  onChange={(e) => setGeminiModel(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500"
-                >
-                  <option value="gemini-2.0-flash">Gemini 2.0 Flash (Khuyến nghị - Mới nhất, cực nhanh)</option>
-                  <option value="gemini-1.5-flash">Gemini 1.5 Flash (Tối ưu độ trễ và ổn định)</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-semibold text-slate-200 block text-xs">Gemini API Key:</label>
-                <input 
-                  type="password"
-                  value={keyInput}
-                  onChange={(e) => setKeyInput(e.target.value)}
-                  placeholder="Dán mã API Key (AIzaSy...)"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono focus:outline-none focus:border-purple-500"
-                />
-                <p className="text-[10px] text-slate-400">
-                  Key được lưu trữ an toàn trong trình duyệt của bạn (localStorage) và chỉ dùng để gửi yêu cầu sinh bài giảng.
-                </p>
-              </div>
+            <div className="space-y-1.5">
+              <label className="font-semibold text-slate-200 block text-xs" htmlFor="tutor-model">Mô hình:</label>
+              <select
+                id="tutor-model"
+                value={geminiModel}
+                onChange={(e) => setGeminiModel(e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500"
+              >
+                <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+              </select>
             </div>
 
-            <div className="flex items-center justify-between pt-3 border-t border-white/10">
+            <div className="flex justify-end gap-2 pt-3 border-t border-white/10">
               <button
                 onClick={handleClearGeminiConfig}
-                className="text-xs text-slate-400 hover:text-rose-400 px-3 py-1.5 rounded-lg border border-transparent hover:border-rose-500/20 transition-colors"
+                className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3.5 py-1.5 rounded-lg border border-white/10"
               >
-                Xóa Key (Dùng RAG Tự Thân)
+                Đặt lại
               </button>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowConfigModal(false)}
-                  className="text-xs bg-slate-800 hover:bg-slate-750 text-slate-300 px-3.5 py-1.5 rounded-lg border border-white/10"
-                >
-                  Đóng
-                </button>
-                <button
-                  onClick={handleSaveGeminiConfig}
-                  className="btn-primary py-1.5 px-4 text-xs font-semibold shadow-md shadow-purple-500/30"
-                >
-                  Lưu & Kích Hoạt
-                </button>
-              </div>
+              <button
+                onClick={handleSaveGeminiConfig}
+                className="btn-primary py-1.5 px-4 text-xs font-semibold shadow-md shadow-purple-500/30"
+              >
+                Lưu model
+              </button>
             </div>
           </div>
         </div>

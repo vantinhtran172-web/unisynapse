@@ -1,7 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { api, UserProfile, TaskItem, DocumentItem, LedgerEntry } from "../lib/api";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import { api, UserProfile, TaskItem, DocumentItem, LedgerEntry, TaskSubmissionResult, DocumentUploadResponse } from "../lib/api";
 
 interface AppStateContextType {
   user: UserProfile | null;
@@ -11,11 +11,14 @@ interface AppStateContextType {
   documents: DocumentItem[];
   ledger: LedgerEntry[];
   loading: boolean;
+  refreshing: boolean;
+  error: string | null;
+  lastUpdated: number | null;
   activeTab: string;
   setActiveTab: (tab: string) => void;
   refreshState: () => Promise<void>;
-  submitTask: (taskId: string, label: string) => Promise<any>;
-  uploadDocument: (file: File) => Promise<any>;
+  submitTask: (taskId: string, label: string) => Promise<TaskSubmissionResult>;
+  uploadDocument: (file: File) => Promise<DocumentUploadResponse>;
   setWalletAddress: (address: string) => Promise<void>;
 }
 
@@ -29,50 +32,71 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<string>("dashboard");
+  const refreshGeneration = useRef(0);
 
   const refreshState = useCallback(async () => {
+    const generation = ++refreshGeneration.current;
+    setRefreshing(true);
+    setError(null);
     try {
-      const [u, t, d, l] = await Promise.all([
-        api.getMe().catch(() => null),
-        api.getOpenTasks().catch(() => []),
-        api.getDocuments().catch(() => []),
-        api.getLedger().catch(() => []),
+      const results = await Promise.allSettled([
+        api.getMe(),
+        api.getOpenTasks(),
+        api.getDocuments(),
+        api.getLedger(),
       ]);
+      if (generation !== refreshGeneration.current) return;
 
-      if (u) {
-        setUser(u);
-        setUnipoints(u.unipoints);
-        setReputation(u.reputation);
+      const [userResult, tasksResult, documentsResult, ledgerResult] = results;
+      const failures = results.filter((result) => result.status === "rejected");
+      if (userResult.status === "fulfilled") {
+        setUser(userResult.value);
+        setUnipoints(userResult.value.unipoints);
+        setReputation(userResult.value.reputation);
       }
-      setTasks(t);
-      setDocuments(d);
-      setLedger(l);
+      if (tasksResult.status === "fulfilled") setTasks(tasksResult.value);
+      if (documentsResult.status === "fulfilled") setDocuments(documentsResult.value);
+      if (ledgerResult.status === "fulfilled") setLedger(ledgerResult.value);
+      if (failures.length > 0) {
+        setError("Một số dữ liệu chưa tải được. Hãy thử làm mới lại.");
+      } else {
+        setLastUpdated(Date.now());
+      }
     } catch (err) {
-      console.error("Error loading app state:", err);
+      if (generation === refreshGeneration.current) {
+        setError(err instanceof Error ? err.message : "Không thể tải dữ liệu ứng dụng.");
+      }
     } finally {
-      setLoading(false);
+      if (generation === refreshGeneration.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    refreshState();
+    const timer = window.setTimeout(() => {
+      void refreshState();
+    }, 0);
     // Poll every 10 seconds for real-time peer votes/consensus
-    const interval = setInterval(refreshState, 10000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      void refreshState();
+    }, 10000);
+    return () => {
+      window.clearTimeout(timer);
+      clearInterval(interval);
+      refreshGeneration.current += 1;
+    };
   }, [refreshState]);
 
   const setWalletAddress = async (address: string) => {
-    try {
-      const res = await api.connectWallet(address);
-      if (res.user) {
-        setUser(res.user);
-        setUnipoints(res.user.unipoints);
-        setReputation(res.user.reputation);
-      }
-    } catch (e) {
-      console.error(e);
-    }
+    void address;
+    // Wallet authentication is performed by useUserProfile.verifyWallet,
+    // which completes the server-issued challenge/signature flow.
   };
 
   const submitTask = async (taskId: string, label: string) => {
@@ -98,6 +122,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         documents,
         ledger,
         loading,
+        refreshing,
+        error,
+        lastUpdated,
         activeTab,
         setActiveTab,
         refreshState,
