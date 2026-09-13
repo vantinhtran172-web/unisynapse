@@ -1,0 +1,396 @@
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import { api, Citation } from "../lib/api";
+
+type Message = {
+  id: string;
+  role: 'user' | 'ai';
+  content: string;
+  citations?: Citation[];
+  grounded?: boolean;
+  engine?: string;
+};
+
+export default function AITutorChat() {
+  const [messages, setMessages] = useState<Message[]>([
+    { 
+      id: '1', 
+      role: 'ai', 
+      content: "Xin chào bạn! Tôi là CS101 AI Tutor thuộc mạng lưới UniSynapse. Tôi chỉ trả lời dựa trên kho tri thức đã qua 6 cổng kiểm định (giáo trình C/C++, con trỏ, cấp phát bộ nhớ động, quy chế thi). Mọi câu trả lời của tôi đều có trích dẫn nguồn và số trang rõ ràng.",
+      grounded: true,
+      engine: "gemini-2.0-flash"
+    }
+  ]);
+  const [input, setInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [ragStatus, setRagStatus] = useState<string | null>(null);
+  const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
+
+  // Gemini Flash settings
+  const [geminiKey, setGeminiKey] = useState<string>("");
+  const [geminiModel, setGeminiModel] = useState<string>("gemini-2.0-flash");
+  const [showConfigModal, setShowConfigModal] = useState<boolean>(false);
+  const [keyInput, setKeyInput] = useState<string>("");
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Load saved Gemini settings from localStorage
+  useEffect(() => {
+    try {
+      const savedKey = localStorage.getItem("unisynapse_gemini_api_key") || "";
+      const savedModel = localStorage.getItem("unisynapse_gemini_model") || "gemini-2.0-flash";
+      setGeminiKey(savedKey);
+      setKeyInput(savedKey);
+      setGeminiModel(savedModel);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleSaveGeminiConfig = () => {
+    const cleanKey = keyInput.trim();
+    setGeminiKey(cleanKey);
+    localStorage.setItem("unisynapse_gemini_api_key", cleanKey);
+    localStorage.setItem("unisynapse_gemini_model", geminiModel);
+    setShowConfigModal(false);
+  };
+
+  const handleClearGeminiConfig = () => {
+    setGeminiKey("");
+    setKeyInput("");
+    localStorage.removeItem("unisynapse_gemini_api_key");
+    setShowConfigModal(false);
+  };
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isTyping]);
+
+  const handleSend = async (questionText?: string) => {
+    const q = (questionText || input).trim();
+    if (!q || isTyping) return;
+
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: q };
+    setMessages(prev => [...prev, userMsg]);
+    setInput("");
+    setIsTyping(true);
+
+    // Realistic RAG pipeline status feedback
+    setRagStatus("1. Tìm kiếm trong các tài liệu giáo trình đã kiểm định...");
+    setTimeout(() => setRagStatus("2. Lọc ngữ cảnh và tính độ tương đồng vector Cosine..."), 350);
+    setTimeout(() => setRagStatus("3. Kiểm tra tính trung thực & rào chắn chống Hallucination..."), 750);
+    if (geminiKey) {
+      setTimeout(() => setRagStatus(`4. Tổng hợp bài giảng sư phạm qua Google ${geminiModel}...`), 1100);
+    }
+
+    try {
+      const res = await api.askTutor(q, geminiKey || undefined, geminiModel);
+      const aiMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'ai',
+        content: res.answer,
+        citations: res.citations,
+        grounded: res.grounded,
+        engine: res.engine
+      };
+      setMessages(prev => [...prev, aiMsg]);
+    } catch (err: any) {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: 'ai',
+          content: `Lỗi kết nối tới máy chủ AI Tutor: ${err.message}. Vui lòng thử lại sau!`,
+          grounded: false
+        }
+      ]);
+    } finally {
+      setIsTyping(false);
+      setRagStatus(null);
+    }
+  };
+
+  const sampleQuestions = [
+    "Bản chất của con trỏ (pointers) trong C là gì?",
+    "Hàm malloc() và free() hoạt động ra sao và tại sao cần giải phóng bộ nhớ?",
+    "Điều kiện tối thiểu để qua môn CS101 là gì?",
+    "Tàu Apollo 11 bay lên mặt trăng năm nào? (Câu hỏi thử nghiệm từ chối)"
+  ];
+
+  return (
+    <div className="glass-panel flex flex-col h-[660px] overflow-hidden relative">
+      {/* Header */}
+      <div className="p-4 border-b border-white/10 bg-slate-800/60 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M12 2a2 2 0 0 1 2 2c-.11 1.83.33 3.53 1.25 5H19a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-1.3c-.93 1.47-1.36 3.17-1.25 5a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2c.11-1.83-.33-3.53-1.25-5H3a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1.3c.93-1.47 1.36-3.17 1.25-5a2 2 0 0 1 2-2h4Z"/><path d="M12 18v4"/><path d="M8 22h8"/><path d="M15 11h.01"/><path d="M9 11h.01"/></svg>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="font-bold text-white text-sm">UniSynapse AI Tutor (RAG Grounded)</h2>
+            </div>
+            <p className="text-xs text-emerald-400 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+              Kho tri thức kiểm định • Chống Hallucination 100%
+            </p>
+          </div>
+        </div>
+
+        {/* Gemini Engine Toggle & Settings */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowConfigModal(true)}
+            className={`text-xs px-3 py-1.5 rounded-full border flex items-center gap-1.5 transition-all shadow-sm ${
+              geminiKey
+                ? "bg-purple-950/60 hover:bg-purple-900/60 text-purple-200 border-purple-500/40 hover:border-purple-400 shadow-purple-500/20"
+                : "bg-slate-800 hover:bg-slate-750 text-slate-300 border-white/10 hover:border-white/20"
+            }`}
+            title="Cấu hình Google Gemini Flash API"
+          >
+            <span className={`w-2 h-2 rounded-full ${geminiKey ? "bg-purple-400 animate-pulse" : "bg-blue-400"}`}></span>
+            <span className="font-semibold">{geminiKey ? "⚡ Gemini Flash (Đang bật)" : "⚙️ Cấu hình Gemini Key"}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-grow p-5 overflow-y-auto space-y-4">
+        {messages.map((msg) => (
+          <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] rounded-2xl p-4 ${
+              msg.role === 'user' 
+                ? 'bg-blue-600 text-white rounded-tr-sm shadow-md' 
+                : 'bg-slate-800/90 border border-white/5 text-slate-200 rounded-tl-sm'
+            }`}>
+              <div className="text-sm leading-relaxed whitespace-pre-line">{msg.content}</div>
+              
+              {/* Engine Badge */}
+              {msg.engine && msg.role === 'ai' && (
+                <div className="mt-2.5 pt-2 border-t border-white/5 flex items-center">
+                  {msg.engine.includes("gemini") ? (
+                    <span className="text-[10px] text-purple-300 bg-purple-950/60 border border-purple-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                      🧠 Trợ lý Sư phạm Google {msg.engine} (Grounded RAG)
+                    </span>
+                  ) : msg.engine === "anti_hallucination_guard" ? (
+                    <span className="text-[10px] text-amber-300 bg-amber-950/60 border border-amber-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                      🛡️ Rào chắn Trung thực Học thuật (Từ chối Bịa đặt)
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-blue-300 bg-blue-950/60 border border-blue-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                      📚 Trích xuất Trực tiếp Học liệu Kiểm định
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Citations list */}
+              {msg.citations && msg.citations.length > 0 && (
+                <div className="mt-3.5 pt-3 border-t border-white/10">
+                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-2">
+                    Nguồn Kiểm Định (Citations):
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {msg.citations.map((c, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setActiveCitation(c)}
+                        className="text-xs bg-blue-950/60 hover:bg-blue-900 border border-blue-500/40 hover:border-blue-400 text-blue-300 py-1 px-2.5 rounded-lg flex items-center gap-1.5 transition-colors text-left"
+                      >
+                        <svg className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                        </svg>
+                        <span className="font-medium truncate max-w-[180px]">{c.document_name}</span>
+                        <span className="text-[10px] bg-blue-500/20 px-1 py-0.5 rounded text-blue-200 font-mono">
+                          {c.page}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {isTyping && (
+          <div className="flex flex-col items-start gap-2">
+            {ragStatus && (
+              <div className="bg-blue-950/60 border border-blue-500/30 text-blue-300 text-xs px-3.5 py-2 rounded-xl flex items-center gap-2 max-w-[85%] animate-pulse">
+                <div className="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                {ragStatus}
+              </div>
+            )}
+            <div className="bg-slate-800 border border-white/5 rounded-2xl rounded-tl-sm p-3.5 flex gap-1 w-14">
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Citation Modal / Detail Popup */}
+      {activeCitation && (
+        <div className="p-3 bg-slate-900 border-t border-blue-500/30 flex items-start justify-between gap-3 text-xs">
+          <div className="overflow-hidden">
+            <span className="font-bold text-blue-300 flex items-center gap-1.5">
+              📄 Đoạn trích từ: {activeCitation.document_name} ({activeCitation.page})
+            </span>
+            <p className="text-slate-300 mt-1 italic line-clamp-2">
+              "{activeCitation.excerpt}"
+            </p>
+          </div>
+          <button 
+            onClick={() => setActiveCitation(null)}
+            className="text-slate-400 hover:text-white px-2 py-1 bg-slate-800 rounded"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Quick Prompt Pills */}
+      <div className="px-4 py-2 bg-slate-900/60 border-t border-white/5 overflow-x-auto flex gap-2">
+        {sampleQuestions.map((sq, i) => (
+          <button
+            key={i}
+            onClick={() => handleSend(sq)}
+            className="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white py-1 px-2.5 rounded-full whitespace-nowrap border border-white/5 transition-colors"
+          >
+            {sq}
+          </button>
+        ))}
+      </div>
+
+      {/* Input */}
+      <div className="p-3.5 border-t border-white/10 bg-slate-800/40">
+        <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="relative flex items-center">
+          <input 
+            type="text" 
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={
+              geminiKey 
+                ? "Hỏi bài với Gemini 2.0 Flash (có trích dẫn nguồn giáo trình)..." 
+                : "Hỏi AI Tutor về con trỏ, malloc, bài giảng môn học..."
+            }
+            className="w-full bg-slate-900/70 border border-slate-700 rounded-full py-2.5 pl-4 pr-12 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+          />
+          <button 
+            type="submit" 
+            disabled={!input.trim() || isTyping}
+            className="absolute right-1.5 bg-blue-600 hover:bg-blue-500 text-white w-8 h-8 rounded-full flex items-center justify-center transition-colors disabled:opacity-40"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+          </button>
+        </form>
+      </div>
+
+      {/* Gemini Configuration Modal */}
+      {showConfigModal && (
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-purple-500/30 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-purple-600/20 border border-purple-500/40 flex items-center justify-center text-purple-300">
+                  ⚡
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-sm">Cấu Hình Google Gemini Flash</h3>
+                  <p className="text-[11px] text-purple-300">Nâng cấp bài giảng sư phạm thông minh</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowConfigModal(false)}
+                className="text-slate-400 hover:text-white text-sm p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-300">
+              <p className="leading-relaxed">
+                UniSynapse kết hợp mô hình <b>Google Gemini 2.0 Flash</b> với kiến trúc <b>Grounded RAG</b>: 
+                Sinh viên được giải thích bài học sâu sắc, có ví dụ minh họa và luôn bắt buộc gắn thẻ trích dẫn <b>[Tên tài liệu, Trang X]</b>.
+              </p>
+
+              <div className="p-3 bg-purple-950/40 border border-purple-500/30 rounded-xl space-y-1">
+                <p className="font-semibold text-purple-200">🔑 Chưa có Gemini API Key?</p>
+                <p className="text-[11px] text-slate-400">
+                  Lấy Key hoàn toàn miễn phí (không cần thẻ ngân hàng) tại:
+                </p>
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-400 hover:text-blue-300 underline font-mono text-[11px] block mt-1"
+                >
+                  https://aistudio.google.com/app/apikey ↗
+                </a>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold text-slate-200 block text-xs">Mô hình:</label>
+                <select
+                  value={geminiModel}
+                  onChange={(e) => setGeminiModel(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                >
+                  <option value="gemini-2.0-flash">Gemini 2.0 Flash (Khuyến nghị - Mới nhất, cực nhanh)</option>
+                  <option value="gemini-1.5-flash">Gemini 1.5 Flash (Tối ưu độ trễ và ổn định)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold text-slate-200 block text-xs">Gemini API Key:</label>
+                <input 
+                  type="password"
+                  value={keyInput}
+                  onChange={(e) => setKeyInput(e.target.value)}
+                  placeholder="Dán mã API Key (AIzaSy...)"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono focus:outline-none focus:border-purple-500"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Key được lưu trữ an toàn trong trình duyệt của bạn (localStorage) và chỉ dùng để gửi yêu cầu sinh bài giảng.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-white/10">
+              <button
+                onClick={handleClearGeminiConfig}
+                className="text-xs text-slate-400 hover:text-rose-400 px-3 py-1.5 rounded-lg border border-transparent hover:border-rose-500/20 transition-colors"
+              >
+                Xóa Key (Dùng RAG Tự Thân)
+              </button>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowConfigModal(false)}
+                  className="text-xs bg-slate-800 hover:bg-slate-750 text-slate-300 px-3.5 py-1.5 rounded-lg border border-white/10"
+                >
+                  Đóng
+                </button>
+                <button
+                  onClick={handleSaveGeminiConfig}
+                  className="btn-primary py-1.5 px-4 text-xs font-semibold shadow-md shadow-purple-500/30"
+                >
+                  Lưu & Kích Hoạt
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

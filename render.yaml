@@ -1,0 +1,43 @@
+﻿services:
+  - type: web
+    name: unisynapse-backend
+    runtime: python
+    rootDir: .
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: ALLOW_SQLITE
+        value: "0"
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: unisynapse-postgres
+          property: connectionString
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_SESSION_SECRET
+        generateValue: true
+      - key: DEMO_MEMBER_ID
+        sync: false
+
+  - type: web
+    name: unisynapse-frontend
+    runtime: node
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start -- --hostname 0.0.0.0 --port $PORT
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+
+databases:
+  - name: unisynapse-postgres
+    databaseName: unisynapse
+    user: unisynapse
+    plan: free
