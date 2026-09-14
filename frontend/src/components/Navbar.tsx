@@ -55,7 +55,7 @@ export default function Navbar() {
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 dark:bg-[#030712]/95 backdrop-blur-2xl border-b border-slate-200/90 dark:border-cyan-500/20 px-3 sm:px-6 lg:px-8 xl:px-10 py-2.5 sm:py-3 shadow-sm dark:shadow-[0_4px_24px_rgba(0,0,0,0.4)] transition-colors duration-200">
+      <nav className="fixed top-0 left-0 right-0 z-50 w-full max-w-full overflow-hidden bg-white/95 dark:bg-[#030712]/95 backdrop-blur-2xl border-b border-slate-200/90 dark:border-cyan-500/20 px-3 sm:px-6 lg:px-8 xl:px-10 py-2.5 sm:py-3 shadow-sm dark:shadow-[0_4px_24px_rgba(0,0,0,0.4)] transition-colors duration-200">
         <div className="w-full max-w-[1780px] 2xl:max-w-[1920px] mx-auto flex justify-between items-center gap-2 sm:gap-4">
           {/* Brand with CyberCore Logo Accent */}
           <div 
@@ -193,12 +193,12 @@ export default function Navbar() {
         </div>
 
         {/* Mobile Quick Tabs Bar (Smooth horizontal scroll) */}
-        <div className="flex lg:hidden overflow-x-auto gap-1.5 pt-2 mt-1.5 border-t border-slate-200/80 dark:border-cyan-500/10 scrollbar-none">
+        <div className="flex lg:hidden w-full max-w-full overflow-x-auto gap-1.5 pt-2 mt-1.5 border-t border-slate-200/80 dark:border-cyan-500/10 scrollbar-none touch-pan-x">
           {navItems.map((item) => (
             <button
               key={item.id}
               onClick={() => handleSelectTab(item.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-all flex items-center gap-1 ${
                 activeTab === item.id
                   ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white dark:text-slate-950 font-bold shadow-sm"
                   : "text-slate-600 hover:text-slate-900 bg-slate-100/90 dark:text-slate-300 dark:hover:text-white dark:bg-slate-900/80 border border-slate-200/60 dark:border-slate-800"
