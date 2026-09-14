@@ -30,6 +30,16 @@ class CreateTaskRequest(BaseModel):
 class RejectDocRequest(BaseModel):
     reason: str
 
+@router.post("/verify-key")
+def verify_admin_key(admin_user: dict = Depends(require_admin_session)):
+    return {
+        "valid": True,
+        "username": admin_user.get("username", "admin"),
+        "role": admin_user.get("role", "superadmin"),
+        "auth_method": admin_user.get("auth_method", "session"),
+        "message": "Khoá bảo mật quản trị hợp lệ (Admin Security Key verified)",
+    }
+
 @router.get("/stats")
 def get_system_stats():
     with get_db() as conn:

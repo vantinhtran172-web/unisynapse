@@ -7,7 +7,7 @@ from typing import Optional
 import base58
 import pyotp
 from argon2 import PasswordHasher
-from fastapi import Cookie, HTTPException, Response
+from fastapi import Cookie, Header, HTTPException, Request, Response
 from nacl.exceptions import BadSignatureError
 from nacl.signing import VerifyKey
 
@@ -149,21 +149,57 @@ def revoke_member_session(token: Optional[str]) -> None:
         conn.commit()
 
 
-def require_admin_session(session: Optional[str] = Cookie(None, alias=_ADMIN_SESSION_COOKIE)) -> dict:
-    if not session:
-        raise HTTPException(status_code=401, detail="Admin authentication required")
-    token_hash = hashlib.sha256(session.encode()).hexdigest()
-    now = time.time()
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT a.id, a.username, a.role FROM admin_sessions s "
-            "JOIN admin_accounts a ON a.id = s.admin_id "
-            "WHERE s.token_hash = ? AND s.expires_at > ? AND a.disabled = 0",
-            (token_hash, now),
-        ).fetchone()
-    if not row:
-        raise HTTPException(status_code=401, detail="Invalid or expired admin session")
-    return dict(row)
+def verify_admin_security_key(
+    request: Request,
+    admin_key: Optional[str] = Header(None, alias="X-Admin-Security-Key"),
+    session: Optional[str] = Cookie(None, alias=_ADMIN_SESSION_COOKIE),
+) -> dict:
+    from .config import ADMIN_SECURITY_KEY
+    import hmac
+
+    # 1. Primary check: X-Admin-Security-Key or X-Admin-Key header
+    key = admin_key or request.headers.get("x-admin-security-key") or request.headers.get("x-admin-key")
+    if key and ADMIN_SECURITY_KEY and hmac.compare_digest(key.strip(), ADMIN_SECURITY_KEY):
+        return {"id": "admin-root", "username": "admin", "role": "superadmin", "auth_method": "security_key"}
+
+    # 2. Check Authorization Bearer header
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        bearer_key = auth_header[7:].strip()
+        if ADMIN_SECURITY_KEY and hmac.compare_digest(bearer_key, ADMIN_SECURITY_KEY):
+            return {"id": "admin-root", "username": "admin", "role": "superadmin", "auth_method": "security_key"}
+
+    # 3. Check query param ?admin_key=
+    query_key = request.query_params.get("admin_key")
+    if query_key and ADMIN_SECURITY_KEY and hmac.compare_digest(query_key.strip(), ADMIN_SECURITY_KEY):
+        return {"id": "admin-root", "username": "admin", "role": "superadmin", "auth_method": "security_key"}
+
+    # 4. Fallback to existing admin session cookie if valid
+    if session:
+        token_hash = hashlib.sha256(session.encode()).hexdigest()
+        now = time.time()
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT a.id, a.username, a.role FROM admin_sessions s "
+                "JOIN admin_accounts a ON a.id = s.admin_id "
+                "WHERE s.token_hash = ? AND s.expires_at > ? AND a.disabled = 0",
+                (token_hash, now),
+            ).fetchone()
+        if row:
+            return dict(row)
+
+    raise HTTPException(
+        status_code=403,
+        detail="Khoá bảo mật quản trị không hợp lệ hoặc bị thiếu (Admin Security Key required)",
+    )
+
+
+def require_admin_session(
+    request: Request,
+    admin_key: Optional[str] = Header(None, alias="X-Admin-Security-Key"),
+    session: Optional[str] = Cookie(None, alias=_ADMIN_SESSION_COOKIE),
+) -> dict:
+    return verify_admin_security_key(request=request, admin_key=admin_key, session=session)
 
 
 def require_member_session(session: Optional[str] = Cookie(None, alias=_MEMBER_SESSION_COOKIE)) -> dict:

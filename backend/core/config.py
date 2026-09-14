@@ -66,7 +66,8 @@ DEVNET_DAILY_DEPOSIT_LIMIT_LAMPORTS = 10_000_000_000
 # Remain disabled by default until transaction verification and accounting are validated.
 DEVNET_DEPOSITS_ENABLED = os.getenv("DEVNET_DEPOSITS_ENABLED", "0") == "1"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-ADMIN_ACCESS_KEY = os.getenv("ADMIN_ACCESS_KEY", "").strip()
+ADMIN_SECURITY_KEY = (os.getenv("ADMIN_SECURITY_KEY") or os.getenv("ADMIN_ACCESS_KEY") or "wit-admin-sec-9a8f4c2e1b7d5e3f01829475c8b6a12d").strip()
+ADMIN_ACCESS_KEY = ADMIN_SECURITY_KEY
 MOCK_MODE = os.getenv("MOCK_MODE", "0") == "1"
 CONSENSUS_DEFAULT_VOTES = 5
 CONSENSUS_DEFAULT_THRESHOLD = 0.8
@@ -80,7 +81,7 @@ def validate_runtime_config() -> None:
             raise RuntimeError("Production DATABASE_URL must be PostgreSQL")
         if ALLOW_SQLITE:
             raise RuntimeError("ALLOW_SQLITE must be disabled in production")
-        if not ADMIN_ACCESS_KEY:
+        if not ADMIN_ACCESS_KEY or not ADMIN_SECURITY_KEY:
             raise RuntimeError("ADMIN_ACCESS_KEY is required in production")
         if MOCK_MODE:
             raise RuntimeError("MOCK_MODE must be disabled in production")

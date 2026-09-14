@@ -150,17 +150,6 @@ export default function Navbar() {
               </Link>
             </div>
 
-            {/* Admin Portal Link */}
-            <div className="hidden 2xl:block">
-              <Link 
-                id="nav-admin" 
-                href="/admin" 
-                className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-500 hover:text-cyan-400 dark:text-slate-400 dark:hover:text-cyan-300 py-1.5 px-2 rounded-lg border border-transparent hover:border-slate-200 dark:hover:border-slate-800 transition-colors"
-              >
-                Cổng quản trị ↗
-              </Link>
-            </div>
-
             {/* Solana Wallet Button */}
             <button 
               onClick={handleWalletClick}
@@ -318,18 +307,6 @@ export default function Navbar() {
                 <span className="flex items-center gap-2.5">
                   <span className="text-amber-500">⚡</span>
                   <span>Đổi SOL sang UniPoints</span>
-                </span>
-                <span className="text-xs text-slate-400">↗</span>
-              </Link>
-
-              <Link
-                href="/admin"
-                onClick={() => setMobileMenuOpen(false)}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
-              >
-                <span className="flex items-center gap-2.5">
-                  <span className="text-purple-500">🛡️</span>
-                  <span>Cổng quản trị hệ thống</span>
                 </span>
                 <span className="text-xs text-slate-400">↗</span>
               </Link>

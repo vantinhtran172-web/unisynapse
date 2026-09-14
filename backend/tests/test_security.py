@@ -206,3 +206,29 @@ def test_rag_citations_exclude_below_threshold_context(monkeypatch):
     assert result["citations"][0]["page"] == "Trang 3"
     assert result["engine"] == "extractive_rag"
 
+
+def test_admin_requires_security_key():
+    from fastapi.testclient import TestClient
+    from backend.main import app
+    from backend.core.config import ADMIN_SECURITY_KEY
+
+    with TestClient(app) as client:
+        # 1. Access without key or session must fail with 403
+        res = client.get("/api/v1/admin/stats")
+        assert res.status_code == 403
+        assert "Khoá bảo mật quản trị" in res.json()["detail"] or "Admin Security Key" in res.json()["detail"]
+
+        # 2. Access with wrong key must fail with 403
+        res_wrong = client.get("/api/v1/admin/stats", headers={"X-Admin-Security-Key": "wrong-key"})
+        assert res_wrong.status_code == 403
+
+        # 3. Access with valid ADMIN_SECURITY_KEY header must succeed
+        res_ok = client.get("/api/v1/admin/stats", headers={"X-Admin-Security-Key": ADMIN_SECURITY_KEY})
+        assert res_ok.status_code == 200
+        assert "users" in res_ok.json()
+
+        # 4. Verify-key endpoint
+        res_verify = client.post("/api/v1/admin/verify-key", headers={"X-Admin-Security-Key": ADMIN_SECURITY_KEY})
+        assert res_verify.status_code == 200
+        assert res_verify.json()["valid"] is True
+
