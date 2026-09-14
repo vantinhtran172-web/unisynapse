@@ -9,6 +9,12 @@ import os
 import sys
 import webbrowser
 
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 PORT = int(os.environ.get("ADMIN_PORTAL_PORT", 8088))
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 
@@ -29,7 +35,7 @@ def run():
     with socketserver.TCPServer(("", PORT), AdminHandler) as httpd:
         url = f"http://localhost:{PORT}"
         print("=" * 60)
-        print("🛡️  WIT ENTERPRISE ADMIN OPERATIONS PORTAL (ISOLATED)")
+        print("[*] WIT ENTERPRISE ADMIN OPERATIONS PORTAL (ISOLATED)")
         print("=" * 60)
         print(f"[*] Serving locally on: {url}")
         print(f"[*] Admin directory:   {DIRECTORY}")
