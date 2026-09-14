@@ -279,6 +279,10 @@ def get_system_ledger():
         """)
         rows = [dict(r) for r in cursor.fetchall()]
         for r in rows:
+            r["amount"] = r.get("delta", 0)
+            r["tx_type"] = r.get("reason", r.get("source_type", "TRANSACTION"))
+            r["memo"] = r.get("reason", "")
+            r["timestamp"] = r.get("created_at", 0)
             if r.get("solana_signature"):
                 r["explorer_url"] = SolanaService.get_explorer_url(r["solana_signature"])
         return rows

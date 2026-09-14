@@ -10,8 +10,6 @@ data/*.sqlite*
 .env
 .env.*
 !.env.example
-admin-portal/.env
-!admin-portal/.env.example
 backups/
 
 # Node/build output
