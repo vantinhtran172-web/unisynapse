@@ -10,6 +10,26 @@ from ...services.rag_service import RAGService
 from ...services.solana_service import SolanaService
 
 router = APIRouter(prefix="/documents", tags=["Documents & Verification"])
+QUARANTINE_DIR = UPLOADS_DIR / ".quarantine"
+QUARANTINE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _update_gate(document_id: str, **fields: str) -> None:
+    allowed = {
+        "status", "mime_check", "pii_check", "dedupe_check",
+        "copyright_check", "quality_check", "rejection_reason",
+    }
+    updates = {key: value for key, value in fields.items() if key in allowed}
+    if not updates:
+        return
+    assignments = ", ".join(f"{key} = ?" for key in updates)
+    values = [*updates.values(), document_id]
+    with get_db() as conn:
+        conn.execute(
+            f"UPDATE documents SET {assignments} WHERE id = ?",
+            values,
+        )
+        conn.commit()
 
 @router.get("")
 def list_documents(session_user: dict = Depends(require_member_session)):
@@ -24,142 +44,131 @@ def list_documents(session_user: dict = Depends(require_member_session)):
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
-    permission_confirmed: bool = Form(True),
+    permission_confirmed: bool = Form(False),
     session_user: dict = Depends(require_member_session),
 ):
     owner_id = session_user["id"]
     now = time.time()
     content_bytes = await file.read()
     size_bytes = len(content_bytes)
-    
+
     if size_bytes > 15 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Tập tin vượt quá giới hạn 15MB.")
 
-    # Generate document ID and safe filename
+    original_name = Path(file.filename or "").name
+    if not original_name or original_name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Tên tập tin không hợp lệ.")
+
+    # Keep untrusted content in a non-public quarantine location until all gates pass.
     doc_id = f"doc_{uuid.uuid4().hex[:8]}"
-    ext = Path(file.filename).suffix.lower()
+    ext = Path(original_name).suffix.lower()
     saved_filename = f"{doc_id}{ext}"
-    saved_path = UPLOADS_DIR / saved_filename
-    
-    # Save file buffer
+    saved_path = QUARANTINE_DIR / saved_filename
+
     with open(saved_path, "wb") as f:
         f.write(content_bytes)
 
-    # 1. Step 1: MIME check
-    mime_ok, mime_msg = VerificationService.verify_mime(content_bytes, file.filename)
-    if not mime_ok:
-        saved_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail=mime_msg)
-
-    # 2. Step 2: Compute Checksum & Deduplication check
     checksum = VerificationService.compute_sha256(content_bytes)
-    dedupe_ok, dedupe_msg = VerificationService.check_duplicate(checksum)
-    if not dedupe_ok:
-        saved_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail=dedupe_msg)
-
-    # Extract text preview for PII and Quality check
-    try:
-        pages = RAGService.extract_text_from_file(saved_path, file.content_type or "")
-        full_text = " ".join(p["text"] for p in pages)
-    except Exception as e:
-        saved_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail=f"Không thể đọc nội dung tập tin: {str(e)}")
-
-    # 3. Step 3: Privacy / PII check
-    pii_ok, pii_findings = VerificationService.scan_pii(full_text)
-    if not pii_ok:
-        saved_path.unlink(missing_ok=True)
-        findings_str = "; ".join(pii_findings)
-        raise HTTPException(status_code=400, detail=f"Vi phạm chính sách bảo mật riêng tư (PII): {findings_str}")
-
-    # 4. Step 4: Copyright confirmation
-    copyright_ok = permission_confirmed
-    if not copyright_ok:
-        saved_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail="Bạn chưa xác nhận quyền chia sẻ tài liệu.")
-
-    # 5. Step 5: Academic Quality Score
-    quality_ok, quality_score, quality_msg = VerificationService.evaluate_quality(full_text)
-    if not quality_ok:
-        saved_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail=f"Chất lượng học thuật không đạt: {quality_msg}")
-
-    # Insert document record first so foreign key constraint passes
     with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
+        conn.execute("""
         INSERT INTO documents (
             id, owner_id, filename, original_name, file_type, size_bytes,
             checksum, status, mime_check, pii_check, dedupe_check,
             copyright_check, quality_check, rejection_reason, chunk_count,
             created_at, approved_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', 'pending', 'pending',
+                  'pending', 'pending', 'pending', NULL, 0, ?, NULL)
         """, (
-            doc_id, owner_id, saved_filename, file.filename, file.content_type or ext,
-            size_bytes, checksum, "pending_review", "passed", "passed", "passed",
-            "passed", f"Score: {quality_score}/100", None, 0,
-            now, None
+            doc_id, owner_id, saved_filename, original_name,
+            file.content_type or ext, size_bytes, checksum, now,
         ))
         conn.commit()
 
-    # 6. Step 6: Final Approval & Indexing
-    status = "approved"
-    chunk_count = RAGService.index_document(
-        document_id=doc_id,
-        document_name=file.filename,
-        file_path=saved_path,
-        file_type=file.content_type or ""
-    )
+    def reject_gate(field: str, reason: str) -> None:
+        _update_gate(
+            doc_id,
+            status="rejected",
+            **{field: "failed", "rejection_reason": reason},
+        )
+        saved_path.unlink(missing_ok=True)
 
-    reward_points = 50
-    reputation_gain = 3
-    proof_hash = SolanaService.create_proof_hash(f"DOC_{doc_id}_{owner_id}_{reward_points}_{now}")
-    solana_sig = SolanaService.generate_devnet_signature(proof_hash)
+    # 1. Step 1: MIME check
+    mime_ok, mime_msg = VerificationService.verify_mime(content_bytes, original_name)
+    if not mime_ok:
+        reject_gate("mime_check", mime_msg)
+        raise HTTPException(status_code=400, detail=mime_msg)
+    _update_gate(doc_id, mime_check="passed")
 
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-        UPDATE documents
-        SET status = 'approved', chunk_count = ?, approved_at = ?
-        WHERE id = ?
-        """, (chunk_count, now, doc_id))
+    # 2. Step 2: Compute Checksum & Deduplication check
+    dedupe_ok, dedupe_msg = VerificationService.check_duplicate(checksum, doc_id)
+    if not dedupe_ok:
+        reject_gate("dedupe_check", dedupe_msg)
+        raise HTTPException(status_code=400, detail=dedupe_msg)
 
-        # Reward user
-        cursor.execute("UPDATE users SET unipoints = unipoints + ?, reputation = MIN(100, reputation + ?) WHERE id = ?",
-                       (reward_points, reputation_gain, owner_id))
+    _update_gate(doc_id, dedupe_check="passed")
 
-        ledger_id = f"led_{uuid.uuid4().hex[:8]}"
-        cursor.execute("""
-        INSERT INTO reward_ledger (
-            id, user_id, delta, reason, source_type, source_id,
-            proof_status, solana_signature, proof_hash, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            ledger_id, owner_id, reward_points,
-            f"Tài liệu được duyệt: {file.filename}",
-            "document", doc_id, "unsubmitted", solana_sig, proof_hash, now
-        ))
-        conn.commit()
+    # Extract text preview for PII and Quality check
+    try:
+        pages = RAGService.extract_text_from_file(saved_path, file.content_type or "")
+        full_text = " ".join(p["text"] for p in pages)
+    except Exception as exc:
+        reason = f"Không thể đọc nội dung tập tin: {exc}"
+        reject_gate("quality_check", reason)
+        raise HTTPException(status_code=400, detail=reason)
+
+    # 3. Step 3: Privacy / PII check
+    pii_ok, pii_findings = VerificationService.scan_pii(full_text)
+    if not pii_ok:
+        findings_str = "; ".join(pii_findings)
+        reject_gate("pii_check", findings_str)
+        raise HTTPException(status_code=400, detail=f"Vi phạm chính sách bảo mật riêng tư (PII): {findings_str}")
+    _update_gate(doc_id, pii_check="passed")
+
+    # 4. Step 4: Copyright confirmation
+    if not permission_confirmed:
+        reason = "Bạn chưa xác nhận quyền chia sẻ tài liệu."
+        reject_gate("copyright_check", reason)
+        raise HTTPException(status_code=400, detail=reason)
+    _update_gate(doc_id, copyright_check="passed")
+
+    # 5. Step 5: Academic Quality Score
+    quality_ok, quality_score, quality_msg = VerificationService.evaluate_quality(full_text)
+    if not quality_ok:
+        reject_gate("quality_check", quality_msg)
+        raise HTTPException(status_code=400, detail=f"Chất lượng học thuật không đạt: {quality_msg}")
+    _update_gate(doc_id, quality_check=f"passed ({quality_score}/100)")
+
+    # Promote only fully validated content into managed storage.
+    managed_path = UPLOADS_DIR / saved_filename
+    try:
+        saved_path.replace(managed_path)
+    except OSError as exc:
+        _update_gate(
+            doc_id,
+            status="rejected",
+            rejection_reason=f"Không thể lưu trữ an toàn tài liệu: {exc}",
+        )
+        saved_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="Không thể lưu trữ an toàn tài liệu.")
+
+    _update_gate(doc_id, status="pending_review")
 
     return {
         "success": True,
         "document_id": doc_id,
-        "filename": file.filename,
-        "status": status,
-        "chunk_count": chunk_count,
-        "reward_points": reward_points,
-        "reputation_gain": reputation_gain,
-        "solana_signature": solana_sig,
-        "explorer_url": SolanaService.get_explorer_url(solana_sig),
+        "filename": original_name,
+        "status": "pending_review",
+        "chunk_count": 0,
+        "reward_points": 0,
+        "reputation_gain": 0,
         "steps": {
             "mime": "passed",
             "privacy": "passed",
             "deduplication": "passed",
             "copyright": "passed",
             "quality": f"passed ({quality_score}/100)",
-            "approval": "approved"
-        }
+            "approval": "pending_review",
+        },
     }
 
 @router.get("/{document_id}")

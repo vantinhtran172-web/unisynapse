@@ -1,13 +1,149 @@
 import os
+import re
 import sqlite3
 import json
 import time
 from contextlib import contextmanager
 from functools import lru_cache
-from typing import Optional, List, Dict, Any
-from sqlalchemy import create_engine
+from typing import Optional, List, Dict, Any, Iterable
+
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection, Engine
+
 from .config import ALLOW_SQLITE, DATABASE_URL, DB_PATH, ENVIRONMENT
+
+
+class _CompatRow:
+    """Small DB-API row facade supporting both numeric and named access."""
+
+    def __init__(self, values: Iterable[Any], keys: Iterable[str]):
+        self._values = tuple(values)
+        self._mapping = dict(zip(keys, self._values))
+
+    def __getitem__(self, key: Any) -> Any:
+        if isinstance(key, int):
+            return self._values[key]
+        return self._mapping[key]
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def keys(self):
+        return self._mapping.keys()
+
+
+_QMARK_RE = re.compile(r"(?<!['\"])[?](?!['\"])")
+
+
+def _compile_sql(sql: str, params: Optional[Iterable[Any]]):
+    """Translate legacy qmark parameters into SQLAlchemy named parameters."""
+    values = tuple(params or ())
+    if not values:
+        return sql, {}
+    names = [f"p{index}" for index in range(len(values))]
+    compiled = _QMARK_RE.sub(lambda match: f":{names.pop(0)}", sql)
+    return compiled, {f"p{index}": value for index, value in enumerate(values)}
+
+
+def _translate_postgres_sql(sql: str) -> str:
+    """Translate only audited SQLite constructs used by the legacy runtime."""
+    translated = re.sub(
+        r"INSERT\s+OR\s+IGNORE\s+INTO",
+        "INSERT INTO",
+        sql,
+        flags=re.IGNORECASE,
+    )
+    if translated != sql and "ON CONFLICT" not in translated.upper():
+        translated = f"{translated.rstrip().rstrip(';')} ON CONFLICT DO NOTHING"
+    translated = re.sub(
+        r"MIN\(\s*100\s*,",
+        "LEAST(100,",
+        translated,
+        flags=re.IGNORECASE,
+    )
+    translated = re.sub(
+        r"\bdisabled\s*=\s*0\b",
+        "disabled = false",
+        translated,
+        flags=re.IGNORECASE,
+    )
+    translated = re.sub(
+        r"\bis_gold_correct\s*=\s*1\b",
+        "is_gold_correct = true",
+        translated,
+        flags=re.IGNORECASE,
+    )
+    return translated
+
+
+class _CompatCursor:
+    def __init__(self, connection: "_PostgresCompatConnection"):
+        self.connection = connection
+        self._result = None
+        self.rowcount = -1
+
+    def execute(self, sql: str, params=None):
+        compiled, values = _compile_sql(_translate_postgres_sql(sql), params)
+        self._result = self.connection._connection.execute(text(compiled), values)
+        self.rowcount = self._result.rowcount
+        return self
+
+    def executemany(self, sql: str, parameter_rows):
+        for params in parameter_rows:
+            self.execute(sql, params)
+        return self
+
+    def _row(self, row):
+        if row is None:
+            return None
+        mapping = row._mapping
+        return _CompatRow(mapping.values(), mapping.keys())
+
+    def fetchone(self):
+        return self._row(self._result.fetchone()) if self._result else None
+
+    def fetchall(self):
+        return [self._row(row) for row in self._result.fetchall()] if self._result else []
+
+
+class _PostgresCompatConnection:
+    """Legacy connection facade backed by SQLAlchemy PostgreSQL."""
+
+    def __init__(self, connection: Connection, transaction):
+        self._connection = connection
+        self._transaction = transaction
+
+    def cursor(self):
+        return _CompatCursor(self)
+
+    def execute(self, sql: str, params=None):
+        cursor = self.cursor()
+        cursor.execute(sql, params)
+        return cursor
+
+    def commit(self):
+        # The context manager owns the SQLAlchemy transaction boundary.
+        return None
+
+    def rollback(self):
+        self._transaction.rollback()
+
+    def close(self):
+        self._connection.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            if exc_type:
+                self._transaction.rollback()
+            else:
+                self._transaction.commit()
+        finally:
+            self._connection.close()
+        return False
+
 
 @lru_cache(maxsize=1)
 def get_engine() -> Engine:
@@ -27,7 +163,26 @@ def get_connection() -> Connection:
         yield connection
 
 
+@contextmanager
+def _get_postgres_db():
+    connection = get_engine().connect()
+    transaction = connection.begin()
+    facade = _PostgresCompatConnection(connection, transaction)
+    try:
+        yield facade
+    except Exception:
+        transaction.rollback()
+        connection.close()
+        raise
+    else:
+        transaction.commit()
+        connection.close()
+
+
 def get_db():
+    """Return the legacy DB facade for local SQLite or configured PostgreSQL."""
+    if DATABASE_URL.startswith(("postgresql://", "postgresql+psycopg://")):
+        return _get_postgres_db()
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=30.0)
     conn.row_factory = sqlite3.Row
     # Enable WAL mode for high concurrency
@@ -146,11 +301,101 @@ def init_db():
             reason TEXT NOT NULL,
             source_type TEXT NOT NULL,
             source_id TEXT NOT NULL,
+            reward_event_key TEXT UNIQUE,
             proof_status TEXT DEFAULT 'unsubmitted',
             solana_signature TEXT,
             proof_hash TEXT NOT NULL,
             created_at REAL,
+            proof_attempts INTEGER NOT NULL DEFAULT 0,
+            proof_last_error TEXT,
+            proof_submitted_at REAL,
+            proof_verified_at REAL,
+            proof_next_retry_at REAL,
             FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        """)
+        ledger_columns = {
+            row["name"] for row in cursor.execute("PRAGMA table_info(reward_ledger)").fetchall()
+        }
+        legacy_columns = {
+            "reward_event_key": "ALTER TABLE reward_ledger ADD COLUMN reward_event_key TEXT",
+            "proof_attempts": "ALTER TABLE reward_ledger ADD COLUMN proof_attempts INTEGER NOT NULL DEFAULT 0",
+            "proof_last_error": "ALTER TABLE reward_ledger ADD COLUMN proof_last_error TEXT",
+            "proof_submitted_at": "ALTER TABLE reward_ledger ADD COLUMN proof_submitted_at REAL",
+            "proof_verified_at": "ALTER TABLE reward_ledger ADD COLUMN proof_verified_at REAL",
+            "proof_next_retry_at": "ALTER TABLE reward_ledger ADD COLUMN proof_next_retry_at REAL",
+        }
+        for column_name, alter_sql in legacy_columns.items():
+            if column_name not in ledger_columns:
+                cursor.execute(alter_sql)
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_reward_ledger_event_key "
+            "ON reward_ledger(reward_event_key)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_reward_ledger_proof_retry "
+            "ON reward_ledger(proof_status, proof_next_retry_at)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS ix_reward_ledger_solana_signature "
+            "ON reward_ledger(solana_signature)"
+        )
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ledger_accounts (
+            id TEXT PRIMARY KEY,
+            account_type TEXT NOT NULL,
+            user_id TEXT,
+            created_at REAL NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ledger_transactions (
+            id TEXT PRIMARY KEY,
+            transaction_key TEXT NOT NULL UNIQUE,
+            source_type TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            delta INTEGER NOT NULL CHECK (delta > 0),
+            created_at REAL NOT NULL
+        )
+        """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ledger_entries (
+            id TEXT PRIMARY KEY,
+            transaction_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            debit INTEGER NOT NULL DEFAULT 0 CHECK (debit >= 0),
+            credit INTEGER NOT NULL DEFAULT 0 CHECK (credit >= 0),
+            FOREIGN KEY (transaction_id) REFERENCES ledger_transactions(id) ON DELETE CASCADE,
+            FOREIGN KEY (account_id) REFERENCES ledger_accounts(id),
+            CHECK ((debit > 0 AND credit = 0) OR (credit > 0 AND debit = 0))
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ai_usage (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id),
+            request_hash TEXT NOT NULL,
+            status TEXT NOT NULL,
+            response TEXT,
+            cost INTEGER NOT NULL,
+            created_at REAL NOT NULL,
+            UNIQUE(user_id, id)
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS solana_deposits (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id),
+            sender TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            signature TEXT UNIQUE,
+            points INTEGER,
+            lamports INTEGER,
+            credited_at REAL
         )
         """)
 
@@ -195,6 +440,15 @@ def init_db():
             expires_at REAL NOT NULL,
             created_at REAL NOT NULL,
             FOREIGN KEY (admin_id) REFERENCES admin_accounts(id) ON DELETE CASCADE
+        )
+        """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS wallet_challenges (
+            nonce TEXT PRIMARY KEY,
+            wallet_address TEXT NOT NULL,
+            issued_at REAL NOT NULL,
+            expires_at REAL NOT NULL,
+            consumed_at REAL
         )
         """)
 
@@ -279,22 +533,5 @@ def seed_initial_data():
                 status, consensus, completed_at, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, tasks)
-
-            # Insert sample cross-validation peer votes for task_101 to demonstrate consensus!
-            # When current user votes "negative" or "neutral", they can see other peer votes
-            peer_votes = [
-                ("sub_p1", "task_101", "usr_peer_1", "negative", 1, now - 300),
-                ("sub_p2", "task_101", "usr_peer_2", "negative", 1, now - 200),
-                ("sub_p3", "task_101", "usr_peer_3", "negative", 1, now - 100),
-            ]
-            # Ensure peer users exist
-            for uid, uname in [("usr_peer_1", "Alex"), ("usr_peer_2", "Bao"), ("usr_peer_3", "Chi")]:
-                cursor.execute("INSERT OR IGNORE INTO users (id, address, username, unipoints, reputation, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                               (uid, f"0x{uid}solana", uname, 120, 95, "student", now))
-            
-            cursor.executemany("""
-            INSERT OR IGNORE INTO task_submissions (id, task_id, user_id, label, is_gold_correct, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """, peer_votes)
 
         conn.commit()

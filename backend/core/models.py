@@ -32,7 +32,14 @@ document_chunks = Table("document_chunks", metadata,
 reward_ledger = Table("reward_ledger", metadata,
     Column("id", String(255), primary_key=True), Column("user_id", String(255), ForeignKey("users.id"), nullable=False), Column("delta", Integer, nullable=False),
     Column("reason", Text, nullable=False), Column("source_type", String(128), nullable=False), Column("source_id", String(255), nullable=False),
-    Column("proof_status", String(64), server_default="unsubmitted"), Column("solana_signature", Text), Column("proof_hash", String(255), nullable=False), Column("created_at", Float))
+    Column("reward_event_key", String(512), unique=True), Column("proof_status", String(64), server_default="unsubmitted"), Column("solana_signature", Text), Column("proof_hash", String(255), nullable=False), Column("created_at", Float),
+    Column("proof_attempts", Integer, nullable=False, server_default="0"), Column("proof_last_error", Text), Column("proof_submitted_at", Float), Column("proof_verified_at", Float), Column("proof_next_retry_at", Float))
+ledger_accounts = Table("ledger_accounts", metadata,
+    Column("id", String(255), primary_key=True), Column("account_type", String(64), nullable=False), Column("user_id", String(255), ForeignKey("users.id")), Column("created_at", Float, nullable=False))
+ledger_transactions = Table("ledger_transactions", metadata,
+    Column("id", String(255), primary_key=True), Column("transaction_key", String(512), nullable=False, unique=True), Column("source_type", String(128), nullable=False), Column("source_id", String(255), nullable=False), Column("delta", Integer, nullable=False), Column("created_at", Float, nullable=False))
+ledger_entries = Table("ledger_entries", metadata,
+    Column("id", String(255), primary_key=True), Column("transaction_id", String(255), ForeignKey("ledger_transactions.id", ondelete="CASCADE"), nullable=False), Column("account_id", String(255), ForeignKey("ledger_accounts.id"), nullable=False), Column("debit", Integer, nullable=False, server_default="0"), Column("credit", Integer, nullable=False, server_default="0"))
 audit_events = Table("audit_events", metadata,
     Column("id", String(255), primary_key=True), Column("user_id", String(255)), Column("action", Text, nullable=False), Column("details", Text), Column("timestamp", Float))
 member_sessions = Table("member_sessions", metadata,

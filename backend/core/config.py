@@ -46,8 +46,28 @@ CORS_ORIGINS = [
 ]
 
 SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.devnet.solana.com")
+SOLANA_NETWORK = os.getenv("SOLANA_NETWORK", "devnet").strip().lower()
+SOLANA_SUBMISSION_ENABLED = os.getenv("SOLANA_SUBMISSION_ENABLED", "0") == "1"
+SOLANA_AUTHORITY_SECRET_REF = os.getenv("SOLANA_AUTHORITY_SECRET_REF", "").strip()
+SOLANA_COMMITMENT = os.getenv("SOLANA_COMMITMENT", "confirmed").strip().lower()
+SOLANA_MAX_RETRIES = int(os.getenv("SOLANA_MAX_RETRIES", "5"))
 SOLANA_EXPLORER_BASE = "https://explorer.solana.com/tx"
+
+# Internal credits only; these settings do not enable blockchain payouts.
+AI_CHAT_COST_POINTS = 80
+POINTS_PER_DEVNET_SOL = 1000
+DEVNET_TREASURY_ADDRESS = os.getenv(
+    "DEVNET_TREASURY_ADDRESS",
+    "FEdvEMCedQ2xonCfGLNKAyqdbeyP6HJz6bVHqYQE2hgq",
+).strip()
+DEVNET_DEPOSIT_COMMITMENT = "finalized"
+DEVNET_MIN_DEPOSIT_LAMPORTS = 1_000_000
+DEVNET_DAILY_DEPOSIT_LIMIT_LAMPORTS = 10_000_000_000
+# Remain disabled by default until transaction verification and accounting are validated.
+DEVNET_DEPOSITS_ENABLED = os.getenv("DEVNET_DEPOSITS_ENABLED", "0") == "1"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+ADMIN_ACCESS_KEY = os.getenv("ADMIN_ACCESS_KEY", "").strip()
+MOCK_MODE = os.getenv("MOCK_MODE", "0") == "1"
 CONSENSUS_DEFAULT_VOTES = 5
 CONSENSUS_DEFAULT_THRESHOLD = 0.8
 
@@ -60,9 +80,18 @@ def validate_runtime_config() -> None:
             raise RuntimeError("Production DATABASE_URL must be PostgreSQL")
         if ALLOW_SQLITE:
             raise RuntimeError("ALLOW_SQLITE must be disabled in production")
-        if not COOKIE_SECURE:
-            raise RuntimeError("COOKIE_SECURE must be enabled in production")
+        if not ADMIN_ACCESS_KEY:
+            raise RuntimeError("ADMIN_ACCESS_KEY is required in production")
+        if MOCK_MODE:
+            raise RuntimeError("MOCK_MODE must be disabled in production")
         if "*" in CORS_ORIGINS:
             raise RuntimeError("Wildcard CORS is not allowed in production")
+        if SOLANA_SUBMISSION_ENABLED:
+            raise RuntimeError("Solana submission must use isolated staging, not production")
+    elif ENVIRONMENT == "staging":
+        if SOLANA_SUBMISSION_ENABLED and SOLANA_NETWORK != "devnet":
+            raise RuntimeError("Staging submission is restricted to Solana Devnet")
+        if SOLANA_SUBMISSION_ENABLED and not SOLANA_AUTHORITY_SECRET_REF:
+            raise RuntimeError("Solana authority must be supplied by a secret-store reference")
     elif DATABASE_URL and not DATABASE_URL.startswith(("postgresql://", "postgresql+psycopg://", "sqlite://")):
         raise RuntimeError("DATABASE_URL must be PostgreSQL or SQLite")

@@ -1,14 +1,16 @@
 import os
 import time
 import uuid
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from ...core.database import get_db
 from ...services.rag_service import RAGService
 from ...services.solana_service import SolanaService
-from ...core.config import UPLOADS_DIR
+from ...core.config import UPLOADS_DIR, ENVIRONMENT
 from ...core.security import require_admin_session
+from ...services.ledger_service import settle_reward
 
 router = APIRouter(
     prefix="/admin",
@@ -102,43 +104,65 @@ def approve_document_by_admin(doc_id: str):
             raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu")
 
         doc = dict(doc)
-        file_path = UPLOADS_DIR / doc["filename"]
-        
-        # Index chunks
-        chunk_count = 0
-        if file_path.exists():
-            chunk_count = RAGService.index_document(
-                document_id=doc_id,
-                document_name=doc["original_name"],
-                file_path=file_path,
-                file_type=doc["file_type"]
+        if doc["status"] == "approved":
+            cursor.execute(
+                "SELECT solana_signature FROM reward_ledger "
+                "WHERE source_type = ? AND source_id = ? ORDER BY created_at DESC LIMIT 1",
+                ("document_faculty_approved", doc_id),
             )
+            ledger = cursor.fetchone()
+            signature = ledger["solana_signature"] if ledger else None
+            return {
+                "success": True,
+                "already_approved": True,
+                "chunk_count": doc["chunk_count"] or 0,
+                "solana_signature": signature,
+                "explorer_url": SolanaService.get_explorer_url(signature) if signature else None,
+            }
+        if doc["status"] != "pending_review":
+            raise HTTPException(status_code=409, detail="Tài liệu không ở trạng thái chờ phê duyệt.")
+
+        file_path = UPLOADS_DIR / Path(doc["filename"]).name
+        if not file_path.is_file():
+            raise HTTPException(status_code=409, detail="Không tìm thấy bản lưu trữ tài liệu để phê duyệt.")
+
+        chunk_count = RAGService.index_document(
+            document_id=doc_id,
+            document_name=doc["original_name"],
+            file_path=file_path,
+            file_type=doc["file_type"],
+        )
+        if chunk_count < 1:
+            raise HTTPException(status_code=422, detail="Tài liệu không tạo được nội dung để lập chỉ mục.")
+
+        award_points = 50
+        proof_hash = SolanaService.create_proof_hash(f"faculty_approved:{doc_id}:{doc['checksum']}")
+        devnet_sig = SolanaService.generate_devnet_signature(proof_hash)
+        entry_id = f"rwd_{uuid.uuid4().hex[:12]}"
+        reward_event_key = f"document_faculty_approved:{doc_id}"
 
         cursor.execute("""
         UPDATE documents
         SET status = 'approved', chunk_count = ?, approved_at = ?, quality_check = 'Approved by Faculty Board'
-        WHERE id = ?
+        WHERE id = ? AND status = 'pending_review'
         """, (chunk_count, now, doc_id))
+        if cursor.rowcount != 1:
+            raise HTTPException(status_code=409, detail="Tài liệu vừa được xử lý bởi một yêu cầu khác.")
 
-        # Award points to student
-        award_points = 50
-        cursor.execute("UPDATE users SET unipoints = unipoints + ? WHERE id = ?", (award_points, doc["owner_id"]))
+        settle_reward(
+            conn,
+            user_id=doc["owner_id"],
+            delta=award_points,
+            reason=f"Phê duyệt Giáo trình bởi Giảng viên ({doc['original_name'][:25]})",
+            source_type="document_faculty_approved",
+            source_id=doc_id,
+            reward_event_key=reward_event_key,
+            proof_status="unsubmitted",
+            solana_signature=devnet_sig,
+            proof_hash=proof_hash,
+            created_at=now,
+        )
 
-        # Double-entry ledger
-        proof_hash = SolanaService.create_proof_hash(f"faculty_approved:{doc_id}:{doc['checksum']}")
-        devnet_sig = SolanaService.generate_devnet_signature(proof_hash)
-        entry_id = f"rwd_{uuid.uuid4().hex[:12]}"
-        
-        cursor.execute("""
-        INSERT INTO reward_ledger (id, user_id, delta, reason, source_type, source_id, proof_status, solana_signature, proof_hash, created_at)
-        VALUES (?, ?, ?, ?, 'document_faculty_approved', ?, 'unsubmitted', ?, ?, ?)
-        """, (
-            entry_id, doc["owner_id"], award_points,
-            f"Phê duyệt Giáo trình bởi Giảng viên ({doc['original_name'][:25]})",
-            doc_id, devnet_sig, proof_hash, now
-        ))
-
-        # Audit event
         cursor.execute("""
         INSERT INTO audit_events (id, event_type, entity_id, actor_id, details, created_at)
         VALUES (?, 'document_faculty_approved', ?, 'admin', ?, ?)
@@ -146,10 +170,11 @@ def approve_document_by_admin(doc_id: str):
 
     return {
         "success": True,
+        "already_approved": False,
         "message": f"Đã phê duyệt tài liệu '{doc['original_name']}'! Đã lập chỉ mục {chunk_count} chunks và cộng +{award_points} UniPoints.",
         "chunk_count": chunk_count,
         "solana_signature": devnet_sig,
-        "explorer_url": SolanaService.get_explorer_url(devnet_sig)
+        "explorer_url": SolanaService.get_explorer_url(devnet_sig),
     }
 
 @router.post("/documents/{doc_id}/reject")

@@ -53,16 +53,26 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
       const [userResult, tasksResult, documentsResult, ledgerResult] = results;
       const failures = results.filter((result) => result.status === "rejected");
-      if (userResult.status === "fulfilled") {
+      const sessionExpired = userResult.status === "rejected" && userResult.reason instanceof Error &&
+        "status" in userResult.reason && userResult.reason.status === 401;
+      if (sessionExpired) {
+        setUser(null);
+        setUnipoints(0);
+        setReputation(0);
+        setTasks([]);
+        setDocuments([]);
+        setLedger([]);
+        setLastUpdated(null);
+      } else if (userResult.status === "fulfilled") {
         setUser(userResult.value);
         setUnipoints(userResult.value.unipoints);
         setReputation(userResult.value.reputation);
       }
-      if (tasksResult.status === "fulfilled") setTasks(tasksResult.value);
-      if (documentsResult.status === "fulfilled") setDocuments(documentsResult.value);
-      if (ledgerResult.status === "fulfilled") setLedger(ledgerResult.value);
+      if (tasksResult.status === "fulfilled" && !sessionExpired) setTasks(Array.isArray(tasksResult.value) ? tasksResult.value : []);
+      if (documentsResult.status === "fulfilled" && !sessionExpired) setDocuments(Array.isArray(documentsResult.value) ? documentsResult.value : []);
+      if (ledgerResult.status === "fulfilled" && !sessionExpired) setLedger(Array.isArray(ledgerResult.value) ? ledgerResult.value : []);
       if (failures.length > 0) {
-        setError("Một số dữ liệu chưa tải được. Hãy thử làm mới lại.");
+        setError(sessionExpired ? "Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại để xem UniPoints." : "Một số dữ liệu chưa tải được. Hãy thử làm mới lại.");
       } else {
         setLastUpdated(Date.now());
       }

@@ -1,22 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api, AdminStats, AdminDocument, AdminTask, AdminUser, AdminLedgerEntry, AuditEvent } from "@/lib/api";
 
 type AdminTab = "documents" | "tasks" | "users" | "ledger";
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>("documents");
-  const [stats, setStats] = useState<any>(null);
-  const [documents, setDocuments] = useState<any[]>([]);
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [ledger, setLedger] = useState<any[]>([]);
-  const [auditEvents, setAuditEvents] = useState<any[]>([]);
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [documents, setDocuments] = useState<AdminDocument[]>([]);
+  const [tasks, setTasks] = useState<AdminTask[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [ledger, setLedger] = useState<AdminLedgerEntry[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [rejectModalDoc, setRejectModalDoc] = useState<any | null>(null);
+  const [rejectModalDoc, setRejectModalDoc] = useState<AdminDocument | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [notification, setNotification] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
@@ -35,7 +35,7 @@ export default function AdminPage() {
     setTimeout(() => setNotification(null), 5000);
   };
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const [s, docs, t, u, l, a] = await Promise.all([
@@ -52,16 +52,19 @@ export default function AdminPage() {
       setUsers(u);
       setLedger(l);
       setAuditEvents(a);
-    } catch (err: any) {
-      showNotification("Lỗi khi tải dữ liệu admin: " + err.message, "error");
+    } catch (err: unknown) {
+      showNotification("Lỗi khi tải dữ liệu admin: " + (err instanceof Error ? err.message : "Lỗi không xác định"), "error");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    const timer = window.setTimeout(() => {
+      void loadData();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadData]);
 
   const handleApproveDoc = async (docId: string) => {
     try {
@@ -69,8 +72,8 @@ export default function AdminPage() {
       const res = await api.approveDocument(docId);
       showNotification(res.message || "Đã phê duyệt tài liệu thành công!", "success");
       await loadData();
-    } catch (err: any) {
-      showNotification(err.message, "error");
+    } catch (err: unknown) {
+      showNotification(err instanceof Error ? err.message : "Lỗi không xác định", "error");
     } finally {
       setActionLoading(null);
     }
@@ -89,8 +92,8 @@ export default function AdminPage() {
       setRejectModalDoc(null);
       setRejectReason("");
       await loadData();
-    } catch (err: any) {
-      showNotification(err.message, "error");
+    } catch (err: unknown) {
+      showNotification(err instanceof Error ? err.message : "Lỗi không xác định", "error");
     } finally {
       setActionLoading(null);
     }
@@ -128,8 +131,8 @@ export default function AdminPage() {
       setNewTaskQuestion("");
       setNewTaskGold("");
       await loadData();
-    } catch (err: any) {
-      showNotification(err.message, "error");
+    } catch (err: unknown) {
+      showNotification(err instanceof Error ? err.message : "Lỗi không xác định", "error");
     } finally {
       setCreatingTask(false);
     }
@@ -633,7 +636,7 @@ export default function AdminPage() {
                     </div>
 
                     <p className="text-[11px] text-slate-400 italic bg-[#030712] p-2.5 rounded border border-slate-800/80 mb-3">
-                      "{task.input_text || task.context_snippet}"
+                      &quot;{task.input_text || task.context_snippet}&quot;
                     </p>
 
                     {/* Breakdown votes */}
@@ -643,7 +646,7 @@ export default function AdminPage() {
                           Phân bố bình chọn đồng thuận (Consensus Distribution):
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {task.label_breakdown.map((b: any, idx: number) => (
+                          {task.label_breakdown.map((b, idx) => (
                             <div
                               key={idx}
                               className="px-2 py-1 rounded bg-[#0a1128] border border-cyan-500/20 text-[10px] font-mono text-cyan-200 flex items-center gap-1.5"

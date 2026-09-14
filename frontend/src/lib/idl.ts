@@ -1,6 +1,8 @@
+import type { Idl } from "@coral-xyz/anchor";
+
 export const PROGRAM_ID = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS";
 
-export const IDL: any = {
+export const IDL = {
   version: "0.1.0",
   name: "unisynapse",
   instructions: [
@@ -55,4 +57,4 @@ export const IDL: any = {
       },
     },
   ],
-};
+} as unknown as Idl;

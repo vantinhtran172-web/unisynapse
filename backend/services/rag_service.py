@@ -155,15 +155,11 @@ class RAGService:
         return results[:top_k]
 
     @staticmethod
-    def call_gemini_api(question: str, context_chunks: List[Dict[str, Any]], api_key: str, model: str = "gemini-2.0-flash") -> Tuple[str, str]:
-        """
-        Gọi Google Gemini Flash API với ràng buộc Grounded RAG nghiêm ngặt:
-        - Bắt buộc trích dẫn [Nguồn, Trang]
-        - Trả lời phong cách sư phạm sâu sắc
-        - Tự động thử model fallback nếu cần
-        """
+    def call_gemini_api(question: str, context_chunks: List[Dict[str, Any]], api_key: str,
+                        model: str = "gemini-flash-latest", grounded: bool = True) -> Tuple[str, str]:
+        """Call Gemini in grounded-document or clearly non-grounded general-AI mode."""
         import urllib.request
-        
+
         context_parts = []
         for i, c in enumerate(context_chunks):
             p_label = f"Trang {c['page_number']}" if c.get('page_number') else f"Đoạn {c['chunk_index'] + 1}"
@@ -172,131 +168,127 @@ class RAGService:
                 f"{c['content']}"
             )
         context_str = "\n\n".join(context_parts)
-        
-        system_prompt = (
-            "Bạn là UniSynapse AI Tutor — gia sư học thuật thông minh, sư phạm và chuẩn mực dành cho sinh viên đại học.\n\n"
-            "QUY TẮC CỐT LÕI (BẮT BUỘC TUÂN THỦ 100%):\n"
-            "1. TÍNH CHÍNH XÁC HỌC THUẬT: Bạn CHỈ ĐƯỢC PHÉP giải thích dựa trên các dữ kiện, định nghĩa, công thức có trong BỐI CẢNH HỌC LIỆU dưới đây. Tuyệt đối KHÔNG BỊA ĐẶT hay đưa ra kiến thức không có nguồn gốc kiểm định.\n"
-            "2. GẮN THẺ TRÍCH DẪN RÕ RÀNG: Mỗi khi nêu một khái niệm, cơ chế hay ví dụ lấy từ học liệu, hãy kèm theo thẻ trích dẫn dạng [Tên tài liệu, Trang X] để sinh viên tiện đối chiếu vào giáo trình gốc.\n"
-            "3. PHONG CÁCH SƯ PHẠM ĐẠI HỌC: Trình bày bài giảng mạch lạc bằng Markdown:\n"
-            "   - **1. Khái niệm & Định nghĩa cốt lõi**\n"
-            "   - **2. Cơ chế hoạt động & Minh họa** (có phân tích code nếu là lập trình)\n"
-            "   - **3. Lưu ý & Sai lầm phổ biến khi làm bài thi / thực hành**\n"
-            "   - **4. Câu hỏi củng cố ôn tập** (1 câu hỏi nhỏ ở cuối để sinh viên tự kiểm tra).\n"
-            "Giọng văn chuyên nghiệp, sư phạm, khuyến khích sinh viên học tập."
-        )
-        
-        user_prompt = f"BỐI CẢNH HỌC LIỆU ĐÃ KIỂM ĐỊNH:\n{context_str}\n\nCÂU HỎI CỦA SINH VIÊN:\n{question}"
-        
-        models_to_try = [model, "gemini-2.0-flash", "gemini-1.5-flash"]
+
+        if grounded:
+            system_prompt = (
+                "Bạn là UniSynapse AI Tutor — gia sư học thuật chuẩn mực.\n"
+                "Chỉ giải thích dựa trên BỐI CẢNH HỌC LIỆU đã kiểm định.\n"
+                "Mỗi khái niệm lấy từ học liệu phải kèm [Tên tài liệu, Trang X].\n"
+                "Không bịa đặt hoặc dùng kiến thức ngoài bối cảnh. Trình bày mạch lạc bằng Markdown."
+            )
+            user_prompt = f"BỐI CẢNH HỌC LIỆU ĐÃ KIỂM ĐỊNH:\n{context_str}\n\nCÂU HỎI:\n{question}"
+        else:
+            system_prompt = (
+                "Bạn là Google Gemini, trợ lý AI giáo dục của UniSynapse.\n"
+                "Câu hỏi này không có tài liệu tương thích trong kho UniSynapse.\n"
+                "Hãy trả lời bằng kiến thức chung của bạn một cách hữu ích, trung thực và có tính sư phạm.\n"
+                "Không được nói hoặc ngụ ý rằng câu trả lời đến từ tài liệu UniSynapse.\n"
+                "Không tạo citation giả, không dùng định dạng [Tên tài liệu, Trang X].\n"
+                "Nếu thông tin có thể thay đổi hoặc không chắc chắn, hãy khuyến nghị người học kiểm chứng thêm."
+            )
+            user_prompt = f"ĐÂY LÀ CÂU HỎI NGOÀI KHO TÀI LIỆU UNIYSYNAPSE:\n{question}"
+
+        models_to_try = [model, "gemini-flash-latest", "gemini-flash-lite-latest"]
         seen = set()
-        unique_models = [m for m in models_to_try if not (m in seen or seen.add(m))]
-        
+        unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
         last_error = ""
         for m in unique_models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key}"
             payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": f"{system_prompt}\n\n{user_prompt}"}
-                        ]
-                    }
-                ],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "maxOutputTokens": 2048
-                }
+                "contents": [{"parts": [{"text": f"{system_prompt}\n\n{user_prompt}"}]}],
+                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048},
             }
-            
-            try:
-                req = urllib.request.Request(
-                    url,
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
-                    method="POST"
-                )
-                with urllib.request.urlopen(req, timeout=15) as resp:
-                    resp_json = json.loads(resp.read().decode("utf-8"))
-                    candidates = resp_json.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts and "text" in parts[0]:
-                            return parts[0]["text"].strip(), m
-            except Exception as e:
-                last_error = str(e)
-                continue
-                
+            for attempt in range(2):
+                try:
+                    req = urllib.request.Request(
+                        url, data=json.dumps(payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        resp_json = json.loads(resp.read().decode("utf-8"))
+                        candidates = resp_json.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts and "text" in parts[0]:
+                                return parts[0]["text"].strip(), m
+                except Exception as exc:
+                    last_error = str(exc)
+                    if attempt == 0 and ("503" in str(exc) or "429" in str(exc) or "timed out" in str(exc)):
+                        import time
+                        time.sleep(0.5)
+                        continue
+                    break
         raise RuntimeError(f"Gemini API call failed: {last_error}")
 
     @classmethod
-    def answer_question(cls, question: str, api_key: Optional[str] = None, model: str = "gemini-2.0-flash") -> Dict[str, Any]:
+    def answer_question(cls, question: str, api_key: Optional[str] = None, model: str = "gemini-flash-latest") -> Dict[str, Any]:
         top_chunks = cls.search_relevant_chunks(question, top_k=3)
         
-        # Anti-hallucination refusal threshold
-        if not top_chunks or top_chunks[0]["score"] < 0.15:
-            return {
-                "answer": "Kho tri thức đã duyệt của UniSynapse hiện chưa có tài liệu đủ tương thích để giải đáp chính xác câu hỏi này. Để đảm bảo tính trung thực học thuật và không bịa đặt nguồn, AI Tutor từ chối trả lời ngoài phạm vi học liệu đã kiểm định. Bạn vui lòng đóng góp thêm tài liệu môn học tương ứng hoặc trao đổi thêm với giảng viên!",
-                "citations": [],
-                "grounded": False,
-                "engine": "anti_hallucination_guard"
-            }
-            
-        citations = []
-        for c in top_chunks:
-            if c["score"] >= 0.15:
-                citations.append({
-                    "document_id": c["document_id"],
-                    "document_name": c["document_name"],
-                    "page": f"Trang {c['page_number']}" if c["page_number"] else f"Đoạn {c['chunk_index'] + 1}",
-                    "chunk_index": c["chunk_index"],
-                    "score": c["score"],
-                    "excerpt": c["content"][:180] + "..."
-                })
-
-        # Try calling Gemini Flash if API key provided or set in environment
         import os
-        from ..core.config import GEMINI_API_KEY
-        active_key = (api_key or os.getenv("GEMINI_API_KEY") or GEMINI_API_KEY or "").strip()
-        
+        from ..core.config import GEMINI_API_KEY, ENVIRONMENT
+
+        has_grounded_context = bool(top_chunks) and top_chunks[0]["score"] >= 0.15
+        citations = []
+        if has_grounded_context:
+            for c in top_chunks:
+                if c["score"] >= 0.15:
+                    citations.append({
+                        "document_id": c["document_id"],
+                        "document_name": c["document_name"],
+                        "page": f"Trang {c['page_number']}" if c["page_number"] else f"Đoạn {c['chunk_index'] + 1}",
+                        "chunk_index": c["chunk_index"],
+                        "score": c["score"],
+                        "excerpt": c["content"][:180] + "..."
+                    })
+
+        client_key = "" if ENVIRONMENT == "production" else (api_key or "")
+        active_key = (client_key or os.getenv("GEMINI_API_KEY") or GEMINI_API_KEY or "").strip()
         if active_key:
             try:
-                gemini_text, used_model = cls.call_gemini_api(question, top_chunks, active_key, model)
+                gemini_text, used_model = cls.call_gemini_api(
+                    question, top_chunks if has_grounded_context else [], active_key,
+                    model, grounded=has_grounded_context)
                 return {
                     "answer": gemini_text,
-                    "citations": citations,
-                    "grounded": True,
-                    "engine": used_model
+                    "citations": citations if has_grounded_context else [],
+                    "grounded": has_grounded_context,
+                    "engine": used_model,
+                    "source_type": "approved_documents" if has_grounded_context else "ai_outside_knowledge_base",
+                    "source_label": "Tài liệu UniSynapse đã kiểm định" if has_grounded_context else "Nguồn từ AI — Không có trong tài liệu",
                 }
             except Exception as err:
-                print(f"[RAG] Gemini Flash call notice ({err}). Using extractive RAG engine.")
+                print(f"[RAG] Gemini call notice ({err}). Using safe fallback.")
+
+        if not has_grounded_context:
+            return {
+                "answer": "Câu hỏi này nằm ngoài kho tài liệu UniSynapse và hiện Gemini chưa sẵn sàng trả lời. Vui lòng thử lại sau hoặc bổ sung tài liệu liên quan.",
+                "citations": [],
+                "grounded": False,
+                "engine": "unavailable",
+                "source_type": "unavailable",
+                "source_label": "Không có nguồn trả lời khả dụng",
+            }
 
         # Native grounded extractive fallback engine
         primary = top_chunks[0]
         context_summary = primary["content"]
-        
+
         answer_text = (
             f"Dựa trên tài liệu kiểm định **{primary['document_name']}** "
             f"({('Trang ' + str(primary['page_number'])) if primary['page_number'] else 'Phần trích dẫn'}):\n\n"
             f"> \"{context_summary}\"\n\n"
         )
-        
         if len(top_chunks) > 1 and top_chunks[1]["score"] >= 0.20:
             sec = top_chunks[1]
-            answer_text += (
-                f"Tài liệu còn bổ sung chi tiết: \n"
-                f"> \"{sec['content']}\"\n\n"
-            )
-            
-        answer_text += (
-            f"Đây là kiến thức đã được sinh viên đóng góp và qua 6 cổng kiểm định chất lượng trên mạng lưới UniSynapse. "
-            f"Bạn có cần giải thích thêm phần nào trong nội dung này không?"
-        )
-        
+            answer_text += f"Tài liệu còn bổ sung chi tiết: \n> \"{sec['content']}\"\n\n"
+        answer_text += "Đây là kiến thức đã được sinh viên đóng góp và qua 6 cổng kiểm định chất lượng trên mạng lưới UniSynapse. Bạn có cần giải thích thêm phần nào trong nội dung này không?"
         return {
             "answer": answer_text,
             "citations": citations,
             "grounded": True,
-            "engine": "extractive_rag"
+            "engine": "extractive_rag",
+            "source_type": "approved_documents",
+            "source_label": "Tài liệu UniSynapse đã kiểm định",
         }
 

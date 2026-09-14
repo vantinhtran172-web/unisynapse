@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useConnection, useWallet, useAnchorWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
-import { getProgram } from "../lib/anchorClient";
+import { Buffer } from "buffer";
 import bs58 from "bs58";
-import * as nacl from "tweetnacl";
+import { getProgram } from "../lib/anchorClient";
 import { PROGRAM_ID } from "../lib/idl";
+import { api } from "../lib/api";
 
 export function useUserProfile() {
   const { connection } = useConnection();
@@ -32,15 +33,18 @@ export function useUserProfile() {
         new PublicKey(PROGRAM_ID)
       );
 
-      const accountData = await program.account.userAccount.fetch(userAccountPda);
+      const accountNamespace = program.account as unknown as {
+        userAccount: { fetch: (address: PublicKey) => Promise<{ unipoints: { toNumber: () => number }; reputationScore: number }> };
+      };
+      const accountData = await accountNamespace.userAccount.fetch(userAccountPda);
       
       setProfileData({
         unipoints: accountData.unipoints.toNumber(),
         reputation: accountData.reputationScore,
       });
       setHasProfile(true);
-    } catch (err: any) {
-      console.log("Account not found or error:", err.message);
+    } catch (err: unknown) {
+      console.log("Account not found or error:", err instanceof Error ? err.message : err);
       setHasProfile(false);
     } finally {
       setIsLoadingProfile(false);
@@ -59,32 +63,23 @@ export function useUserProfile() {
     }
     try {
       setIsVerifying(true);
-      const message = new TextEncoder().encode(`Sign this message to authenticate with UniSynapse.\nTimestamp: ${Date.now()}`);
-      const signature = await signMessage(message);
-      
-      // Verify signature
-      let valid = false;
-      try {
-        valid = nacl.sign.detached.verify(message, signature, publicKey.toBytes());
-      } catch (naclErr: any) {
-        alert("nacl error: " + naclErr.message);
-        console.error(naclErr);
-        return;
-      }
-      
-      if (valid) {
-        setIsVerified(true);
-        // Call fetch immediately
-        fetchProfile();
-      } else {
-        alert("Invalid signature!");
-      }
-    } catch (err: any) {
+      const walletAddress = publicKey.toBase58();
+      const challenge = await api.challengeWallet(walletAddress);
+      const messageBytes = new TextEncoder().encode(challenge.message);
+      const signature = await signMessage(messageBytes);
+      await api.verifyWallet(
+        walletAddress,
+        challenge.nonce,
+        challenge.message,
+        bs58.encode(signature),
+      );
+      setIsVerified(true);
+      await fetchProfile();
+    } catch (err: unknown) {
       console.error("SIWS error:", err);
-      if (err.message && !err.message.includes("User rejected")) {
-        alert("Phantom error: " + err.message + "\nBypassing signature for demo purposes.");
-        setIsVerified(true);
-        fetchProfile();
+      const errorMessage = err instanceof Error ? err.message : "Unknown wallet error";
+      if (!errorMessage.toLowerCase().includes("user rejected")) {
+        alert(`Wallet authentication failed: ${errorMessage}`);
       }
     } finally {
       setIsVerifying(false);
@@ -93,18 +88,26 @@ export function useUserProfile() {
 
   // Reset state on disconnect
   useEffect(() => {
-    if (!connected) {
-      setIsVerified(false);
-      setProfileData(null);
-      setHasProfile(false);
-    }
+    const timer = window.setTimeout(() => {
+      if (!connected) {
+        setIsVerified(false);
+        setProfileData(null);
+        setHasProfile(false);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [connected]);
 
   // Fetch when verified
   useEffect(() => {
-    if (isVerified) {
-      fetchProfile();
-    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      if (active && isVerified) void fetchProfile();
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [isVerified, fetchProfile]);
 
   // Step 2 & 4: Initialize Profile
@@ -128,7 +131,7 @@ export function useUserProfile() {
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           ],
           // Instruction discriminator for global:initialize_user
-          data: typeof Buffer !== "undefined" ? Buffer.from([111, 17, 185, 250, 60, 122, 38, 254]) : (new Uint8Array([111, 17, 185, 250, 60, 122, 38, 254]) as any)
+          data: Buffer.from([111, 17, 185, 250, 60, 122, 38, 254])
         })
       );
 
@@ -142,7 +145,7 @@ export function useUserProfile() {
         await connection.confirmTransaction(signature, 'processed');
         // Refetch after initialize
         await fetchProfile();
-      } catch (txErr: any) {
+      } catch (txErr: unknown) {
         console.warn("Transaction failed (contract likely not deployed):", txErr);
         alert("Cảnh báo: Smart Contract chưa được Deploy lên Devnet!\nHệ thống sẽ tự động chuyển sang chế độ Mô phỏng (Mock Data) để bạn có thể tiếp tục xem UI.");
         setProfileData({
@@ -151,9 +154,9 @@ export function useUserProfile() {
         });
         setHasProfile(true);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Initialize error:", err);
-      alert("Failed to initialize: " + err.message);
+      alert("Failed to initialize: " + (err instanceof Error ? err.message : "Unknown error"));
     } finally {
       setIsInitializing(false);
     }

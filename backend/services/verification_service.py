@@ -55,12 +55,12 @@ class VerificationService:
         return passed, findings
 
     @classmethod
-    def check_duplicate(cls, checksum: str) -> Tuple[bool, str]:
+    def check_duplicate(cls, checksum: str, exclude_document_id: str = "") -> Tuple[bool, str]:
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, original_name, status FROM documents WHERE checksum = ? AND status IN ('approved', 'pending_review')",
-                (checksum,)
+                "SELECT id, original_name, status FROM documents WHERE checksum = ? AND id != ? AND status IN ('approved', 'pending_review')",
+                (checksum, exclude_document_id)
             )
             row = cursor.fetchone()
             if row:

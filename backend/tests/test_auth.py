@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 
 import pytest
 from fastapi.testclient import TestClient
@@ -48,9 +48,20 @@ def test_member_login_me_and_logout(member_client):
     current = client.get("/api/v1/auth/me")
     assert current.status_code == 200
     assert current.json()["id"] == member_id
+    assert current.json()["unipoints"] == 0
+    assert current.json()["reputation"] == 100
+    assert "address" in current.json()
     assert "password_hash" not in current.json()
 
-    logout = client.post("/api/v1/auth/logout")
+    with get_db() as conn:
+        conn.execute("UPDATE users SET unipoints = 920 WHERE id = ?", (member_id,))
+        conn.commit()
+    assert client.get("/api/v1/auth/me").json()["unipoints"] == 920
+
+    logout = client.post(
+        "/api/v1/auth/logout",
+        headers={"X-CSRF-Token": client.cookies["unisynapse_csrf"]},
+    )
     assert logout.status_code == 200
     assert logout.json() == {"authenticated": False}
     assert client.get("/api/v1/auth/me").status_code == 401

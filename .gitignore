@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 .venv/
 __pycache__/
 *.py[cod]
@@ -28,4 +28,6 @@ Thumbs.db
 cloudflared.exe
 
 data/
-
+.m1-validation-data/
+scratch*.sql
+*.zip

@@ -4,9 +4,12 @@ import secrets
 import time
 from typing import Optional
 
+import base58
 import pyotp
 from argon2 import PasswordHasher
 from fastapi import Cookie, HTTPException, Response
+from nacl.exceptions import BadSignatureError
+from nacl.signing import VerifyKey
 
 from .database import get_db
 
@@ -14,6 +17,71 @@ _PASSWORDS = PasswordHasher()
 _ADMIN_SESSION_COOKIE = "unisynapse_admin_session"
 _MEMBER_SESSION_COOKIE = "unisynapse_member_session"
 _SESSION_TTL = 8 * 60 * 60
+_WALLET_CHALLENGE_TTL = 5 * 60
+
+
+def _wallet_message(wallet_address: str, nonce: str, issued_at: int) -> str:
+    return (
+        "UniSynapse wallet authentication\n"
+        f"Address: {wallet_address}\n"
+        f"Nonce: {nonce}\n"
+        f"Issued-at: {issued_at}"
+    )
+
+
+def create_wallet_challenge(wallet_address: str) -> dict[str, str | int]:
+    address = wallet_address.strip()
+    if not address:
+        raise ValueError("Wallet address is required")
+    nonce = secrets.token_urlsafe(32)
+    issued_at = int(time.time())
+    expires_at = issued_at + _WALLET_CHALLENGE_TTL
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO wallet_challenges "
+            "(nonce, wallet_address, issued_at, expires_at, consumed_at) "
+            "VALUES (?, ?, ?, ?, NULL)",
+            (nonce, address, issued_at, expires_at),
+        )
+        conn.commit()
+    return {
+        "nonce": nonce,
+        "message": _wallet_message(address, nonce, issued_at),
+        "expires_at": expires_at,
+    }
+
+
+def verify_wallet_challenge(wallet_address: str, nonce: str, message: str, signature: str) -> bool:
+    address = wallet_address.strip()
+    now = int(time.time())
+    expected_message = None
+    with get_db() as conn:
+        challenge = conn.execute(
+            "SELECT wallet_address, issued_at, expires_at, consumed_at "
+            "FROM wallet_challenges WHERE nonce = ?",
+            (nonce,),
+        ).fetchone()
+        if not challenge or challenge["wallet_address"] != address:
+            return False
+        if challenge["consumed_at"] is not None or challenge["expires_at"] < now:
+            return False
+        expected_message = _wallet_message(address, nonce, int(challenge["issued_at"]))
+        if message != expected_message:
+            return False
+        try:
+            public_key = VerifyKey(base58.b58decode(address))
+            public_key.verify(message.encode("utf-8"), base58.b58decode(signature))
+        except (ValueError, TypeError, BadSignatureError):
+            return False
+        updated = conn.execute(
+            "UPDATE wallet_challenges SET consumed_at = ? "
+            "WHERE nonce = ? AND consumed_at IS NULL AND expires_at >= ?",
+            (now, nonce, now),
+        )
+        conn.commit()
+        return updated.rowcount == 1
+
+
 
 
 def hash_password(password: str) -> str:

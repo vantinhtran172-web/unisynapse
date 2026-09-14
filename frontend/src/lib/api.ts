@@ -118,6 +118,10 @@ export interface TutorResponse {
   citations: Citation[];
   grounded: boolean;
   engine?: string;
+  points_cost?: number;
+  points_debited?: boolean;
+  source_type?: string;
+  source_label?: string;
 }
 
 export interface LedgerEntry {
@@ -232,8 +236,31 @@ export interface MutationResponse {
 }
 
 export const api = {
+  economy: () => request<{treasury:string;network:string;chat_cost:number;points_per_sol:number;deposits_enabled:boolean}>("/rewards/economy"),
+  createDeposit: () => request<{intent_id:string;memo:string;treasury:string}>("/rewards/deposit-intent", {method:"POST"}),
+  verifyDeposit: (intent_id:string, signature:string) => request<{credited:number}>("/rewards/deposit-verify", {method:"POST",body:JSON.stringify({intent_id,signature})}),
+  recoverDeposit: (signature:string) => request<{credited:number}>("/rewards/deposit-recover", {method:"POST",body:JSON.stringify({signature})}),
+  register: (username: string, password: string) =>
+    request<{ authenticated: boolean; id: string; username: string; role: string }>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+  login: (username: string, password: string) =>
+    request<{ authenticated: boolean; id: string; username: string; role: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+  logout: () =>
+    request<{ authenticated: false }>("/auth/logout", { method: "POST" }),
   async getMe(): Promise<UserProfile> {
-    return request<UserProfile>("/auth/me");
+    const profile = await request<UserProfile>("/auth/me");
+    if (!profile || typeof profile.id !== "string" ||
+        typeof profile.username !== "string" || typeof profile.role !== "string" ||
+        typeof profile.unipoints !== "number" || !Number.isFinite(profile.unipoints) ||
+        typeof profile.reputation !== "number" || !Number.isFinite(profile.reputation)) {
+      throw new Error("Hồ sơ trả về không hợp lệ. Không thể xác định số dư điểm.");
+    }
+    return { ...profile, address: typeof profile.address === "string" ? profile.address : "" };
   },
 
   async challengeWallet(publicKey: string): Promise<WalletChallengeResponse> {
@@ -260,7 +287,18 @@ export const api = {
 
   async getOpenTasks(): Promise<TaskItem[]> {
     const res = await fetch(`${API_BASE}/tasks/open`, { credentials: "include" });
-    return res.json();
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      const detail = payload && typeof payload === "object" && "detail" in payload
+        ? String(payload.detail)
+        : `Không thể tải nhiệm vụ (${res.status})`;
+      throw new Error(detail);
+    }
+    if (Array.isArray(payload)) return payload as TaskItem[];
+    if (payload && typeof payload === "object" && Array.isArray((payload as { tasks?: unknown }).tasks)) {
+      return (payload as { tasks: TaskItem[] }).tasks;
+    }
+    throw new Error("Dữ liệu nhiệm vụ từ máy chủ không hợp lệ.");
   },
 
   async submitTask(taskId: string, label: string): Promise<TaskSubmissionResult> {
@@ -297,8 +335,9 @@ export const api = {
   },
 
   async getDocuments(): Promise<DocumentItem[]> {
-    const res = await fetch(`${API_BASE}/documents`, { credentials: "include" });
-    return res.json();
+    const payload = await request<unknown>("/documents");
+    if (!Array.isArray(payload)) throw new Error("Dữ liệu tài liệu không hợp lệ.");
+    return payload as DocumentItem[];
   },
 
   async askTutor(question: string, model?: string): Promise<TutorResponse> {
@@ -306,7 +345,7 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json", ...csrfHeaders() },
       credentials: "include",
-      body: JSON.stringify({ question, model }),
+      body: JSON.stringify({ question, model, request_id: crypto.randomUUID() }),
     });
     if (!res.ok) {
       const err = await res.json();
