@@ -166,6 +166,7 @@ export default function OnlineAdminPage() {
     try {
       const cleanBase = baseToTest.replace(/\/+$/, "");
       const res = await fetch(`${cleanBase}/admin/verify-key`, {
+        method: "POST",
         headers: { "X-Admin-Security-Key": keyToTest },
         credentials: "include"
       });

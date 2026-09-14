@@ -36,9 +36,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|.*\.netlify\.app)(:\d+)?",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "X-CSRF-Token", "X-Request-ID"],
+    allow_headers=["Content-Type", "X-CSRF-Token", "X-Request-ID", "X-Admin-Security-Key", "Authorization", "Accept", "Origin"],
 )
 
 

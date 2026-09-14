@@ -134,7 +134,7 @@
   // Verify Key via backend /admin/verify-key
   async function verifyCurrentKey() {
     try {
-      const res = await adminFetch("/admin/verify-key");
+      const res = await adminFetch("/admin/verify-key", { method: "POST" });
       if (res && res.valid) {
         updateNodeStatus(true, "Backend Đang Hoạt Động (200 OK)");
         const maskedKey = state.adminKey ? (state.adminKey.substring(0, 10) + "...") : "Chưa đặt";

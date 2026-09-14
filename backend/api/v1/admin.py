@@ -30,6 +30,7 @@ class CreateTaskRequest(BaseModel):
 class RejectDocRequest(BaseModel):
     reason: str
 
+@router.get("/verify-key")
 @router.post("/verify-key")
 def verify_admin_key(admin_user: dict = Depends(require_admin_session)):
     return {
