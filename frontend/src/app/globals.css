@@ -277,9 +277,16 @@ html.dark .cyber-badge-cyan {
 }
 
 .client-container {
-  max-width: 1180px;
+  max-width: 1420px;
   padding: 0 24px 56px;
   margin: auto;
+}
+
+@media (min-width: 1600px) {
+  .client-container {
+    max-width: 1680px;
+    padding: 0 36px 64px;
+  }
 }
 
 /* ==========================================================================
@@ -1197,7 +1204,8 @@ html.dark .cyber-badge-cyan {
 }
 
 @media (max-width: 640px) {
-  .client-container { padding: 0 16px 36px; }
+  .client-shell { padding-top: 108px; }
+  .client-container { padding: 0 14px 36px; }
   .welcome-bar { align-items: flex-start; gap: 10px; }
   .welcome-bar > div span:not(.live-dot):nth-last-child(-n+2), .command-button span { display: none; }
   .client-hero { min-height: auto; padding: 32px 22px; display: block; }
