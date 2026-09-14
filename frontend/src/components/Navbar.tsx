@@ -63,8 +63,8 @@ export default function Navbar() {
             className="flex items-center gap-2 sm:gap-3 cursor-pointer group flex-shrink-0"
           >
             <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gradient-to-br from-cyan-400 via-blue-600 to-indigo-600 p-[1px] shadow-[0_0_15px_rgba(0,240,255,0.25)] group-hover:shadow-[0_0_22px_rgba(0,240,255,0.5)] transition-all">
-              <div className="w-full h-full bg-slate-900 dark:bg-[#030712] rounded-lg flex items-center justify-center font-black text-cyan-400 text-xs sm:text-sm">
-                US
+              <div className="w-full h-full bg-slate-900 dark:bg-[#030712] rounded-lg flex items-center justify-center font-black text-cyan-400 text-[10px] sm:text-xs tracking-tight">
+                WIT
               </div>
             </div>
             <div>
@@ -237,8 +237,8 @@ export default function Navbar() {
             <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-cyan-500/20 mb-4">
               <div className="flex items-center justify-between gap-2 mb-2.5">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-white font-bold flex items-center justify-center text-xs">
-                    {user ? user.username.slice(0, 2).toUpperCase() : "UH"}
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-white font-bold flex items-center justify-center text-[10px]">
+                    {user ? user.username.slice(0, 2).toUpperCase() : "WIT"}
                   </div>
                   <div>
                     <div className="font-bold text-sm text-slate-900 dark:text-white">

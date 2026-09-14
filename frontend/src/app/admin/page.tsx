@@ -170,7 +170,7 @@ export default function AdminPage() {
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 p-[1px]">
               <div className="w-full h-full bg-[#030712] rounded-lg flex items-center justify-center">
-                <span className="text-cyan-400 font-extrabold text-sm">US</span>
+                <span className="text-cyan-400 font-extrabold text-xs">WIT</span>
               </div>
             </div>
             <div>
