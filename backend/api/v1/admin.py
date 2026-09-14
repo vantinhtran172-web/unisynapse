@@ -1,15 +1,17 @@
 import os
 import time
 import uuid
+import json
+import hashlib
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from ...core.database import get_db
-from ...services.rag_service import RAGService
+from ...services.rag_service import RAGService, extract_term_frequencies
 from ...services.solana_service import SolanaService
 from ...core.config import UPLOADS_DIR, ENVIRONMENT
-from ...core.security import require_admin_session
+from ...core.security import require_admin_session, hash_password
 from ...services.ledger_service import settle_reward
 
 router = APIRouter(
@@ -18,17 +20,77 @@ router = APIRouter(
     dependencies=[Depends(require_admin_session)],
 )
 
+def log_audit(cursor, action: str, details: str, user_id: str = "admin"):
+    now = time.time()
+    event_id = f"aud_{uuid.uuid4().hex[:12]}"
+    cursor.execute("""
+    INSERT INTO audit_events (id, user_id, action, details, timestamp)
+    VALUES (?, ?, ?, ?, ?)
+    """, (event_id, user_id, action, details, now))
+
 class CreateTaskRequest(BaseModel):
     title: str
-    domain: str
-    context_snippet: str
-    question: str
-    options: List[str]
+    domain: Optional[str] = None
+    category: Optional[str] = None
+    context_snippet: Optional[str] = None
+    description: Optional[str] = None
+    question: Optional[str] = None
+    input_text: Optional[str] = None
+    options: Optional[List[str]] = None
+    labels: Optional[List[str]] = None
     gold_label: Optional[str] = None
     reward_points: int = 15
 
+class UpdateTaskRequest(BaseModel):
+    title: Optional[str] = None
+    domain: Optional[str] = None
+    category: Optional[str] = None
+    context_snippet: Optional[str] = None
+    description: Optional[str] = None
+    question: Optional[str] = None
+    input_text: Optional[str] = None
+    options: Optional[List[str]] = None
+    labels: Optional[List[str]] = None
+    gold_label: Optional[str] = None
+    reward_points: Optional[int] = None
+    status: Optional[str] = None
+
 class RejectDocRequest(BaseModel):
     reason: str
+
+class CreateDocRequest(BaseModel):
+    title: str
+    content: str
+    file_type: Optional[str] = "text/plain"
+
+class UpdateDocRequest(BaseModel):
+    original_name: Optional[str] = None
+    status: Optional[str] = None
+    rejection_reason: Optional[str] = None
+
+class CreateUserRequest(BaseModel):
+    username: str
+    password: Optional[str] = None
+    role: str = "student"
+    unipoints: int = 100
+    reputation: int = 100
+    wallet_address: Optional[str] = None
+
+class UpdateUserRequest(BaseModel):
+    username: Optional[str] = None
+    role: Optional[str] = None
+    reputation: Optional[int] = None
+    unipoints: Optional[int] = None
+    disabled: Optional[int] = None
+
+class AdjustPointsRequest(BaseModel):
+    amount: int
+    reason: str
+
+class ChunkRequest(BaseModel):
+    content: str
+    document_name: Optional[str] = "Tri thức quản trị viên"
+    page_number: Optional[int] = 1
 
 @router.get("/verify-key")
 @router.post("/verify-key")
@@ -174,10 +236,7 @@ def approve_document_by_admin(doc_id: str):
             created_at=now,
         )
 
-        cursor.execute("""
-        INSERT INTO audit_events (id, event_type, entity_id, actor_id, details, created_at)
-        VALUES (?, 'document_faculty_approved', ?, 'admin', ?, ?)
-        """, (f"aud_{uuid.uuid4().hex[:12]}", doc_id, f"Admin approved {doc['original_name']}. {chunk_count} chunks indexed.", now))
+        log_audit(cursor, "document_faculty_approved", f"Admin approved {doc['original_name']}. {chunk_count} chunks indexed.")
 
     return {
         "success": True,
@@ -204,13 +263,93 @@ def reject_document_by_admin(doc_id: str, req: RejectDocRequest):
         WHERE id = ?
         """, (req.reason, doc_id))
 
-        # Audit event
-        cursor.execute("""
-        INSERT INTO audit_events (id, event_type, entity_id, actor_id, details, created_at)
-        VALUES (?, 'document_rejected', ?, 'admin', ?, ?)
-        """, (f"aud_{uuid.uuid4().hex[:12]}", doc_id, f"Admin rejected: {req.reason}", now))
+        log_audit(cursor, "document_rejected", f"Admin rejected: {req.reason}")
 
     return {"success": True, "message": f"Đã từ chối tài liệu: {req.reason}"}
+
+@router.post("/documents")
+def create_document_by_admin(req: CreateDocRequest):
+    now = time.time()
+    doc_id = f"doc_{uuid.uuid4().hex[:8]}"
+    clean_title = req.title.replace(" ", "_")
+    file_name = f"{doc_id}_{clean_title}.txt"
+    file_path = UPLOADS_DIR / file_name
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(req.content)
+
+    checksum = hashlib.sha256(req.content.encode("utf-8")).hexdigest()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE role = 'admin' LIMIT 1")
+        row = cursor.fetchone()
+        owner_id = row["id"] if row else "admin_system"
+
+        cursor.execute("""
+        INSERT INTO documents (
+            id, owner_id, filename, original_name, file_type, size_bytes,
+            checksum, status, mime_check, pii_check, dedupe_check, copyright_check,
+            quality_check, chunk_count, created_at, approved_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'approved', 'pass', 'pass', 'pass', 'pass', 'Created by Admin', 0, ?, ?)
+        """, (doc_id, owner_id, file_name, req.title, req.file_type or "text/plain", len(req.content.encode("utf-8")), checksum, now, now))
+
+    chunk_count = RAGService.index_document(
+        document_id=doc_id,
+        document_name=req.title,
+        file_path=file_path,
+        file_type="text/plain"
+    )
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE documents SET chunk_count = ? WHERE id = ?", (chunk_count, doc_id))
+        log_audit(cursor, "document_created_by_admin", f"Admin created document: {req.title}")
+
+    return {"success": True, "doc_id": doc_id, "chunk_count": chunk_count, "message": f"Đã thêm tài liệu '{req.title}' thành công!"}
+
+@router.put("/documents/{doc_id}")
+def update_document(doc_id: str, req: UpdateDocRequest):
+    now = time.time()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM documents WHERE id = ?", (doc_id,))
+        doc = cursor.fetchone()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu")
+
+        fields = []
+        params = []
+        if req.original_name is not None:
+            fields.append("original_name = ?")
+            params.append(req.original_name)
+        if req.status is not None:
+            fields.append("status = ?")
+            params.append(req.status)
+        if req.rejection_reason is not None:
+            fields.append("rejection_reason = ?")
+            params.append(req.rejection_reason)
+
+        if fields:
+            params.append(doc_id)
+            cursor.execute(f"UPDATE documents SET {', '.join(fields)} WHERE id = ?", tuple(params))
+            log_audit(cursor, "document_updated", f"Admin updated document {doc_id}")
+
+    return {"success": True, "message": "Đã cập nhật thông tin tài liệu thành công"}
+
+@router.delete("/documents/{doc_id}")
+def delete_document(doc_id: str):
+    now = time.time()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM documents WHERE id = ?", (doc_id,))
+        doc = cursor.fetchone()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu")
+
+        cursor.execute("DELETE FROM document_chunks WHERE document_id = ?", (doc_id,))
+        cursor.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+        log_audit(cursor, "document_deleted", f"Admin deleted document: {doc['original_name']}")
+
+    return {"success": True, "message": f"Đã xóa tài liệu '{doc['original_name']}' thành công"}
 
 @router.get("/tasks")
 def get_all_tasks_for_admin():
@@ -235,36 +374,340 @@ def get_all_tasks_for_admin():
             ORDER BY count DESC
             """, (r["id"],))
             r["label_breakdown"] = [dict(b) for b in cursor.fetchall()]
+            raw_labels = r.get("labels")
+            parsed_labels = []
+            if raw_labels:
+                try:
+                    parsed_labels = json.loads(raw_labels) if isinstance(raw_labels, str) else raw_labels
+                except Exception:
+                    parsed_labels = [raw_labels]
+            r["options"] = parsed_labels
+            r["domain"] = r.get("category") or "General"
+            r["question"] = r.get("input_text") or ""
+            r["context_snippet"] = r.get("description") or ""
         return rows
 
 @router.post("/tasks")
 def create_new_task(req: CreateTaskRequest):
-    import json
     now = time.time()
     task_id = f"task_{uuid.uuid4().hex[:8]}"
+    options = req.options or req.labels or ["Phương án A", "Phương án B"]
+    domain = req.domain or req.category or "General"
+    question = req.question or req.input_text or req.context_snippet or ""
+    description = req.description or req.context_snippet or ""
+
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
         INSERT INTO tasks (
-            id, title, domain, context_snippet, question,
-            options, gold_label, reward_points, status, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+            id, title, description, category, input_text,
+            labels, required_votes, consensus_threshold, reward_points,
+            gold_label, status, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 5, 0.7, ?, ?, 'open', ?)
         """, (
-            task_id, req.title, req.domain, req.context_snippet, req.question,
-            json.dumps(req.options, ensure_ascii=False), req.gold_label, req.reward_points, now
+            task_id, req.title, description, domain, question,
+            json.dumps(options, ensure_ascii=False), req.reward_points, req.gold_label, now
         ))
         
-        # Log audit
-        cursor.execute("""
-        INSERT INTO audit_events (id, event_type, entity_id, actor_id, details, created_at)
-        VALUES (?, 'task_created', ?, 'admin', ?, ?)
-        """, (f"aud_{uuid.uuid4().hex[:12]}", task_id, f"Admin created task: {req.title}", now))
+        log_audit(cursor, "task_created", f"Admin created task: {req.title}")
 
     return {
         "success": True,
         "task_id": task_id,
         "message": f"Đã tạo bài toán gán nhãn '{req.title}' thành công!"
     }
+
+@router.put("/tasks/{task_id}")
+def update_task_by_admin(task_id: str, req: UpdateTaskRequest):
+    now = time.time()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        task = cursor.fetchone()
+        if not task:
+            raise HTTPException(status_code=404, detail="Không tìm thấy bài toán gán nhãn")
+
+        fields = []
+        params = []
+        if req.title is not None:
+            fields.append("title = ?")
+            params.append(req.title)
+        category = req.category or req.domain
+        if category is not None:
+            fields.append("category = ?")
+            params.append(category)
+        input_text = req.input_text or req.question
+        if input_text is not None:
+            fields.append("input_text = ?")
+            params.append(input_text)
+        description = req.description or req.context_snippet
+        if description is not None:
+            fields.append("description = ?")
+            params.append(description)
+        options = req.options or req.labels
+        if options is not None:
+            fields.append("labels = ?")
+            params.append(json.dumps(options, ensure_ascii=False))
+        if req.gold_label is not None:
+            fields.append("gold_label = ?")
+            params.append(req.gold_label)
+        if req.reward_points is not None:
+            fields.append("reward_points = ?")
+            params.append(req.reward_points)
+        if req.status is not None:
+            fields.append("status = ?")
+            params.append(req.status)
+
+        if fields:
+            params.append(task_id)
+            cursor.execute(f"UPDATE tasks SET {', '.join(fields)} WHERE id = ?", tuple(params))
+            log_audit(cursor, "task_updated", f"Admin updated task {task_id}")
+
+    return {"success": True, "message": "Đã cập nhật bài toán gán nhãn thành công!"}
+
+@router.delete("/tasks/{task_id}")
+def delete_task_by_admin(task_id: str):
+    now = time.time()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        task = cursor.fetchone()
+        if not task:
+            raise HTTPException(status_code=404, detail="Không tìm thấy bài toán gán nhãn")
+
+        cursor.execute("DELETE FROM task_submissions WHERE task_id = ?", (task_id,))
+        cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        log_audit(cursor, "task_deleted", f"Admin deleted task: {task['title']}")
+
+    return {"success": True, "message": f"Đã xóa bài toán '{task['title']}' thành công!"}
+
+@router.get("/users")
+def get_all_users():
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT u.*,
+               COUNT(DISTINCT ts.id) as tasks_completed,
+               COUNT(DISTINCT d.id) as docs_submitted
+        FROM users u
+        LEFT JOIN task_submissions ts ON u.id = ts.user_id
+        LEFT JOIN documents d ON u.id = d.owner_id
+        GROUP BY u.id
+        ORDER BY u.unipoints DESC
+        """)
+        return [dict(r) for r in cursor.fetchall()]
+
+@router.post("/users")
+def create_user_by_admin(req: CreateUserRequest):
+    now = time.time()
+    user_id = f"usr_{uuid.uuid4().hex[:10]}"
+    password = req.password or "UniSynapse@2026"
+    pwd_hash = hash_password(password)
+    wallet_address = req.wallet_address or f"0x{uuid.uuid4().hex[:40]}"
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE username = ?", (req.username,))
+        if cursor.fetchone():
+            raise HTTPException(status_code=409, detail="Tên người dùng đã tồn tại trên hệ thống")
+
+        cursor.execute("""
+        INSERT INTO users (
+            id, address, username, password_hash, disabled, unipoints, reputation, role, created_at
+        ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)
+        """, (user_id, wallet_address, req.username, pwd_hash, req.unipoints, req.reputation, req.role, now))
+
+        log_audit(cursor, "user_created", f"Admin created user: {req.username} ({req.role})", user_id=user_id)
+
+    return {"success": True, "user_id": user_id, "message": f"Đã tạo người dùng '{req.username}' thành công!"}
+
+@router.put("/users/{user_id}")
+def update_user_by_admin(user_id: str, req: UpdateUserRequest):
+    now = time.time()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        user = cursor.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+
+        fields = []
+        params = []
+        if req.username is not None:
+            fields.append("username = ?")
+            params.append(req.username)
+        if req.role is not None:
+            fields.append("role = ?")
+            params.append(req.role)
+        if req.reputation is not None:
+            fields.append("reputation = ?")
+            params.append(req.reputation)
+        if req.unipoints is not None:
+            fields.append("unipoints = ?")
+            params.append(req.unipoints)
+        if req.disabled is not None:
+            fields.append("disabled = ?")
+            params.append(req.disabled)
+
+        if fields:
+            params.append(user_id)
+            cursor.execute(f"UPDATE users SET {', '.join(fields)} WHERE id = ?", tuple(params))
+            log_audit(cursor, "user_updated", f"Admin updated user {user_id}", user_id=user_id)
+
+    return {"success": True, "message": "Đã cập nhật thông tin thành viên thành công!"}
+
+@router.post("/users/{user_id}/adjust-points")
+def adjust_user_points(user_id: str, req: AdjustPointsRequest):
+    now = time.time()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        user = cursor.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+
+        proof_hash = SolanaService.create_proof_hash(f"admin_adj:{user_id}:{req.amount}:{now}")
+        devnet_sig = SolanaService.generate_devnet_signature(proof_hash)
+        entry_id = f"rwd_adj_{uuid.uuid4().hex[:10]}"
+
+        settle_reward(
+            conn,
+            user_id=user_id,
+            delta=req.amount,
+            reason=f"[Admin điều chỉnh] {req.reason}",
+            source_type="admin_adjustment",
+            source_id=f"adj_{user_id}_{int(now)}",
+            reward_event_key=f"admin_adj_{entry_id}",
+            proof_status="unsubmitted",
+            solana_signature=devnet_sig,
+            proof_hash=proof_hash,
+            created_at=now,
+        )
+
+        log_audit(cursor, "points_adjusted", f"Admin adjusted {req.amount} UniPoints for {user['username']}: {req.reason}", user_id=user_id)
+
+    return {
+        "success": True,
+        "message": f"Đã {'cộng' if req.amount >= 0 else 'trừ'} {abs(req.amount)} UniPoints cho '{user['username']}' thành công!",
+        "solana_signature": devnet_sig,
+        "explorer_url": SolanaService.get_explorer_url(devnet_sig),
+    }
+
+@router.delete("/users/{user_id}")
+def delete_user_by_admin(user_id: str):
+    now = time.time()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        user = cursor.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+
+        if user["role"] == "admin":
+            raise HTTPException(status_code=403, detail="Không thể xóa tài khoản Quản trị viên tối cao!")
+
+        cursor.execute("DELETE FROM member_sessions WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM task_submissions WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        log_audit(cursor, "user_deleted", f"Admin deleted user: {user['username']}", user_id=user_id)
+
+    return {"success": True, "message": f"Đã xóa thành viên '{user['username']}' thành công!"}
+
+@router.get("/chunks")
+def get_all_chunks_for_admin(query: Optional[str] = None, document_id: Optional[str] = None, limit: int = 50, offset: int = 0):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        sql = "SELECT dc.id, dc.document_id, dc.document_name, dc.chunk_index, dc.page_number, dc.content, dc.created_at FROM document_chunks dc WHERE 1=1"
+        params = []
+        if document_id:
+            sql += " AND dc.document_id = ?"
+            params.append(document_id)
+        if query:
+            sql += " AND (dc.content LIKE ? OR dc.document_name LIKE ?)"
+            params.extend([f"%{query}%", f"%{query}%"])
+        sql += " ORDER BY dc.created_at DESC, dc.chunk_index ASC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        cursor.execute(sql, tuple(params))
+        chunks = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute("SELECT COUNT(*) FROM document_chunks")
+        total = cursor.fetchone()[0]
+
+        return {"chunks": chunks, "total": total}
+
+@router.post("/chunks")
+def create_chunk_by_admin(req: ChunkRequest):
+    now = time.time()
+    chunk_id = f"chk_adm_{uuid.uuid4().hex[:10]}"
+    tf_vec = extract_term_frequencies(req.content)
+    embedding_json = json.dumps(tf_vec)
+    doc_id = "doc_admin_knowledge"
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM documents WHERE id = ?", (doc_id,))
+        if not cursor.fetchone():
+            cursor.execute("""
+            INSERT INTO documents (
+                id, owner_id, filename, original_name, file_type, size_bytes,
+                checksum, status, mime_check, pii_check, dedupe_check, copyright_check,
+                quality_check, chunk_count, created_at, approved_at
+            ) VALUES (?, 'admin', 'admin_knowledge.txt', 'Kho Tri Thức Trực Tiếp Admin', 'text/plain', 100,
+                      ?, 'approved', 'pass', 'pass', 'pass', 'pass', 'Direct Admin Knowledge', 1, ?, ?)
+            """, (doc_id, f"chksum_{chunk_id}", now, now))
+
+        cursor.execute("""
+        INSERT INTO document_chunks (
+            id, document_id, document_name, chunk_index, page_number, content, embedding, created_at
+        ) VALUES (?, ?, ?, 0, ?, ?, ?, ?)
+        """, (chunk_id, doc_id, req.document_name or "Kho Tri Thức Quản Trị", req.page_number or 1, req.content, embedding_json, now))
+
+        cursor.execute("UPDATE documents SET chunk_count = (SELECT COUNT(*) FROM document_chunks WHERE document_id = ?) WHERE id = ?", (doc_id, doc_id))
+        log_audit(cursor, "chunk_created", f"Admin added knowledge chunk: {req.content[:50]}...")
+
+    return {"success": True, "chunk_id": chunk_id, "message": "Đã thêm đoạn tri thức vào RAG AI Tutor thành công!"}
+
+@router.put("/chunks/{chunk_id}")
+def update_chunk_by_admin(chunk_id: str, req: ChunkRequest):
+    now = time.time()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM document_chunks WHERE id = ?", (chunk_id,))
+        chunk = cursor.fetchone()
+        if not chunk:
+            raise HTTPException(status_code=404, detail="Không tìm thấy đoạn tri thức")
+
+        tf_vec = extract_term_frequencies(req.content)
+        embedding_json = json.dumps(tf_vec)
+
+        cursor.execute("""
+        UPDATE document_chunks
+        SET content = ?, document_name = ?, page_number = ?, embedding = ?
+        WHERE id = ?
+        """, (req.content, req.document_name or chunk["document_name"], req.page_number or chunk["page_number"], embedding_json, chunk_id))
+
+        log_audit(cursor, "chunk_updated", f"Admin updated chunk {chunk_id}")
+
+    return {"success": True, "message": "Đã cập nhật đoạn tri thức thành công!"}
+
+@router.delete("/chunks/{chunk_id}")
+def delete_chunk_by_admin(chunk_id: str):
+    now = time.time()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM document_chunks WHERE id = ?", (chunk_id,))
+        chunk = cursor.fetchone()
+        if not chunk:
+            raise HTTPException(status_code=404, detail="Không tìm thấy đoạn tri thức")
+
+        doc_id = chunk["document_id"]
+        cursor.execute("DELETE FROM document_chunks WHERE id = ?", (chunk_id,))
+        cursor.execute("UPDATE documents SET chunk_count = (SELECT COUNT(*) FROM document_chunks WHERE document_id = ?) WHERE id = ?", (doc_id, doc_id))
+
+        log_audit(cursor, "chunk_deleted", f"Admin deleted chunk {chunk_id}")
+
+    return {"success": True, "message": "Đã xóa đoạn tri thức khỏi kho RAG thành công!"}
 
 @router.get("/ledger")
 def get_system_ledger():
@@ -287,32 +730,21 @@ def get_system_ledger():
                 r["explorer_url"] = SolanaService.get_explorer_url(r["solana_signature"])
         return rows
 
-@router.get("/users")
-def get_all_users():
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-        SELECT u.*,
-               COUNT(DISTINCT ts.id) as tasks_completed,
-               COUNT(DISTINCT d.id) as docs_submitted
-        FROM users u
-        LEFT JOIN task_submissions ts ON u.id = ts.user_id
-        LEFT JOIN documents d ON u.id = d.owner_id
-        GROUP BY u.id
-        ORDER BY u.unipoints DESC
-        """)
-        return [dict(r) for r in cursor.fetchall()]
-
 @router.get("/audit-events")
 def get_audit_events():
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
         SELECT * FROM audit_events
-        ORDER BY created_at DESC
+        ORDER BY timestamp DESC
         LIMIT 80
         """)
-        return [dict(r) for r in cursor.fetchall()]
+        rows = [dict(r) for r in cursor.fetchall()]
+        for r in rows:
+            r["created_at"] = r.get("timestamp", 0)
+            r["event_type"] = r.get("action", "")
+            r["actor_id"] = r.get("user_id", "admin")
+        return rows
 
 def seed_sample_syllabus():
     """
