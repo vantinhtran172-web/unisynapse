@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/v1/:path*",
-        destination: `${(process.env.API_UPSTREAM_URL || "http://127.0.0.1:8000").replace(/\/+$/, "").replace(/\/api\/v1$/, "")}/api/v1/:path*`,
+        destination: `${(process.env.API_UPSTREAM_URL || "https://cybercore-backend-cprt.onrender.com").replace(/\/+$/, "").replace(/\/api\/v1$/, "")}/api/v1/:path*`,
       },
     ];
   },

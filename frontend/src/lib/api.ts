@@ -1,4 +1,4 @@
-const configuredApiBase = (process.env.API_UPSTREAM_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+const configuredApiBase = (process.env.API_UPSTREAM_URL || process.env.NEXT_PUBLIC_API_URL || "https://cybercore-backend-cprt.onrender.com").replace(/\/+$/, "");
 const API_BASE = typeof window !== "undefined"
   ? "/api/v1"
   : (configuredApiBase.endsWith("/api/v1") ? configuredApiBase : `${configuredApiBase}/api/v1`);

@@ -6,12 +6,21 @@
 [build.environment]
   NODE_VERSION = "20"
   NPM_FLAGS = "--legacy-peer-deps"
+  API_UPSTREAM_URL = "https://cybercore-backend-cprt.onrender.com"
+  NEXT_PUBLIC_API_URL = "https://cybercore-backend-cprt.onrender.com"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
 [[redirects]]
+  from = "/api/v1/*"
+  to = "https://cybercore-backend-cprt.onrender.com/api/v1/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "https://unihackfest-web.netlify.app/*"
-  to = "https://unisynapse-web.netlify.app/:splat"
+  to = "https://unisynapse.netlify.app/:splat"
   status = 301
   force = true
+
