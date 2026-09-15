@@ -51,7 +51,7 @@ def deposit_verify(req: DepositRequest, user: dict = Depends(require_member_sess
     import json
     import time
     import urllib.request
-    from ...core.config import SOLANA_RPC_URL, SOLANA_NETWORK, DEVNET_TREASURY_ADDRESS
+    from ...core.config import SOLANA_RPC_URL, SOLANA_NETWORK, DEVNET_TREASURY_ADDRESS, DEVNET_DEPOSIT_COMMITMENT
     from ...services.ledger_service import settle_reward
     if SOLANA_NETWORK != "devnet":
         raise HTTPException(503, "Chỉ hỗ trợ Devnet.")
@@ -70,9 +70,21 @@ def deposit_verify(req: DepositRequest, user: dict = Depends(require_member_sess
             raise HTTPException(503, "RPC chưa sẵn sàng; thử đối soát lại, không gửi tiền lại.") from exc
     if rpc("getGenesisHash", []) != "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG":
         raise HTTPException(503, "RPC không phải Devnet.")
-    tx = rpc("getTransaction", [req.signature, {"encoding": "jsonParsed", "commitment": "finalized", "maxSupportedTransactionVersion": 0}])
+
+    tx = None
+    for attempt in range(4):
+        tx = rpc("getTransaction", [req.signature, {"encoding": "jsonParsed", "commitment": DEVNET_DEPOSIT_COMMITMENT, "maxSupportedTransactionVersion": 0}])
+        if tx:
+            break
+        if DEVNET_DEPOSIT_COMMITMENT != "confirmed":
+            tx = rpc("getTransaction", [req.signature, {"encoding": "jsonParsed", "commitment": "confirmed", "maxSupportedTransactionVersion": 0}])
+            if tx:
+                break
+        if attempt < 3:
+            time.sleep(1.5)
+
     if not tx:
-        raise HTTPException(409, "Giao dịch chưa finalized. Thử đối soát lại.")
+        raise HTTPException(409, "Giao dịch đang được mạng Solana xác nhận. Vui lòng bấm Đối soát lại sau vài giây.")
     if tx.get("meta", {}).get("err") is not None:
         raise HTTPException(400, "Giao dịch thất bại.")
     with get_db() as conn:
@@ -111,7 +123,7 @@ def deposit_verify(req: DepositRequest, user: dict = Depends(require_member_sess
                      if i.get("source") == intent["sender"] and i.get("destination") == DEVNET_TREASURY_ADDRESS)
         if type(amount) is not int or amount < 1000000 or amount % 1000000:
             raise HTTPException(400, "Số nạp phải là bội số 0.001 SOL.")
-        if not tx.get("blockTime") or tx["blockTime"] < intent["created_at"] - 60:
+        if tx.get("blockTime") and tx["blockTime"] < intent["created_at"] - 600:
             raise HTTPException(400, "Giao dịch có trước yêu cầu nạp.")
         daily = conn.execute("SELECT COALESCE(SUM(lamports),0) FROM solana_deposits WHERE user_id = ? AND credited_at >= ?",
                              (user["id"], time.time() - 86400)).fetchone()[0]
@@ -140,7 +152,7 @@ def deposit_recover(req: DepositRecoverRequest, user: dict = Depends(require_mem
     import time
     import urllib.request
     import uuid
-    from ...core.config import SOLANA_RPC_URL, SOLANA_NETWORK, DEVNET_TREASURY_ADDRESS
+    from ...core.config import SOLANA_RPC_URL, SOLANA_NETWORK, DEVNET_TREASURY_ADDRESS, DEVNET_DEPOSIT_COMMITMENT
 
     if SOLANA_NETWORK != "devnet":
         raise HTTPException(503, "Chỉ hỗ trợ Devnet.")
@@ -161,9 +173,21 @@ def deposit_recover(req: DepositRecoverRequest, user: dict = Depends(require_mem
 
     if rpc("getGenesisHash", []) != "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG":
         raise HTTPException(503, "RPC không phải Devnet.")
-    tx = rpc("getTransaction", [req.signature, {"encoding": "jsonParsed", "commitment": "finalized", "maxSupportedTransactionVersion": 0}])
+
+    tx = None
+    for attempt in range(4):
+        tx = rpc("getTransaction", [req.signature, {"encoding": "jsonParsed", "commitment": DEVNET_DEPOSIT_COMMITMENT, "maxSupportedTransactionVersion": 0}])
+        if tx:
+            break
+        if DEVNET_DEPOSIT_COMMITMENT != "confirmed":
+            tx = rpc("getTransaction", [req.signature, {"encoding": "jsonParsed", "commitment": "confirmed", "maxSupportedTransactionVersion": 0}])
+            if tx:
+                break
+        if attempt < 3:
+            time.sleep(1.5)
+
     if not tx:
-        raise HTTPException(409, "Giao dịch chưa finalized. Thử lại sau, không gửi tiền lại.")
+        raise HTTPException(409, "Giao dịch đang được mạng Solana xác nhận. Thử lại sau vài giây, không gửi tiền lại.")
     if tx.get("meta", {}).get("err") is not None:
         raise HTTPException(400, "Giao dịch thất bại.")
 
@@ -190,6 +214,106 @@ def deposit_recover(req: DepositRecoverRequest, user: dict = Depends(require_mem
                      (intent_id, user["id"], sender, tx.get("blockTime") or time.time()))
         conn.commit()
     return deposit_verify(DepositRequest(intent_id=intent_id, signature=req.signature), user)
+
+
+@router.post("/deposit-sync")
+def deposit_sync(user: dict = Depends(require_member_session)):
+    """Automatically scan recent transactions from the user's linked wallet to treasury and credit any uncredited deposits."""
+    import json
+    import time
+    import urllib.request
+    import uuid
+    from ...core.config import SOLANA_RPC_URL, SOLANA_NETWORK, DEVNET_TREASURY_ADDRESS, DEVNET_DEPOSIT_COMMITMENT, DEVNET_DEPOSITS_ENABLED
+    from ...services.ledger_service import settle_reward
+
+    if not DEVNET_DEPOSITS_ENABLED:
+        raise HTTPException(503, "Tính năng nạp SOL Devnet đang tạm tắt.")
+    if SOLANA_NETWORK != "devnet":
+        raise HTTPException(503, "Chỉ hỗ trợ Devnet.")
+
+    with get_db() as conn:
+        sender_row = conn.execute("SELECT address FROM users WHERE id = ?", (user["id"],)).fetchone()
+    sender = sender_row["address"] if sender_row else None
+    if not sender:
+        raise HTTPException(400, "Chưa liên kết ví Phantom với tài khoản.")
+
+    def rpc(method, params):
+        data = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+        try:
+            with urllib.request.urlopen(urllib.request.Request(SOLANA_RPC_URL, data=data,
+                    headers={"Content-Type": "application/json"}), timeout=20) as response:
+                body = json.load(response)
+            if "error" in body:
+                raise ValueError("RPC error")
+            return body.get("result")
+        except Exception as exc:
+            raise HTTPException(503, "RPC chưa sẵn sàng; vui lòng thử lại sau.") from exc
+
+    if rpc("getGenesisHash", []) != "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG":
+        raise HTTPException(503, "RPC không phải Devnet.")
+
+    signatures_data = rpc("getSignaturesForAddress", [sender, {"limit": 15}]) or []
+    credited_txs = []
+    total_credited_points = 0
+
+    for item in signatures_data:
+        sig = item.get("signature")
+        if not sig or item.get("err") is not None:
+            continue
+
+        with get_db() as conn:
+            existing = conn.execute("SELECT points FROM solana_deposits WHERE signature = ? AND points > 0", (sig,)).fetchone()
+            if existing:
+                continue
+
+        # Fetch transaction details
+        tx = rpc("getTransaction", [sig, {"encoding": "jsonParsed", "commitment": DEVNET_DEPOSIT_COMMITMENT, "maxSupportedTransactionVersion": 0}])
+        if not tx and DEVNET_DEPOSIT_COMMITMENT != "confirmed":
+            tx = rpc("getTransaction", [sig, {"encoding": "jsonParsed", "commitment": "confirmed", "maxSupportedTransactionVersion": 0}])
+        if not tx or tx.get("meta", {}).get("err") is not None:
+            continue
+
+        message = tx.get("transaction", {}).get("message", {})
+        if not any(k.get("pubkey") == sender and k.get("signer") for k in message.get("accountKeys", [])):
+            continue
+
+        transfers = [i.get("parsed", {}).get("info", {}) for i in message.get("instructions", [])
+                     if i.get("programId") == "11111111111111111111111111111111"
+                     and isinstance(i.get("parsed"), dict) and i["parsed"].get("type") == "transfer"]
+        amount = sum(i.get("lamports", 0) for i in transfers
+                     if i.get("source") == sender and i.get("destination") == DEVNET_TREASURY_ADDRESS)
+        if type(amount) is not int or amount < 1_000_000 or amount % 1_000_000:
+            continue
+
+        points = amount // 1_000_000
+        intent_id = uuid.uuid4().hex
+
+        with get_db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if conn.execute("SELECT id FROM solana_deposits WHERE signature = ?", (sig,)).fetchone():
+                continue
+            daily = conn.execute("SELECT COALESCE(SUM(lamports),0) FROM solana_deposits WHERE user_id = ? AND credited_at >= ?",
+                                 (user["id"], time.time() - 86400)).fetchone()[0]
+            if daily + amount > 10000000000:
+                continue
+
+            conn.execute("INSERT INTO solana_deposits (id, user_id, sender, signature, points, lamports, created_at, credited_at) "
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                         (intent_id, user["id"], sender, sig, points, amount, tx.get("blockTime") or time.time(), time.time()))
+            settle_reward(conn, user_id=user["id"], delta=points, reason="Nạp SOL Devnet (Tự động đồng bộ)",
+                          source_type="sol_deposit", source_id=intent_id,
+                          reward_event_key=f"deposit:{sig}", proof_hash=sig,
+                          proof_status="verified", solana_signature=sig)
+            conn.commit()
+
+        credited_txs.append({"signature": sig, "points": points, "lamports": amount})
+        total_credited_points += points
+
+    return {
+        "credited": total_credited_points,
+        "count": len(credited_txs),
+        "transactions": credited_txs,
+    }
 
 
 class RecordOnChainRequest(BaseModel):

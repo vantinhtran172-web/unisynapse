@@ -31,3 +31,5 @@ data/
 .m1-validation-data/
 scratch*.sql
 *.zip
+temp_recordings/
+record_demo.js

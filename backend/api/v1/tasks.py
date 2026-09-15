@@ -16,7 +16,7 @@ def list_open_tasks(session_user: dict = Depends(require_member_session)):
     user_id = session_user["id"]
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM tasks ORDER BY created_at DESC")
+        cursor.execute("SELECT * FROM tasks WHERE status = 'open' ORDER BY created_at DESC")
         tasks = [dict(r) for r in cursor.fetchall()]
         
         # Check submissions by current user
@@ -31,6 +31,9 @@ def list_open_tasks(session_user: dict = Depends(require_member_session)):
                 t["labels"] = []
             t["user_submitted"] = t["id"] in user_subs
             t["user_label"] = user_subs.get(t["id"])
+
+        # Prioritize tasks the user has not submitted yet
+        tasks.sort(key=lambda t: (1 if t.get("user_submitted") else 0, -t.get("created_at", 0)))
             
     return tasks
 

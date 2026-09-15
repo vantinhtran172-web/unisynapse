@@ -19,6 +19,18 @@ function csrfHeaders(): Record<string, string> {
   return token ? { "X-CSRF-Token": decodeURIComponent(token) } : {};
 }
 
+async function parseErrorResponse(response: Response): Promise<{ payload: unknown; text: string }> {
+  const text = await response.text();
+  if (!text.trim()) return { payload: null, text: "" };
+  try {
+    return { payload: JSON.parse(text), text };
+  } catch {
+    // Proxy/upstream có thể trả HTML hoặc plain text thay vì JSON.
+    const compact = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    return { payload: null, text: compact.slice(0, 300) };
+  }
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !(init.body instanceof FormData)) {
@@ -132,7 +144,7 @@ export interface LedgerEntry {
   source_type: string;
   source_id: string;
   proof_status: "unsubmitted" | "processing" | "submitted" | "retryable" | "failed" | "verified" | string;
-  solana_signature?: string;
+  solana_signature?: string | null;
   proof_hash: string;
   proof_attempts?: number;
   proof_last_error?: string;
@@ -140,7 +152,7 @@ export interface LedgerEntry {
   proof_verified_at?: number;
   proof_next_retry_at?: number;
   created_at: number;
-  explorer_url?: string;
+  explorer_url?: string | null;
   verification_reason?: string;
 }
 
@@ -188,6 +200,7 @@ export const api = {
   createDeposit: () => request<{intent_id:string;memo:string;treasury:string}>("/rewards/deposit-intent", {method:"POST"}),
   verifyDeposit: (intent_id:string, signature:string) => request<{credited:number}>("/rewards/deposit-verify", {method:"POST",body:JSON.stringify({intent_id,signature})}),
   recoverDeposit: (signature:string) => request<{credited:number}>("/rewards/deposit-recover", {method:"POST",body:JSON.stringify({signature})}),
+  syncDeposits: () => request<{credited:number;count:number;transactions:Array<{signature:string;points:number;lamports:number}>}>("/rewards/deposit-sync", {method:"POST"}),
   register: (username: string, password: string) =>
     request<{ authenticated: boolean; id: string; username: string; role: string }>("/auth/register", {
       method: "POST",
@@ -218,7 +231,13 @@ export const api = {
       credentials: "include",
       body: JSON.stringify({ publicKey }),
     });
-    if (!res.ok) throw new Error((await res.json()).detail || "Không thể tạo wallet challenge");
+    if (!res.ok) {
+      const { payload, text } = await parseErrorResponse(res);
+      const detail = payload && typeof payload === "object" && "detail" in payload
+        ? String(payload.detail)
+        : text || `Không thể tạo wallet challenge (${res.status})`;
+      throw new ApiError(res.status, detail);
+    }
     return res.json();
   },
 
@@ -229,7 +248,13 @@ export const api = {
       credentials: "include",
       body: JSON.stringify({ publicKey, nonce, message, signature }),
     });
-    if (!res.ok) throw new Error((await res.json()).detail || "Xác thực wallet thất bại");
+    if (!res.ok) {
+      const { payload, text } = await parseErrorResponse(res);
+      const detail = payload && typeof payload === "object" && "detail" in payload
+        ? String(payload.detail)
+        : text || `Xác thực wallet thất bại (${res.status})`;
+      throw new ApiError(res.status, detail);
+    }
     return res.json();
   },
 
@@ -306,8 +331,11 @@ export const api = {
       body: JSON.stringify({ question, model, request_id: crypto.randomUUID() }),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Lỗi khi gọi AI Tutor");
+      const { payload, text } = await parseErrorResponse(res);
+      const detail = payload && typeof payload === "object" && "detail" in payload
+        ? String(payload.detail)
+        : text || `Lỗi khi gọi AI Tutor (${res.status})`;
+      throw new ApiError(res.status, detail);
     }
     return res.json();
   },

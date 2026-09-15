@@ -37,14 +37,21 @@ unisynapse/
 
 ## 🚀 2. Cách Khởi Động Dự Án (Chạy Thật)
 
-### Cách 1: Chạy Tự Động 1 Click (Khuyến nghị)
-Nhấp đúp chuột vào tập tin:
-`start-unisynapse.bat`
+### Cách 1: Khởi chạy Tự Động 1 Click (Khuyến nghị cao nhất)
+Chỉ cần **nhấp đúp chuột** vào tập tin:
+👉 **`CHAY_TOAN_BO_DU_AN.bat`** (hoặc `start-unisynapse.bat`)
 
-Script sẽ tự động:
-1. Mở cửa sổ **Backend FastAPI Server** tại: `http://127.0.0.1:8000` (Tài liệu API Swagger tại `/docs`)
-2. Mở cửa sổ **Frontend Next.js** tại: `http://localhost:3000`
-3. Mở trình duyệt web hiển thị trang chủ UniSynapse.
+File script tự động thực hiện 100% quy trình:
+1. Tự động kiểm tra môi trường Python (3.10+) và Node.js (18+).
+2. Tự động khởi tạo môi trường ảo `.venv` và cài đặt dependencies Backend (`requirements.txt`).
+3. Tự động cài đặt dependencies Frontend (`npm install`).
+4. Nạp sẵn file cấu hình môi trường `.env`.
+5. Khởi động đồng thời:
+   - **Backend FastAPI**: `http://127.0.0.1:8000` (API Docs Swagger tại `/docs`)
+   - **Frontend Next.js**: `http://localhost:3000`
+6. Tự động bật trình duyệt web tới `http://localhost:3000`.
+
+*Xem chi tiết hướng dẫn tại file: [`HUONG_DAN_CHAY_DU_AN.md`](HUONG_DAN_CHAY_DU_AN.md)*
 
 ---
 
@@ -52,17 +59,16 @@ Script sẽ tự động:
 
 **Bước 1: Khởi động Backend FastAPI**
 ```powershell
-cd C:\Users\TGDD\Downloads\ấdadsa\unisynapse
-py -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+.venv\Scripts\python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 **Bước 2: Khởi động Frontend Next.js**
 ```powershell
-cd C:\Users\TGDD\Downloads\ấdadsa\unisynapse\frontend
+cd frontend
 npm run dev
 ```
 
-Mở trình duyệt truy cập: `http://localhost:3000`
+Mở trình duyệt truy cập: `http://localhost:3000` (Trang Quản trị: `http://localhost:3000/admin`)
 
 ---
 

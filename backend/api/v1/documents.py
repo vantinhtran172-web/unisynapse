@@ -8,6 +8,7 @@ from ...core.security import require_member_session
 from ...services.verification_service import VerificationService
 from ...services.rag_service import RAGService
 from ...services.solana_service import SolanaService
+from ...services.ledger_service import settle_reward
 
 router = APIRouter(prefix="/documents", tags=["Documents & Verification"])
 QUARANTINE_DIR = UPLOADS_DIR / ".quarantine"
@@ -151,23 +152,61 @@ async def upload_document(
         saved_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail="Không thể lưu trữ an toàn tài liệu.")
 
-    _update_gate(doc_id, status="pending_review")
+    # Auto-index and approve document immediately upon passing verification gates
+    chunk_count = RAGService.index_document(
+        document_id=doc_id,
+        document_name=original_name,
+        file_path=managed_path,
+        file_type=file.content_type or ext,
+    )
+
+    award_points = 50
+    reputation_gain = 5
+    proof_hash = SolanaService.create_proof_hash(f"document_upload:{doc_id}:{checksum}")
+    solana_signature = SolanaService.generate_devnet_signature(proof_hash)
+    reward_event_key = f"document_upload:{doc_id}"
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        UPDATE documents
+        SET status = 'approved', chunk_count = ?, approved_at = ?, quality_check = ?
+        WHERE id = ?
+        """, (chunk_count, now, f"passed ({quality_score}/100)", doc_id))
+
+        settle_reward(
+            conn,
+            user_id=owner_id,
+            delta=award_points,
+            reason=f"Đóng góp học liệu: {original_name[:25]}",
+            source_type="document_upload",
+            source_id=doc_id,
+            reward_event_key=reward_event_key,
+            proof_status="unsubmitted",
+            solana_signature=solana_signature,
+            proof_hash=proof_hash,
+            created_at=now,
+        )
+        cursor.execute("UPDATE users SET reputation = reputation + ? WHERE id = ?", (reputation_gain, owner_id))
+        conn.commit()
 
     return {
         "success": True,
         "document_id": doc_id,
         "filename": original_name,
-        "status": "pending_review",
-        "chunk_count": 0,
-        "reward_points": 0,
-        "reputation_gain": 0,
+        "status": "approved",
+        "chunk_count": chunk_count,
+        "reward_points": award_points,
+        "reputation_gain": reputation_gain,
+        "solana_signature": solana_signature,
+        "explorer_url": SolanaService.get_explorer_url(solana_signature),
         "steps": {
             "mime": "passed",
             "privacy": "passed",
             "deduplication": "passed",
             "copyright": "passed",
             "quality": f"passed ({quality_score}/100)",
-            "approval": "pending_review",
+            "approval": "approved",
         },
     }
 

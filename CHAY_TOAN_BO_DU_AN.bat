@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions
 chcp 65001 >nul
-title UniSynapse — Student-Powered Knowledge Network (1-Click Start)
+title UniSynapse — Khởi Chạy Toàn Bộ Hệ Thống (1-Click)
 color 0B
 cd /d "%~dp0"
 

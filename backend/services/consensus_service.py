@@ -84,6 +84,29 @@ class ConsensusService:
             finalized = False
             user_rewarded = False
 
+            # Award instant UniPoints reward for completing and submitting the labeling task
+            reward_event_key = f"task-submission:{task_id}:user:{user_id}"
+            proof_hash = SolanaService.create_proof_hash(
+                f"TASK_REWARD:{reward_event_key}:{reward_points}"
+            )
+            solana_signature = SolanaService.generate_devnet_signature(
+                proof_hash
+            )
+            submission_settlement = settle_reward(
+                conn,
+                user_id=user_id,
+                delta=reward_points,
+                reason=f"Hoàn thành gán nhãn: {task['title'][:30]}",
+                source_type="task",
+                source_id=task_id,
+                reward_event_key=reward_event_key,
+                proof_status="unsubmitted",
+                solana_signature=solana_signature,
+                proof_hash=proof_hash,
+                created_at=now,
+            )
+            user_rewarded = submission_settlement["created"]
+
             if total_votes >= required_votes and confidence >= threshold:
                 update = cursor.execute(
                     """
@@ -100,28 +123,26 @@ class ConsensusService:
                         if row["label"] != top_label or not row["is_gold_correct"]:
                             continue
                         voter_id = row["user_id"]
-                        reward_event_key = f"task-consensus:{task_id}:user:{voter_id}"
-                        proof_hash = SolanaService.create_proof_hash(
-                            f"TASK_REWARD:{reward_event_key}:{reward_points}"
+                        consensus_event_key = f"task-consensus:{task_id}:user:{voter_id}"
+                        consensus_proof_hash = SolanaService.create_proof_hash(
+                            f"TASK_REWARD:{consensus_event_key}:{reward_points}"
                         )
-                        solana_signature = SolanaService.generate_devnet_signature(
-                            proof_hash
+                        consensus_sig = SolanaService.generate_devnet_signature(
+                            consensus_proof_hash
                         )
-                        settlement = settle_reward(
+                        settle_reward(
                             conn,
                             user_id=voter_id,
                             delta=reward_points,
                             reason=f"Consensus đạt: {task['title']}",
                             source_type="task",
                             source_id=task_id,
-                            reward_event_key=reward_event_key,
+                            reward_event_key=consensus_event_key,
                             proof_status="unsubmitted",
-                            solana_signature=solana_signature,
-                            proof_hash=proof_hash,
+                            solana_signature=consensus_sig,
+                            proof_hash=consensus_proof_hash,
                             created_at=now,
                         )
-                        if settlement["created"] and voter_id == user_id:
-                            user_rewarded = True
 
             conn.commit()
             return {
@@ -140,7 +161,7 @@ class ConsensusService:
                     }
                     for row in rows
                 ],
-                "user_rewarded": user_rewarded,
-                "reward_points": reward_points if user_rewarded else 0,
+                "user_rewarded": True,
+                "reward_points": reward_points,
                 "is_gold_correct": bool(is_gold_correct),
             }

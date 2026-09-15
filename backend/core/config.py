@@ -60,7 +60,7 @@ DEVNET_TREASURY_ADDRESS = os.getenv(
     "DEVNET_TREASURY_ADDRESS",
     "FEdvEMCedQ2xonCfGLNKAyqdbeyP6HJz6bVHqYQE2hgq",
 ).strip()
-DEVNET_DEPOSIT_COMMITMENT = "finalized"
+DEVNET_DEPOSIT_COMMITMENT = os.getenv("DEVNET_DEPOSIT_COMMITMENT", "confirmed").strip().lower()
 DEVNET_MIN_DEPOSIT_LAMPORTS = 1_000_000
 DEVNET_DAILY_DEPOSIT_LIMIT_LAMPORTS = 10_000_000_000
 # Remain disabled by default until transaction verification and accounting are validated.
