@@ -13,6 +13,7 @@ interface AppStateContextType {
   loading: boolean;
   refreshing: boolean;
   error: string | null;
+  authRequired: boolean;
   lastUpdated: number | null;
   activeTab: string;
   setActiveTab: (tab: string) => void;
@@ -34,6 +35,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState<boolean>(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<string>("dashboard");
   const refreshGeneration = useRef(0);
@@ -55,6 +57,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       const failures = results.filter((result) => result.status === "rejected");
       const sessionExpired = userResult.status === "rejected" && userResult.reason instanceof Error &&
         "status" in userResult.reason && userResult.reason.status === 401;
+      setAuthRequired(sessionExpired);
       if (sessionExpired) {
         setUser(null);
         setUnipoints(0);
@@ -71,9 +74,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       if (tasksResult.status === "fulfilled" && !sessionExpired) setTasks(Array.isArray(tasksResult.value) ? tasksResult.value : []);
       if (documentsResult.status === "fulfilled" && !sessionExpired) setDocuments(Array.isArray(documentsResult.value) ? documentsResult.value : []);
       if (ledgerResult.status === "fulfilled" && !sessionExpired) setLedger(Array.isArray(ledgerResult.value) ? ledgerResult.value : []);
-      if (failures.length > 0) {
-        setError(sessionExpired ? "Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại để xem UniPoints." : "Một số dữ liệu chưa tải được. Hãy thử làm mới lại.");
-      } else {
+      if (failures.length > 0 && !sessionExpired) {
+        setError("Một số dữ liệu chưa tải được. Hãy thử làm mới lại.");
+      } else if (!sessionExpired) {
         setLastUpdated(Date.now());
       }
     } catch (err) {
@@ -134,6 +137,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         loading,
         refreshing,
         error,
+        authRequired,
         lastUpdated,
         activeTab,
         setActiveTab,
