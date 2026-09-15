@@ -40,7 +40,7 @@ CORS_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
         "CORS_ORIGINS",
-        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000,http://localhost:8088,http://127.0.0.1:8088,https://unihackfest-web.netlify.app",
+        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000,http://localhost:8088,http://127.0.0.1:8088,https://unisynapse-web.netlify.app,https://unisynapse.netlify.app,https://unihackfest-web.netlify.app",
     ).split(",")
     if origin.strip()
 ]

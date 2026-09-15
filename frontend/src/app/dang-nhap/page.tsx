@@ -60,7 +60,33 @@ export default function LoginPage() {
         <section className="client-hero">
           <div className="hero-copy">
             <Link href="/">← Trang chủ</Link>
-            <p className="eyebrow">UNISYNAPSE · MEMBER ACCESS</p>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", margin: "1rem 0 0.5rem 0" }}>
+              <div style={{
+                width: "32px",
+                height: "32px",
+                borderRadius: "8px",
+                background: "linear-gradient(135deg, #22d3ee, #2563eb, #4f46e5)",
+                padding: "1px",
+                boxShadow: "0 0 15px rgba(0,240,255,0.25)"
+              }}>
+                <div style={{
+                  width: "100%",
+                  height: "100%",
+                  background: "#030712",
+                  borderRadius: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 900,
+                  color: "#22d3ee",
+                  fontSize: "11px",
+                  letterSpacing: "-0.5px"
+                }}>
+                  WIT
+                </div>
+              </div>
+              <p className="eyebrow" style={{ margin: 0 }}>UNISYNAPSE · MEMBER ACCESS</p>
+            </div>
             <h1>Chào mừng<br /><em>quay trở lại.</em></h1>
             <p>Đăng nhập để xem UniPoints, nhiệm vụ và AI Tutor từ đúng tài khoản của bạn.</p>
 
