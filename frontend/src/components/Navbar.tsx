@@ -70,7 +70,7 @@ export default function Navbar() {
             <div>
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <span className="font-extrabold text-sm sm:text-base tracking-tight text-slate-900 dark:text-white block leading-none font-sans">
-                  UniHackFest
+                  UniSynapse
                 </span>
                 <span className="cyber-badge-cyan text-[9px] px-1.5 py-0.5 rounded font-bold uppercase">
                   v1.0

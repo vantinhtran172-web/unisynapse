@@ -71,16 +71,29 @@ DOCUMENTS = [
 
 
 def ensure_demo_user() -> str:
+    from backend.core.security import hash_password
+    now = time.time()
+    demo_pass_hash = hash_password("UniSynapse@2026")
     with get_db() as conn:
         row = conn.execute("SELECT id FROM users WHERE id = ?", (DEMO_USER_ID,)).fetchone()
-        if row:
-            return DEMO_USER_ID
-        now = time.time()
-        conn.execute(
-            """INSERT INTO users (id, address, username, password_hash, disabled, unipoints, reputation, role, created_at)
-               VALUES (?, ?, ?, ?, 0, 100, 100, 'student', ?)""",
-            (DEMO_USER_ID, "demo-wallet-unisynapse", "demo_student", "demo_account_no_login", now),
-        )
+        if not row:
+            conn.execute(
+                """INSERT INTO users (id, address, username, password_hash, disabled, unipoints, reputation, role, created_at)
+                   VALUES (?, ?, ?, ?, 0, 100, 100, 'student', ?)""",
+                (DEMO_USER_ID, "demo-wallet-unisynapse", "demo_student", demo_pass_hash, now),
+            )
+        else:
+            conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (demo_pass_hash, DEMO_USER_ID))
+
+        sv_row = conn.execute("SELECT id FROM users WHERE username = 'sinhvien_demo'").fetchone()
+        if not sv_row:
+            conn.execute(
+                """INSERT INTO users (id, address, username, password_hash, disabled, unipoints, reputation, role, created_at)
+                   VALUES (?, ?, 'sinhvien_demo', ?, 0, 150, 120, 'student', ?)""",
+                ("usr_demo_sinhvien", "demo-wallet-sinhvien", demo_pass_hash, now),
+            )
+        else:
+            conn.execute("UPDATE users SET password_hash = ? WHERE username = 'sinhvien_demo'", (demo_pass_hash,))
         conn.commit()
     return DEMO_USER_ID
 

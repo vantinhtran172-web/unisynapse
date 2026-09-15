@@ -112,7 +112,7 @@ export default function AITutorChat() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="font-bold text-slate-900 dark:text-white text-sm">UniHackFest AI Tutor (RAG Grounded)</h2>
+              <h2 className="font-bold text-slate-900 dark:text-white text-sm">UniSynapse AI Tutor (RAG Grounded)</h2>
             </div>
             <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 inline-block animate-pulse"></span>

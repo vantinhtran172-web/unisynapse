@@ -39,7 +39,7 @@ export default function ProfileCard() {
         </div>
         <div className="overflow-hidden">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white truncate">{user?.username || "Sinh viên UniHackFest"}</h2>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white truncate">{user?.username || "Sinh viên UniSynapse"}</h2>
             <span className="bg-blue-500/15 text-blue-700 dark:text-blue-300 text-[10px] px-2 py-0.5 rounded border border-blue-500/30 font-medium">
               Campus SSO
             </span>

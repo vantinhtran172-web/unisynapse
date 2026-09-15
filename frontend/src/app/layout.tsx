@@ -23,7 +23,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "UniHackFest",
+  title: "UniSynapse",
   description: "Mạng lưới dữ liệu và tri thức học thuật do sinh viên đóng góp trên Solana.",
 };
 
