@@ -89,7 +89,10 @@ class SSORequest(BaseModel):
 
 
 @router.post("/wallet/challenge")
-def wallet_challenge(request: WalletChallengeRequest):
+def wallet_challenge(
+    request: WalletChallengeRequest,
+    session_user: dict = Depends(require_member_session),
+):
     from ...core.security import create_wallet_challenge
 
     try:
@@ -99,7 +102,11 @@ def wallet_challenge(request: WalletChallengeRequest):
 
 
 @router.post("/wallet/verify")
-def wallet_verify(request: WalletVerifyRequest, response: Response):
+def wallet_verify(
+    request: WalletVerifyRequest,
+    response: Response,
+    session_user: dict = Depends(require_member_session),
+):
     from ...core.database import get_db
     from ...core.security import verify_wallet_challenge
 
@@ -111,32 +118,55 @@ def wallet_verify(request: WalletVerifyRequest, response: Response):
     ):
         raise HTTPException(status_code=401, detail="Invalid or expired wallet challenge")
 
+    wallet_address = request.publicKey.strip()
     with get_db() as conn:
-        member = conn.execute(
-            "SELECT id, username, role FROM users WHERE address = ? AND disabled = 0",
-            (request.publicKey.strip(),),
+        # Ràng buộc: Kiểm tra ví đã liên kết với tài khoản khác chưa
+        existing = conn.execute(
+            "SELECT id, username FROM users WHERE address = ? AND id != ? AND disabled = 0",
+            (wallet_address, session_user["id"]),
         ).fetchone()
-        if not member:
-            member_id = f"wallet_{request.publicKey.strip()[:16]}"
-            username = f"wallet_{request.publicKey.strip()[:8]}"
-            now = time.time()
-            conn.execute(
-                "INSERT INTO users (id, address, username, role, disabled, created_at) "
-                "VALUES (?, ?, ?, 'student', 0, ?)",
-                (member_id, request.publicKey.strip(), username, now),
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ví Phantom này đã được liên kết với tài khoản '{existing['username']}'. Mỗi tài khoản chỉ dùng một ví riêng biệt.",
             )
-            conn.commit()
-            member = {"id": member_id, "username": username, "role": "student"}
 
-    token = create_member_session(member["id"])
-    set_member_session_cookie(response, token)
+        # Cập nhật địa chỉ ví cho tài khoản đang đăng nhập
+        conn.execute(
+            "UPDATE users SET address = ? WHERE id = ?",
+            (wallet_address, session_user["id"]),
+        )
+        conn.commit()
+
+        member = conn.execute(
+            "SELECT id, username, role, address, unipoints, reputation FROM users WHERE id = ?",
+            (session_user["id"],),
+        ).fetchone()
+
     return {
         "authenticated": True,
         "id": member["id"],
         "username": member["username"],
         "role": member["role"],
-        "address": request.publicKey.strip(),
+        "address": member["address"],
+        "unipoints": member["unipoints"],
+        "reputation": member["reputation"],
     }
+
+
+@router.post("/wallet/unlink")
+def wallet_unlink(
+    session_user: dict = Depends(require_member_session),
+):
+    from ...core.database import get_db
+
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE users SET address = NULL WHERE id = ?",
+            (session_user["id"],),
+        )
+        conn.commit()
+    return {"authenticated": True, "unlinked": True}
 
 
 @router.post("/wallet-connect")

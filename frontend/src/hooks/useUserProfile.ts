@@ -51,14 +51,14 @@ export function useUserProfile() {
     }
   }, [publicKey, connection, anchorWallet]);
 
-  // Step 1: SIWS (Sign In With Solana)
+  // Step 1: SIWS (Sign In With Solana) - Link wallet to authenticated account
   const verifyWallet = useCallback(async () => {
     if (!publicKey) {
-      alert("Public key not found");
+      alert("Chưa kết nối ví Phantom. Vui lòng kết nối ví trước.");
       return;
     }
     if (!signMessage) {
-      alert("Wallet does not support signMessage");
+      alert("Ví của bạn không hỗ trợ ký message. Vui lòng dùng ví Phantom chính thức.");
       return;
     }
     try {
@@ -67,7 +67,7 @@ export function useUserProfile() {
       const challenge = await api.challengeWallet(walletAddress);
       const messageBytes = new TextEncoder().encode(challenge.message);
       const signature = await signMessage(messageBytes);
-      await api.verifyWallet(
+      const res = await api.verifyWallet(
         walletAddress,
         challenge.nonce,
         challenge.message,
@@ -75,12 +75,18 @@ export function useUserProfile() {
       );
       setIsVerified(true);
       await fetchProfile();
+      return res;
     } catch (err: unknown) {
       console.error("SIWS error:", err);
-      const errorMessage = err instanceof Error ? err.message : "Unknown wallet error";
-      if (!errorMessage.toLowerCase().includes("user rejected")) {
-        alert(`Wallet authentication failed: ${errorMessage}`);
+      const errorMessage = err instanceof Error ? err.message : "Lỗi xác thực ví";
+      if (errorMessage.includes("Member authentication required") || errorMessage.includes("401")) {
+        if (confirm("Ràng buộc bảo mật: Bạn cần có tài khoản và đăng nhập trước khi liên kết ví Phantom.\n\nChuyển đến trang Đăng nhập ngay?")) {
+          window.location.href = "/dang-nhap";
+        }
+      } else if (!errorMessage.toLowerCase().includes("user rejected")) {
+        alert(`Không thể liên kết ví: ${errorMessage}`);
       }
+      throw err;
     } finally {
       setIsVerifying(false);
     }

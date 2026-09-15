@@ -233,6 +233,16 @@ export const api = {
     return res.json();
   },
 
+  async unlinkWallet(): Promise<{ authenticated: boolean; unlinked: boolean }> {
+    const res = await fetch(`${API_BASE}/auth/wallet/unlink`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || "Không thể hủy liên kết ví");
+    return res.json();
+  },
+
   async getOpenTasks(): Promise<TaskItem[]> {
     const res = await fetch(`${API_BASE}/tasks/open`, { credentials: "include" });
     const payload = await res.json().catch(() => null);

@@ -27,6 +27,17 @@ export default function Navbar() {
   };
 
   const handleWalletClick = () => {
+    if (!user) {
+      if (typeof window !== "undefined") {
+        const wantsLogin = window.confirm(
+          "Ràng buộc bảo mật: Bạn cần đăng nhập tài khoản trước khi liên kết ví Phantom.\n\nBấm OK để chuyển đến trang Đăng nhập."
+        );
+        if (wantsLogin) {
+          window.location.href = "/dang-nhap";
+        }
+      }
+      return;
+    }
     if (connected) {
       disconnect();
     } else if (wallet) {
@@ -152,22 +163,49 @@ export default function Navbar() {
 
             {/* Solana Wallet Button */}
             <button 
+              id="nav-wallet-button"
               onClick={handleWalletClick}
-              className="btn-cyber-secondary py-1.5 px-2 sm:px-3 text-xs flex items-center gap-1.5 font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80 text-slate-800 dark:text-slate-200 shadow-sm"
-              title={connected && publicKey ? publicKey.toBase58() : "Kết nối ví Solana"}
+              className={`btn-cyber-secondary py-1.5 px-2 sm:px-3 text-xs flex items-center gap-1.5 font-mono rounded-lg border shadow-sm ${
+                !user 
+                  ? "border-amber-400/50 bg-amber-50/70 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 hover:border-amber-500"
+                  : "border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80 text-slate-800 dark:text-slate-200"
+              }`}
+              title={
+                !user 
+                  ? "Yêu cầu có tài khoản đăng nhập để liên kết ví Phantom"
+                  : connected && publicKey 
+                  ? `Ví đã kết nối: ${publicKey.toBase58()}` 
+                  : user.address 
+                  ? `Ví đã liên kết: ${user.address}`
+                  : "Kết nối và liên kết ví Phantom với tài khoản"
+              }
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500 cyber-pulsing-dot' : 'bg-slate-400'}`}></span>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                !user
+                  ? 'bg-amber-400'
+                  : connected 
+                  ? 'bg-emerald-500 cyber-pulsing-dot' 
+                  : user?.address
+                  ? 'bg-cyan-400'
+                  : 'bg-slate-400'
+              }`}></span>
               <span className="hidden sm:inline">
-                {mounted && connected && publicKey 
+                {mounted && !user
+                  ? 'Ví Phantom (Cần đăng nhập)'
+                  : mounted && connected && publicKey 
                   ? `${publicKey.toBase58().slice(0, 4)}...${publicKey.toBase58().slice(-4)}`
                   : mounted && user?.address
                   ? `${user.address.slice(0, 4)}...${user.address.slice(-4)}`
-                  : 'Ví Solana'}
+                  : 'Liên kết ví Phantom'}
               </span>
               <span className="sm:hidden">
-                {mounted && connected && publicKey 
+                {mounted && !user
+                  ? 'Khóa ví'
+                  : mounted && connected && publicKey 
                   ? `${publicKey.toBase58().slice(0, 3)}..`
-                  : 'Ví'}
+                  : mounted && user?.address
+                  ? `${user.address.slice(0, 3)}..`
+                  : 'Ví Phantom'}
               </span>
             </button>
 
