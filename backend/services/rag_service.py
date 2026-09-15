@@ -188,7 +188,7 @@ class RAGService:
             )
             user_prompt = f"ĐÂY LÀ CÂU HỎI NGOÀI KHO TÀI LIỆU UNIYSYNAPSE:\n{question}"
 
-        models_to_try = [model, "gemini-flash-latest", "gemini-flash-lite-latest"]
+        models_to_try = [model, "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-flash-latest", "gemma-4-31b-it"]
         seen = set()
         unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
         last_error = ""
@@ -205,7 +205,7 @@ class RAGService:
                         headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
                         method="POST",
                     )
-                    with urllib.request.urlopen(req, timeout=15) as resp:
+                    with urllib.request.urlopen(req, timeout=25) as resp:
                         resp_json = json.loads(resp.read().decode("utf-8"))
                         candidates = resp_json.get("candidates", [])
                         if candidates:
