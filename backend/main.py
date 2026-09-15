@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -5,6 +6,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger("backend.main")
 
 from .core.config import COOKIE_SECURE, CORS_ORIGINS, DATABASE_URL, validate_runtime_config
 from .core.database import get_db, init_db
@@ -93,7 +96,8 @@ async def add_request_id(request: Request, call_next):
 
         if response is None:
             response = await call_next(request)
-    except Exception:
+    except Exception as exc:
+        logger.exception(f"Unhandled exception processing {request.method} {request.url.path}: {exc}")
         response = JSONResponse(
             status_code=500,
             content={"detail": "Internal server error", "request_id": request_id},

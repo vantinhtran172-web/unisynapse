@@ -292,8 +292,11 @@ export const api = {
       body: JSON.stringify({ taskId, label }),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Lỗi khi gửi nhãn");
+      const { payload, text } = await parseErrorResponse(res);
+      const detail = payload && typeof payload === "object" && "detail" in payload
+        ? String((payload as { detail: unknown }).detail)
+        : text || `Lỗi khi gửi nhãn (${res.status})`;
+      throw new Error(detail);
     }
     return res.json();
   },
@@ -311,8 +314,11 @@ export const api = {
       body: formData,
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Không thể tải lên tài liệu");
+      const { payload, text } = await parseErrorResponse(res);
+      const detail = payload && typeof payload === "object" && "detail" in payload
+        ? String((payload as { detail: unknown }).detail)
+        : text || `Không thể tải lên tài liệu (${res.status})`;
+      throw new Error(detail);
     }
     return res.json();
   },

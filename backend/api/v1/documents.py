@@ -70,20 +70,37 @@ async def upload_document(
         f.write(content_bytes)
 
     checksum = VerificationService.compute_sha256(content_bytes)
+
+    # 1. Step 1: MIME check
+    mime_ok, mime_msg = VerificationService.verify_mime(content_bytes, original_name)
+    if not mime_ok:
+        saved_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=mime_msg)
+
+    # 2. Step 2: Deduplication check BEFORE inserting into DB to prevent IntegrityError
+    dedupe_ok, dedupe_msg = VerificationService.check_duplicate(checksum, doc_id)
+    if not dedupe_ok:
+        saved_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=dedupe_msg)
+
     with get_db() as conn:
-        conn.execute("""
-        INSERT INTO documents (
-            id, owner_id, filename, original_name, file_type, size_bytes,
-            checksum, status, mime_check, pii_check, dedupe_check,
-            copyright_check, quality_check, rejection_reason, chunk_count,
-            created_at, approved_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', 'pending', 'pending',
-                  'pending', 'pending', 'pending', NULL, 0, ?, NULL)
-        """, (
-            doc_id, owner_id, saved_filename, original_name,
-            file.content_type or ext, size_bytes, checksum, now,
-        ))
-        conn.commit()
+        try:
+            conn.execute("""
+            INSERT INTO documents (
+                id, owner_id, filename, original_name, file_type, size_bytes,
+                checksum, status, mime_check, pii_check, dedupe_check,
+                copyright_check, quality_check, rejection_reason, chunk_count,
+                created_at, approved_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', 'passed', 'pending',
+                      'passed', 'pending', 'pending', NULL, 0, ?, NULL)
+            """, (
+                doc_id, owner_id, saved_filename, original_name,
+                file.content_type or ext, size_bytes, checksum, now,
+            ))
+            conn.commit()
+        except Exception as exc:
+            saved_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail=f"Tài liệu đã tồn tại hoặc không thể đăng ký: {exc}")
 
     def reject_gate(field: str, reason: str) -> None:
         _update_gate(
@@ -92,21 +109,6 @@ async def upload_document(
             **{field: "failed", "rejection_reason": reason},
         )
         saved_path.unlink(missing_ok=True)
-
-    # 1. Step 1: MIME check
-    mime_ok, mime_msg = VerificationService.verify_mime(content_bytes, original_name)
-    if not mime_ok:
-        reject_gate("mime_check", mime_msg)
-        raise HTTPException(status_code=400, detail=mime_msg)
-    _update_gate(doc_id, mime_check="passed")
-
-    # 2. Step 2: Compute Checksum & Deduplication check
-    dedupe_ok, dedupe_msg = VerificationService.check_duplicate(checksum, doc_id)
-    if not dedupe_ok:
-        reject_gate("dedupe_check", dedupe_msg)
-        raise HTTPException(status_code=400, detail=dedupe_msg)
-
-    _update_gate(doc_id, dedupe_check="passed")
 
     # Extract text preview for PII and Quality check
     try:
