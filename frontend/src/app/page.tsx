@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import ProfileCard from "@/components/ProfileCard";

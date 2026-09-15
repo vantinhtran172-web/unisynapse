@@ -41,7 +41,7 @@ export default function LoginPage() {
       } catch {
         // Proceed with navigation
       }
-      window.location.href = "/";
+      router.push("/");
     } catch (cause) {
       setError(translateError(cause));
       setBusy(false);

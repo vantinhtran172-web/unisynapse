@@ -49,7 +49,7 @@ export default function RegisterPage() {
       try {
         await refreshState();
       } catch {}
-      window.location.href = "/";
+      router.push("/");
     } catch (cause) {
       setError(translateRegisterError(cause));
       setBusy(false);

@@ -4,11 +4,13 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAppState } from "../context/AppStateContext";
 import { api } from "../lib/api";
 import ThemeToggle from "./ThemeToggle";
 
 export default function Navbar() {
+  const router = useRouter();
   const { wallet, connect, disconnect, connected, publicKey } = useWallet();
   const { setVisible } = useWalletModal();
   const [mounted, setMounted] = useState(false);
@@ -33,7 +35,7 @@ export default function Navbar() {
           "Ràng buộc bảo mật: Bạn cần đăng nhập tài khoản trước khi liên kết ví Phantom.\n\nBấm OK để chuyển đến trang Đăng nhập."
         );
         if (wantsLogin) {
-          window.location.href = "/dang-nhap";
+          router.push("/dang-nhap");
         }
       }
       return;

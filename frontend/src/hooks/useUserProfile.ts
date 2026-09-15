@@ -80,9 +80,7 @@ export function useUserProfile() {
       console.error("SIWS error:", err);
       const errorMessage = err instanceof Error ? err.message : "Lỗi xác thực ví";
       if (errorMessage.includes("Member authentication required") || errorMessage.includes("401")) {
-        if (confirm("Ràng buộc bảo mật: Bạn cần có tài khoản và đăng nhập trước khi liên kết ví Phantom.\n\nChuyển đến trang Đăng nhập ngay?")) {
-          window.location.href = "/dang-nhap";
-        }
+        alert("Ràng buộc bảo mật: Bạn cần có tài khoản và đăng nhập trước khi liên kết ví Phantom.");
       } else if (!errorMessage.toLowerCase().includes("user rejected")) {
         alert(`Không thể liên kết ví: ${errorMessage}`);
       }
