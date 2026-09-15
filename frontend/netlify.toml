@@ -18,6 +18,12 @@
   force = true
 
 [[redirects]]
+  from = "/health"
+  to = "https://cybercore-backend-cprt.onrender.com/health"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "https://unihackfest-web.netlify.app/*"
   to = "https://unisynapse.netlify.app/:splat"
   status = 301
