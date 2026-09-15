@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>UniSynapse - Tài Liệu Hệ Thống Chi Tiết 1:1</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+  
+  @page {
+    size: A4;
+    margin: 18mm 16mm 20mm 16mm;
+    @bottom-center {
+      content: "UniSynapse System Specification · Trang " counter(page);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 8pt;
+      color: #94a3b8;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #1e293b;
+    line-height: 1.6;
+    font-size: 10pt;
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+  }
+
+  /* Cover page */
+  .cover {
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 88vh;
+    padding: 20px 10px;
+  }
+  .brand-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #0f766e;
+    color: #ffffff;
+    font-size: 10pt;
+    font-weight: 800;
+    padding: 6px 14px;
+    border-radius: 999px;
+    letter-spacing: 0.12em;
+    width: fit-content;
+    margin-bottom: 24px;
+  }
+  .cover h1 {
+    font-size: 26pt;
+    font-weight: 800;
+    line-height: 1.15;
+    color: #0f172a;
+    margin: 0 0 16px;
+    letter-spacing: -0.03em;
+  }
+  .cover h1 span {
+    color: #0d9488;
+  }
+  .cover .subtitle {
+    font-size: 12pt;
+    color: #475569;
+    margin-bottom: 36px;
+    max-width: 600px;
+    line-height: 1.5;
+  }
+  .spec-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #0d9488;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-top: 20px;
+  }
+  .spec-box h3 {
+    margin: 0 0 10px;
+    font-size: 10.5pt;
+    color: #0f766e;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .spec-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+    font-size: 9pt;
+  }
+  .spec-grid div strong {
+    color: #0f172a;
+  }
+
+  /* Headings */
+  h2.part-title {
+    font-size: 14pt;
+    font-weight: 800;
+    color: #0f766e;
+    border-bottom: 2px solid #0d9488;
+    padding-bottom: 6px;
+    margin-top: 32px;
+    margin-bottom: 14px;
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+    page-break-after: avoid;
+  }
+  h3.section-title {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #0f172a;
+    margin-top: 20px;
+    margin-bottom: 8px;
+    page-break-after: avoid;
+  }
+
+  p { margin: 0 0 10px; }
+  ul, ol { margin: 0 0 12px; padding-left: 20px; }
+  li { margin-bottom: 4px; }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0 18px;
+    font-size: 8.5pt;
+    page-break-inside: avoid;
+  }
+  th {
+    background: #0f766e;
+    color: #ffffff;
+    font-weight: 700;
+    text-align: left;
+    padding: 8px 10px;
+    border: 1px solid #0d9488;
+  }
+  td {
+    padding: 7px 10px;
+    border: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+  tr:nth-child(even) { background: #f8fafc; }
+
+  /* Callouts */
+  .callout {
+    background: #f0fdfa;
+    border-left: 4px solid #0d9488;
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    margin: 14px 0;
+    font-size: 9pt;
+  }
+  .callout-title {
+    font-weight: 700;
+    color: #0f766e;
+    margin-bottom: 4px;
+  }
+  .callout-warning {
+    background: #fffbeb;
+    border-left-color: #d97706;
+  }
+  .callout-warning .callout-title { color: #b45309; }
+
+  /* Code snippet */
+  code {
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 8.5pt;
+    background: #f1f5f9;
+    color: #0f172a;
+    padding: 2px 5px;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 6px;
+    font-size: 7.5pt;
+    font-weight: 700;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+  .badge-cyan { background: #e0f2fe; color: #0369a1; }
+  .badge-teal { background: #ccfbf1; color: #0f766e; }
+  .badge-amber { background: #fef3c7; color: #b45309; }
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<div class="cover">
+  <div class="brand-badge">WIT · WISDOM • INTEGRITY • TRUTH</div>
+  <h1>TÀI LIỆU ĐẶC TẢ CHI TIẾT 1:1<br><span>HỆ THỐNG & TÍNH NĂNG NỀN TẢNG</span></h1>
+  <div class="subtitle">
+    UniSynapse — Mạng Lưới Dữ Liệu & Tri Thức Học Thuật Phi Tập Trung Xác Thực Trên Solana Devnet
+  </div>
+
+  <div class="spec-box">
+    <h3>Thông Tin Nền Tảng & Môi Trường Hoạt Động</h3>
+    <div class="spec-grid">
+      <div><strong>Phiên bản:</strong> v1.0 Production Architecture</div>
+      <div><strong>Trạng thái:</strong> Đang hoạt động (Live Verified)</div>
+      <div><strong>Frontend Web Client:</strong> Next.js 16, React 19, Tailwind CSS</div>
+      <div><strong>Backend API:</strong> FastAPI, Python 3.12, Pydantic v2</div>
+      <div><strong>Cơ sở dữ liệu:</strong> PostgreSQL / SQLAlchemy 2.0 / Alembic</div>
+      <div><strong>Chuỗi khối (Blockchain):</strong> Solana Devnet, Wallet Adapter</div>
+      <div><strong>Website Khách hàng:</strong> https://unisynapse-web.netlify.app/</div>
+      <div><strong>Cổng Quản trị Admin:</strong> https://unisynapse-web.netlify.app/admin</div>
+    </div>
+  </div>
+</div>
+
+<!-- PHẦN 1 -->
+<h2 class="part-title">PHẦN I: TỔNG QUAN HỆ THỐNG & TRIẾT LÝ NỀN TẢNG</h2>
+<p>
+  <strong>UniSynapse</strong> (Logo: <strong>WIT</strong>) là một nền tảng tiên phong kết hợp giữa
+  <strong>Trí tuệ nhân tạo (AI)</strong>, <strong>Cơ chế đồng thuận phi tập trung (Decentralized Consensus)</strong> và
+  <strong>Công nghệ sổ cái Solana Blockchain</strong>. Hệ thống trao quyền cho sinh viên đại học cùng nhau học tập, số hóa giáo trình,
+  gán nhãn dữ liệu nghiên cứu và xây dựng một gia sư học thuật AI đáng tin cậy.
+</p>
+
+<h3 class="section-title">1.1 Bối cảnh & Vấn đề giải quyết</h3>
+<p>
+  Trong môi trường giáo dục đại học hiện đại, các tài liệu bài tập, slide và đề thi thường bị phân mảnh và thiếu kiểm định.
+  Mặt khác, các mô hình ngôn ngữ lớn (LLMs) phổ thông thường xuyên gặp hiện tượng <em>ảo giác (hallucination)</em> khi trả lời các bài toán
+  chuyên ngành phức tạp. UniSynapse giải quyết vấn đề này bằng cách tận dụng trí tuệ tập thể của chính sinh viên để gán nhãn,
+  thẩm định chéo tài liệu và neo giữ chứng minh trên chuỗi khối Solana.
+</p>
+
+<h3 class="section-title">1.2 Triết lý Thương hiệu WIT</h3>
+<ul>
+  <li><strong>Wisdom (Trí tuệ):</strong> Chắt lọc tri thức từ hàng nghìn bài tập, giáo trình và lời giải chất lượng cao của sinh viên.</li>
+  <li><strong>Integrity (Chính trực):</strong> Mọi dữ liệu đều phải vượt qua cơ chế đồng thuận tối thiểu 66% số phiếu của cộng đồng.</li>
+  <li><strong>Truth (Chân lý):</strong> Kết quả đã kiểm định được khắc vĩnh viễn vào sổ cái mật mã và công khai minh bạch on-chain.</li>
+</ul>
+
+<h3 class="section-title">1.3 Sơ đồ Kiến trúc Phân lớp (Layered Architecture)</h3>
+<table>
+  <thead>
+    <tr>
+      <th style="width: 22%;">Tầng Kiến Trúc</th>
+      <th style="width: 28%;">Công Nghệ Sử Dụng</th>
+      <th>Vai Trò & Chức Năng Cốt Lõi</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Client Presentation</strong></td>
+      <td>Next.js 16 (App Router), React 19, Tailwind CSS, TypeScript</td>
+      <td>Giao diện Web Client và Admin Console hiện đại, hỗ trợ Dark/Light Theme, co giãn 100% màn hình di động (Edge-to-Edge).</td>
+    </tr>
+    <tr>
+      <td><strong>API Gateway & Auth</strong></td>
+      <td>FastAPI, Uvicorn, JWT Bearer, Argon2id, CORS</td>
+      <td>Định tuyến RESTful API, bảo mật mật khẩu cấp độ cao, bảo vệ khóa quản trị riêng biệt, kiểm soát tốc độ (Rate Limit).</td>
+    </tr>
+    <tr>
+      <td><strong>Core Intelligence</strong></td>
+      <td>Consensus Engine, RAG Service, PyPDF, Ledger Service</td>
+      <td>Tính toán biểu quyết đồng thuận, cắt phân đoạn tài liệu (chunking), tìm kiếm ngữ cảnh tri thức, sinh trích dẫn tài liệu.</td>
+    </tr>
+    <tr>
+      <td><strong>Data Persistence</strong></td>
+      <td>PostgreSQL, SQLAlchemy 2.0, Alembic Migrations</td>
+      <td>Lưu trữ quan hệ: Người dùng, Bài tập, Lượt nộp, Tài liệu, Các đoạn tri thức, Sổ cái giao dịch, Bằng chứng mật mã.</td>
+    </tr>
+    <tr>
+      <td><strong>Blockchain Layer</strong></td>
+      <td>Solana Devnet, @solana/web3.js, Memo Program</td>
+      <td>Đổi điểm UniPoints sang SOL Devnet, ký giao dịch ví Web3 (Phantom, Solflare), neo giữ Root Hash on-chain.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- PHẦN 2 -->
+<h2 class="part-title">PHẦN II: CHI TIẾT 1:1 CÁC PHÂN HỆ VÀ TÍNH NĂNG WEB CLIENT</h2>
+
+<h3 class="section-title">2.1 Thanh điều hướng & Chỉ số mạng (Navbar & Realtime HUD)</h3>
+<ul>
+  <li><strong>Logo CyberCore WIT:</strong> Nút nhận diện thương hiệu phát sáng, bấm chuyển về màn hình Tổng quan.</li>
+  <li><strong>Trạng thái mạng Heartbeat:</strong> Đèn xanh nhấp nháy <code>TRẠNG THÁI MẠNG: ĐANG HOẠT ĐỘNG</code> kết nối trực tiếp với backend.</li>
+  <li><strong>Phím tắt Bảng lệnh (⌘ K):</strong> Mở nhanh thanh tìm kiếm và điều hướng tác vụ.</li>
+  <li><strong>Điểm thưởng UniPoints HUD:</strong> Huy hiệu <code>★ [Số điểm] UP</code> hiển thị theo thời gian thực từ database.</li>
+  <li><strong>Nút Ví Solana:</strong> Tích hợp Solana Wallet Adapter hỗ trợ kết nối ví Phantom, Solflare chỉ với 1 cú nhấp.</li>
+  <li><strong>Chuyển đổi giao diện Sáng/Tối:</strong> Lưu trạng thái lựa chọn người dùng vào LocalStorage và cập nhật thuộc tính <code>data-theme</code>.</li>
+  <li><strong>Thanh tab vuốt cảm ứng trên di động:</strong> 5 Tab (Tổng quan, Gán nhãn, Góp tài liệu, AI Tutor, Solana) được bọc trong container trượt mượt mà <code>touch-pan-x</code>.</li>
+</ul>
+
+<h3 class="section-title">2.2 Phân hệ Trang chủ & Bảng điều khiển (Overview Dashboard)</h3>
+<p>
+  Trang chủ cung cấp cái nhìn tổng quan về tình trạng mạng lưới học thuật:
+</p>
+<ul>
+  <li><strong>Hero Section:</strong> Khẩu hiệu hành động 'Học tập cùng nhau. Xác minh mọi điều.' và mô hình quỹ đạo hạt nhân 3D 'UH Live Network'.</li>
+  <li><strong>Lưới 4 thẻ chỉ số thời gian thực (Realtime Metrics):</strong>
+    <ul>
+      <li><em>Đóng góp của bạn:</em> Tổng số bài tập và tài liệu đã được ghi nhận trên sổ cái thật.</li>
+      <li><em>Điểm tri thức:</em> Chỉ số uy tín (Reputation Score) đại diện cho độ tin cậy của sinh viên.</li>
+      <li><em>Số dư UniPoints:</em> Điểm thưởng số dư khả dụng dùng để đổi SOL hoặc học tập.</li>
+      <li><em>Tài liệu đã nộp:</em> Số lượng giáo trình, slide bài giảng người dùng đã nạp lên kho dữ liệu.</li>
+    </ul>
+  </li>
+  <li><strong>Lưới Nhiệm vụ mở (Open Challenges Grid):</strong> Danh sách các bài tập đang chờ thẩm định kèm mức thưởng (+UP) và độ khó.</li>
+  <li><strong>Lộ trình học tập (Learning Tracks):</strong> Các tài liệu học tập đã được chia nhỏ thành các 'đoạn tri thức' (chunks) giúp học bài tuần tự.</li>
+  <li><strong>Nhật ký hoạt động mạng (Recent Activities):</strong> Danh sách biến động điểm và tiến trình duyệt file thời gian thực.</li>
+</ul>
+
+<h3 class="section-title">2.3 Phân hệ Gán nhãn & Kiểm định đồng thuận (Data Labeling)</h3>
+<p>
+  Nơi sinh viên trực tiếp tham gia thẩm định và dán nhãn dữ liệu học thuật:
+</p>
+<ul>
+  <li><strong>Thẻ hồ sơ sinh viên (Profile Card):</strong> Thể hiện cấp bậc học giả, tỷ lệ dán nhãn chính xác (Accuracy Rate) và thanh điểm uy tín.</li>
+  <li><strong>Đề bài chi tiết:</strong> Hiển thị câu hỏi học thuật, bài toán lập trình hoặc đoạn lý thuyết cần phân loại.</li>
+  <li><strong>Lựa chọn phân loại đa dạng:</strong> Phân loại dạng bài, Đánh giá độ rõ ràng của thuật toán, Phân tích phản hồi bài giảng...</li>
+  <li><strong>Giải thích khoa học:</strong> Trường nhập văn bản bắt buộc giải trình cơ sở chọn đáp án.</li>
+  <li><strong>Cơ chế đồng thuận tự động:</strong> Khi đạt đủ 3 phiếu bầu, nếu tỷ lệ chọn trùng nhau &ge; 66%, hệ thống tự động chốt đáp án và trả điểm thưởng ngay lập tức.</li>
+</ul>
+
+<h3 class="section-title">2.4 Phân hệ Góp tài liệu học thuật (Document Ingestion & Chunking)</h3>
+<ul>
+  <li><strong>Hỗ trợ đa định dạng:</strong> Tải lên tệp tin PDF, TXT, Markdown (.md), DOCX.</li>
+  <li><strong>Mã băm SHA-256 chống trùng lặp:</strong> Tự động tính hash tập tin ngay khi nhận, ngăn chặn việc tải lên trùng lặp tài liệu.</li>
+  <li><strong>Trích xuất văn bản thông minh (PyPDF):</strong> Phân tích cú pháp và trích xuất nội dung bài học.</li>
+  <li><strong>Cắt phân đoạn tri thức (Chunking with Overlap):</strong> Cắt tài liệu thành từng phần 500 - 1000 ký tự có độ gối đầu 100 ký tự để bảo toàn mạch văn cho AI Tutor.</li>
+  <li><strong>Theo dõi trạng thái:</strong> Hiển thị rõ tài liệu đang ở trạng thái <code>Đang xử lý</code>, <code>Đã duyệt</code> hay <code>Từ chối</code>.</li>
+</ul>
+
+<h3 class="section-title">2.5 Phân hệ Gia sư AI học thuật (AI Tutor Chat with RAG)</h3>
+<ul>
+  <li><strong>Hỏi đáp chuyên ngành thời gian thực:</strong> Trả lời các câu hỏi về Thuật toán, Cấu trúc dữ liệu, Đại số, Mạng máy tính...</li>
+  <li><strong>Tìm kiếm ngữ cảnh RAG (Retrieval-Augmented Generation):</strong> Truy xuất dữ liệu từ các đoạn tài liệu sinh viên đã tải lên.</li>
+  <li><strong>Trích dẫn nguồn sách minh bạch:</strong> Cuối mỗi câu trả lời đều ghi rõ: Tên giáo trình và đoạn trích làm căn cứ.</li>
+  <li><strong>Bộ lọc chống ảo giác (Hallucination Guardrail):</strong> Từ chối trả lời nếu không có tài liệu học thuật kiểm chứng trong hệ thống.</li>
+</ul>
+
+<h3 class="section-title">2.6 Phân hệ Solana & Khám phá Sổ cái (Ledger & Proof Explorer)</h3>
+<ul>
+  <li><strong>Quy đổi UniPoints sang SOL Devnet:</strong> Chuyển đổi điểm thưởng tích lũy trong học tập thành tiền điện tử SOL thật trên mạng thử nghiệm Devnet.</li>
+  <li><strong>Ký giao dịch qua ví Web3:</strong> Tương tác trực tiếp với ví Phantom/Solflare thông qua chữ ký số Ed25519.</li>
+  <li><strong>Bảng tra cứu Sổ cái mật mã:</strong> Hiển thị Transaction ID, lý do thưởng, điểm số biến động (+/- UP) và trạng thái Proof on-chain.</li>
+  <li><strong>Liên kết trực tiếp Solana Explorer:</strong> Nhấp vào mã giao dịch để kiểm tra khối và chữ ký trên <code>explorer.solana.com</code>.</li>
+</ul>
+
+<!-- PHẦN 3 -->
+<h2 class="part-title">PHẦN III: CHI TIẾT 1:1 CỔNG QUẢN TRỊ BẢO MẬT RIÊNG BIỆT (ADMIN CONSOLE)</h2>
+
+<div class="callout callout-warning">
+  <div class="callout-title">KIẾN TRÚC BẢO MẬT TÁCH BIỆT MÁY KHÁCH</div>
+  Cổng quản trị <code>/admin</code> được cách ly hoàn toàn khỏi logic của trang web thông thường. Khóa bảo mật <code>ADMIN_SECURITY_KEY</code> được bảo vệ nghiêm ngặt trong tệp tin môi trường <code>.env</code> phía máy chủ Backend và tuyệt đối không bao giờ được gửi về máy khách.
+</div>
+
+<h3 class="section-title">3.1 Màn hình khóa lá chắn (Lockscreen Shield)</h3>
+<p>
+  Bất kỳ yêu cầu truy cập nào vào đường dẫn <code>/admin</code> đều bị chặn bởi màn hình khóa bảo mật CyberCore Shield.
+  Người quản trị phải nhập đúng Khóa Bảo Mật (Secret Security Key). Khóa này được gửi tới API Backend <code>/api/v1/admin/verify</code>
+  để thẩm định đối chiếu bằng thuật toán bảo mật trước khi mở khóa giao diện quản trị.
+</p>
+
+<h3 class="section-title">3.2 Quản trị Người dùng toàn diện (Users CRUD)</h3>
+<ul>
+  <li><strong>Xem danh sách & Tìm kiếm:</strong> Tra cứu tài khoản theo tên, email, xem số dư UniPoints, Reputation và Vai trò.</li>
+  <li><strong>Thêm tài khoản:</strong> Tạo thủ công tài khoản quản trị viên phụ, kiểm duyệt viên hoặc sinh viên danh dự.</li>
+  <li><strong>Chỉnh sửa thông tin:</strong> Tăng/giảm điểm UniPoints, cập nhật điểm Reputation, đổi vai trò (Role: <code>admin</code>, <code>student</code>, <code>moderator</code>).</li>
+  <li><strong>Đặt lại mật khẩu:</strong> Khởi tạo lại mật khẩu mới an toàn cho sinh viên.</li>
+  <li><strong>Xóa tài khoản:</strong> Xóa bỏ vĩnh viễn các tài khoản gian lận hoặc spam hệ thống.</li>
+</ul>
+
+<h3 class="section-title">3.3 Quản trị Nhiệm vụ & Bài tập (Tasks CRUD)</h3>
+<ul>
+  <li><strong>Tạo nhiệm vụ mới:</strong> Nhập tiêu đề, thể loại bài tập, nội dung câu hỏi và các nhãn đáp án yêu cầu.</li>
+  <li><strong>Cấu hình đồng thuận:</strong> Thiết lập số phiếu bầu tối thiểu cần đạt (<code>required_votes</code>) và mức thưởng điểm UniPoints (<code>reward_points</code>).</li>
+  <li><strong>Chỉnh sửa & Xóa bài tập:</strong> Điều chỉnh nội dung đề bài hoặc xóa bài tập đã hết hạn.</li>
+</ul>
+
+<h3 class="section-title">3.4 Quản trị Tài liệu học thuật (Documents CRUD)</h3>
+<ul>
+  <li><strong>Danh sách kiểm duyệt:</strong> Xem toàn bộ giáo trình cộng đồng đã nộp kèm dung lượng và mã băm SHA-256.</li>
+  <li><strong>Phê duyệt (Approve):</strong> Đưa tài liệu vào trạng thái hoạt động chính thức để gia sư AI Tutor sử dụng.</li>
+  <li><strong>Từ chối (Reject):</strong> Bác bỏ tài liệu sai lệch hoặc không đạt chuẩn kèm lý do phản hồi.</li>
+  <li><strong>Trình xem đoạn tri thức (Chunks Viewer):</strong> Xem chi tiết từng mảnh văn bản được trích xuất từ tài liệu.</li>
+</ul>
+
+<h3 class="section-title">3.5 Quản trị Sổ cái & Dòng tiền (Ledger CRUD)</h3>
+<ul>
+  <li><strong>Kiểm soát dòng tiền:</strong> Theo dõi toàn bộ lịch sử biến động điểm thưởng UniPoints trong hệ sinh thái.</li>
+  <li><strong>Tạo giao dịch thủ công:</strong> Thưởng điểm đặc cách cho sinh viên có thành tích xuất sắc hoặc phạt trừ điểm vi phạm.</li>
+  <li><strong>Hủy giao dịch sai sót:</strong> Thu hồi giao dịch lỗi bảo đảm tính toàn vẹn của sổ cái.</li>
+</ul>
+
+<h3 class="section-title">3.6 Giám sát Hệ thống & Thống kê viễn đo lường (Telemetry & Status)</h3>
+<p>
+  Bảng điều khiển sức khỏe hệ thống hiển thị trực tiếp các thông số:
+  Tổng số người dùng đăng ký, Tổng số nhiệm vụ đang hoạt động, Tỷ lệ đồng thuận trung bình toàn mạng, Độ trễ kết nối cơ sở dữ liệu PostgreSQL và Trạng thái mạng Solana Devnet RPC.
+</p>
+
+<!-- PHẦN 4 -->
+<h2 class="part-title">PHẦN IV: ĐẶC TẢ KIẾN TRÚC BACKEND, DATABASE & SOLANA BLOCKCHAIN</h2>
+
+<h3 class="section-title">4.1 Mô hình Dữ liệu quan hệ (PostgreSQL / SQLAlchemy Models)</h3>
+<table>
+  <thead>
+    <tr>
+      <th style="width: 22%;">Bảng (Table)</th>
+      <th style="width: 38%;">Trường Dữ Liệu Chính</th>
+      <th>Mô Tả Nghiệp Vụ</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>users</code></td>
+      <td>id, username, email, hashed_password, role, unipoints, reputation, created_at</td>
+      <td>Lưu hồ sơ sinh viên, mật khẩu băm Argon2, số dư điểm thưởng và chỉ số uy tín.</td>
+    </tr>
+    <tr>
+      <td><code>tasks</code></td>
+      <td>id, title, description, category, domain, reward_points, required_votes, status</td>
+      <td>Các bài tập cần gán nhãn, tiến độ phiếu bầu và trạng thái đồng thuận.</td>
+    </tr>
+    <tr>
+      <td><code>submissions</code></td>
+      <td>id, task_id, user_id, label, explanation, status, created_at</td>
+      <td>Bài nộp thẩm định của sinh viên cho một nhiệm vụ cụ thể.</td>
+    </tr>
+    <tr>
+      <td><code>documents</code></td>
+      <td>id, original_name, stored_path, content_hash, size_bytes, chunk_count, status</td>
+      <td>Tài liệu giáo trình, mã hash SHA-256 chống trùng lặp.</td>
+    </tr>
+    <tr>
+      <td><code>document_chunks</code></td>
+      <td>id, document_id, chunk_index, content, token_count, created_at</td>
+      <td>Các mảnh văn bản đã được cắt nhỏ phục vụ tìm kiếm ngữ cảnh cho AI Tutor.</td>
+    </tr>
+    <tr>
+      <td><code>ledger_entries</code></td>
+      <td>id, user_id, delta, reason, proof_hash, proof_status, created_at</td>
+      <td>Sổ cái giao dịch bất biến (Append-only) phục vụ kiểm toán minh bạch.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 class="section-title">4.2 Danh mục RESTful API Endpoints 1:1</h3>
+<table>
+  <thead>
+    <tr>
+      <th style="width: 32%;">API Endpoint</th>
+      <th style="width: 28%;">Tham Số Truyền Vào</th>
+      <th>Chức Năng Nghiệp Vụ</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>POST /api/v1/auth/register</code></td>
+      <td>username, email, password</td>
+      <td>Đăng ký tài khoản sinh viên mới, băm mật khẩu bằng Argon2id.</td>
+    </tr>
+    <tr>
+      <td><code>POST /api/v1/auth/login</code></td>
+      <td>username, password</td>
+      <td>Đăng nhập và cấp phát JWT Access Token an toàn.</td>
+    </tr>
+    <tr>
+      <td><code>GET /api/v1/auth/me</code></td>
+      <td>Bearer JWT Token</td>
+      <td>Lấy thông tin tài khoản hiện tại, số dư điểm và quyền hạn.</td>
+    </tr>
+    <tr>
+      <td><code>GET /api/v1/tasks</code></td>
+      <td>status, category, limit, offset</td>
+      <td>Danh sách bài tập mở kèm trạng thái và số phiếu bầu hiện tại.</td>
+    </tr>
+    <tr>
+      <td><code>POST /api/v1/tasks/{id}/submit</code></td>
+      <td>label, explanation</td>
+      <td>Gửi bài gán nhãn và kích hoạt thuật toán đồng thuận sinh viên.</td>
+    </tr>
+    <tr>
+      <td><code>POST /api/v1/documents/upload</code></td>
+      <td>File (PDF/TXT/MD)</td>
+      <td>Tải lên tài liệu, băm SHA-256 và cắt phân đoạn tri thức (chunks).</td>
+    </tr>
+    <tr>
+      <td><code>POST /api/v1/tutor/chat</code></td>
+      <td>query, conversation_history</td>
+      <td>Gửi câu hỏi cho AI Tutor, tìm kiếm RAG và trích dẫn giáo trình gốc.</td>
+    </tr>
+    <tr>
+      <td><code>POST /api/v1/rewards/convert</code></td>
+      <td>amount_unipoints, wallet_address</td>
+      <td>Quy đổi điểm UniPoints sang SOL trên mạng Solana Devnet.</td>
+    </tr>
+    <tr>
+      <td><code>POST /api/v1/admin/verify</code></td>
+      <td>security_key</td>
+      <td>Xác thực khóa quản trị viên bí mật từ biến môi trường máy chủ.</td>
+    </tr>
+    <tr>
+      <td><code>GET/POST/PUT/DEL /api/v1/admin/*</code></td>
+      <td>Admin Session + Request Body</td>
+      <td>Bộ API CRUD quản lý toàn diện Người dùng, Bài tập, Tài liệu, Sổ cái.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- PHẦN 5 -->
+<h2 class="part-title">PHẦN V: THIẾT KẾ GIAO DIỆN & TỐI ƯU HÓA ĐA NỀN TẢNG</h2>
+
+<h3 class="section-title">5.1 Thiết kế Thẩm mỹ Cao cấp (Aesthetic Design Tokens)</h3>
+<p>
+  Giao diện UniSynapse được thiết kế theo trường phái CyberCore hiện đại với hệ màu Tailored HSL:
+  Nền tối <code>#030712</code> kết hợp quầng sáng Cyan <code>#68E8DF</code>, Deep Teal <code>#0F766E</code> và Paper White <code>#F8FAFC</code>.
+  Các bảng điều khiển ứng dụng kỹ thuật kính mờ (Glassmorphism) với đường viền siêu mảnh, tạo cảm giác sang trọng và đẳng cấp quốc tế.
+</p>
+
+<h3 class="section-title">5.2 Tối ưu hóa 100% Màn hình Di động (Edge-to-Edge)</h3>
+<p>
+  Giao diện đã được tinh chỉnh toàn diện để loại bỏ triệt để hiện tượng thừa khoảng trống bên phải trên điện thoại:
+</p>
+<ul>
+  <li><strong>Cắt cúp quầng sáng nền (Overflow-x Clip):</strong> Áp dụng <code>overflow-x: clip;</code> trên <code>html</code>, <code>body</code> và <code>.client-shell</code>, ngăn chặn quầng sáng 440px đẩy dạt canvas ra ngoài màn hình.</li>
+  <li><strong>Khai báo Viewport Next.js chuẩn:</strong> Xuất cấu hình <code>viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' }</code> giúp trình duyệt di động render chính xác tỷ lệ 1:1.</li>
+  <li><strong>Kéo giãn tràn viền tự nhiên (Edge-to-Edge):</strong> Hero card, thẻ số liệu, thẻ bài tập và các nút bấm tự động co giãn 100% chiều ngang màn hình với khoảng đệm hai bên cân xứng (14px).</li>
+  <li><strong>Thanh tab vuốt ngang độc lập:</strong> Áp dụng thuộc tính <code>touch-pan-x</code> và <code>shrink-0</code> giúp cuộn vuốt mượt mà mà không ảnh hưởng tới bố cục trang.</li>
+</ul>
+
+<h3 class="section-title">5.3 Triển khai Đám mây & CI/CD (Netlify & Server)</h3>
+<p>
+  Mã nguồn được duy trì đồng bộ trên cả hai remote kho mã nguồn Git: <code>origin</code> và <code>netlify-origin</code>.
+  Mỗi lần đẩy mã nguồn mới (git push), hệ thống Netlify tự động kích hoạt tiến trình Build & Deploy, kiểm thử kiểu tĩnh (TypeScript Typecheck)
+  và phân phối trang web lên mạng lưới máy chủ CDN toàn cầu với thời gian tải trang dưới 1 giây.
+</p>
+
+<div class="callout" style="margin-top: 30px;">
+  <div class="callout-title">KẾT LUẬN & ĐÁNH GIÁ NỀN TẢNG</div>
+  UniSynapse không chỉ là một trang web thông thường, mà là một hệ sinh thái học thuật hoàn chỉnh kết hợp giữa 
+  <strong>Web3</strong>, <strong>Cơ sở dữ liệu lớn</strong>, <strong>Trí tuệ nhân tạo RAG</strong> và <strong>Cơ chế đồng thuận tập thể</strong>. 
+  Mọi tính năng từ giao diện người dùng đến các API quản trị cấp thấp đều đã được xây dựng, kiểm thử thực tế và sẵn sàng cho môi trường ứng dụng thực tế.
+</div>
+
+</body>
+</html>

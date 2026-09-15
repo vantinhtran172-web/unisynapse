@@ -107,8 +107,10 @@ export default function AITutorChat() {
       {/* Header */}
       <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-100/90 dark:bg-slate-800/60 flex justify-between items-center transition-colors">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 flex items-center justify-center shadow-md shadow-purple-500/20">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M12 2a2 2 0 0 1 2 2c-.11 1.83.33 3.53 1.25 5H19a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-1.3c-.93 1.47-1.36 3.17-1.25 5a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2c.11-1.83-.33-3.53-1.25-5H3a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1.3c.93-1.47 1.36-3.17 1.25-5a2 2 0 0 1 2-2h4Z"/><path d="M12 18v4"/><path d="M8 22h8"/><path d="M15 11h.01"/><path d="M9 11h.01"/></svg>
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-600 to-indigo-600 p-[1px] shadow-sm flex-shrink-0">
+            <div className="w-full h-full bg-slate-900 rounded-xl flex items-center justify-center font-black text-cyan-400 text-[10px]">
+              WIT
+            </div>
           </div>
           <div>
             <div className="flex items-center gap-2">

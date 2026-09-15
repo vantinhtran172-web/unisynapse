@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { useAppState } from "@/context/AppStateContext";
 
 function translateRegisterError(cause: unknown): string {
   const raw = cause instanceof Error ? cause.message : String(cause || "");
@@ -18,7 +19,9 @@ function translateRegisterError(cause: unknown): string {
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { refreshState } = useAppState();
   const [busy, setBusy] = useState(false);
+  const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -42,12 +45,15 @@ export default function RegisterPage() {
     setError("");
     try {
       await api.register(username, password);
-      router.replace("/");
-      router.refresh();
+      setSuccess(true);
+      try {
+        await refreshState();
+      } catch {}
+      window.location.href = "/";
     } catch (cause) {
       setError(translateRegisterError(cause));
-    } finally {
       setBusy(false);
+      setSuccess(false);
     }
   }
 
@@ -128,8 +134,8 @@ export default function RegisterPage() {
                 />
               </p>
               {error && <p role="alert" style={{ color: "#ef4444", fontSize: "0.875rem" }}>{error}</p>}
-              <button id="register-submit" className="primary-action" disabled={busy}>
-                {busy ? "Đang tạo tài khoản…" : "Tạo tài khoản →"}
+              <button id="register-submit" type="submit" className="primary-action" disabled={busy}>
+                {busy ? "Đang tạo tài khoản…" : success ? "Đăng ký thành công! Đang vào hệ thống…" : "Tạo tài khoản →"}
               </button>
             </form>
 

@@ -4,11 +4,12 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { useAppState } from "@/context/AppStateContext";
 
 function translateError(cause: unknown): string {
   const raw = cause instanceof Error ? cause.message : String(cause || "");
   if (raw.includes("Invalid member credentials")) {
-    return "Tên tài khoản hoặc mật khẩu không chính xác. Bạn có thể sử dụng nút Đăng nhập Demo bên dưới.";
+    return "Tên tài khoản hoặc mật khẩu không chính xác. Bạn có thể bấm nút Đăng nhập Demo 1-Click bên dưới.";
   }
   if (raw.includes("Too many login attempts")) {
     return "Bạn đã thử đăng nhập quá nhiều lần. Vui lòng đợi trong giây lát rồi thử lại.";
@@ -21,9 +22,11 @@ function translateError(cause: unknown): string {
 
 export default function LoginPage() {
   const router = useRouter();
+  const { refreshState } = useAppState();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
 
   async function performLogin(user: string, pass: string) {
@@ -32,12 +35,17 @@ export default function LoginPage() {
     try {
       await api.login(user, pass);
       await api.getMe();
-      router.replace("/");
-      router.refresh();
+      setSuccess(true);
+      try {
+        await refreshState();
+      } catch {
+        // Proceed with navigation
+      }
+      window.location.href = "/";
     } catch (cause) {
       setError(translateError(cause));
-    } finally {
       setBusy(false);
+      setSuccess(false);
     }
   }
 
@@ -116,8 +124,8 @@ export default function LoginPage() {
                 />
               </p>
               {error && <p role="alert" style={{ color: "#ef4444", fontSize: "0.875rem" }}>{error}</p>}
-              <button id="login-submit" className="primary-action" disabled={busy}>
-                {busy ? "Đang đăng nhập…" : "Đăng nhập →"}
+              <button id="login-submit" type="submit" className="primary-action" disabled={busy}>
+                {busy ? "Đang xác thực và đăng nhập…" : success ? "Đăng nhập thành công! Đang vào hệ thống…" : "Đăng nhập →"}
               </button>
             </form>
 

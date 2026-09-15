@@ -23,9 +23,14 @@ async def lifespan(app: FastAPI):
     validate_runtime_config()
     if not DATABASE_URL.startswith(("postgresql://", "postgresql+psycopg://")):
         init_db()
-    if os.getenv("SEED_PUBLIC_DEMO", "0") == "1":
-        from .scripts.seed_demo_public import main as seed_public_demo
-        seed_public_demo()
+    if os.getenv("SEED_PUBLIC_DEMO", "1") == "1":
+        try:
+            from .scripts.seed_demo_public import ensure_demo_user, main as seed_public_demo
+            ensure_demo_user()
+            seed_public_demo()
+        except Exception as err:
+            import logging
+            logging.getLogger("uvicorn.error").warning("Demo seed skipped or failed: %s", err)
     yield
     # Shutdown
 
@@ -88,7 +93,7 @@ async def add_request_id(request: Request, call_next):
             generate_csrf_token(),
             httponly=False,
             secure=COOKIE_SECURE,
-            samesite="strict",
+            samesite="lax",
             path="/",
         )
     response.headers["X-Request-ID"] = request_id

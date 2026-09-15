@@ -226,7 +226,7 @@ def set_session_cookie(response: Response, token: str) -> None:
         max_age=_SESSION_TTL,
         httponly=True,
         secure=os.getenv("COOKIE_SECURE", "0") == "1",
-        samesite="strict",
+        samesite="lax",
         path="/",
     )
 
@@ -238,7 +238,7 @@ def set_member_session_cookie(response: Response, token: str) -> None:
         max_age=_SESSION_TTL,
         httponly=True,
         secure=os.getenv("COOKIE_SECURE", "0") == "1",
-        samesite="strict",
+        samesite="lax",
         path="/",
     )
 

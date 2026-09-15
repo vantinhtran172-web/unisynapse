@@ -78,7 +78,13 @@ export default function WalletPage() {
   finally{lock.current=false;setBusy(false);}
  }
  return <main className={styles.shell}><section className={styles.card}>
- <Link href="/">← UniSynapse</Link><span className={styles.badge}>SOLANA DEVNET · KHÔNG CÓ GIÁ TRỊ TIỀN THẬT</span>
+  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+      <div style={{ width: "28px", height: "28px", borderRadius: "6px", background: "#030712", border: "1px solid #06b6d4", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "#22d3ee", fontSize: "10px" }}>WIT</div>
+      <Link href="/" style={{ color: "#06b6d4", textDecoration: "none", fontWeight: 700, fontSize: "0.875rem" }}>← UniSynapse</Link>
+    </div>
+    <span className={styles.badge}>SOLANA DEVNET · KHÔNG CÓ GIÁ TRỊ TIỀN THẬT</span>
+  </div>
  <h1>Đổi SOL thành<br/><em>UniPoints.</em></h1><p>Nạp SOL Devnet để nhận điểm dùng cho AI. Bạn cũng có thể chuyển SOL thử nghiệm tới ví khác. Không sử dụng Mainnet.</p>
  <button id="wallet-connect" disabled={busy||authenticating} onClick={()=>setVisible(true)}>Chọn / kết nối Phantom</button>
  <p className={styles.address}>{wallet.publicKey?.toBase58()||"Chưa kết nối ví"}</p>
