@@ -55,13 +55,6 @@ export default function LoginPage() {
     await performLogin(username, password);
   }
 
-  async function handleDemoLogin() {
-    if (busy) return;
-    setUsername("sinhvien_demo");
-    setPassword("UniSynapse@2026");
-    await performLogin("sinhvien_demo", "UniSynapse@2026");
-  }
-
   return (
     <main className="client-shell">
       <div className="client-container">
@@ -106,7 +99,7 @@ export default function LoginPage() {
                   name="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Ví dụ: sinhvien_demo"
+                  placeholder="Nhập tên tài khoản"
                   required
                   autoComplete="username"
                 />
@@ -129,31 +122,7 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <div style={{
-              marginTop: "1.5rem",
-              padding: "1rem",
-              background: "rgba(6, 182, 212, 0.08)",
-              borderRadius: "0.75rem",
-              border: "1px solid rgba(6, 182, 212, 0.25)"
-            }}>
-              <p style={{ margin: "0 0 0.35rem 0", fontWeight: 600, fontSize: "0.875rem", color: "#38bdf8" }}>
-                💡 Tài khoản mẫu dùng thử (Demo):
-              </p>
-              <p style={{ margin: "0 0 0.75rem 0", fontSize: "0.8125rem", color: "#94a3b8" }}>
-                Tài khoản: <strong style={{ color: "#f8fafc" }}>sinhvien_demo</strong> · Mật khẩu: <strong style={{ color: "#f8fafc" }}>UniSynapse@2026</strong>
-              </p>
-              <button
-                type="button"
-                className="secondary-action"
-                disabled={busy}
-                onClick={handleDemoLogin}
-                style={{ width: "100%", fontSize: "0.8125rem", padding: "0.5rem" }}
-              >
-                ⚡ 1-Click: Đăng nhập tài khoản Demo
-              </button>
-            </div>
-
-            <p className="note" style={{ marginTop: "1rem" }}>
+            <p className="note" style={{ marginTop: "1.5rem" }}>
               Chưa có tài khoản? <Link href="/dang-ky">Tạo tài khoản mới</Link>
             </p>
           </div>
