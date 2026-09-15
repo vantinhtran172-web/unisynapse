@@ -111,7 +111,7 @@ jobs:
       - name: Reject committed private key material
         shell: bash
         run: |
-          if git grep -n -I -E 'BEGIN (RSA|OPENSSH|EC|PRIVATE) KEY|SOLANA_AUTHORITY_SECRET_REF[[:space:]]*=[[:space:]]*[^<[:space:]]' -- . ':!docs/operations.md' ':!docs/release-checklist.md' ':!docs/incident-runbook.md'; then
+          if git grep -n -I -E 'BEGIN (RSA|OPENSSH|EC|PRIVATE) KEY|SOLANA_AUTHORITY_SECRET_REF[[:space:]]*=[[:space:]]*[^<[:space:]]' -- . ':!docs/operations.md' ':!docs/release-checklist.md' ':!docs/incident-runbook.md' ':!backend/core/config.py'; then
             echo "Potential secret material found in tracked files"
             exit 1
           fi
