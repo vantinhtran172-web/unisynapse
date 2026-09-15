@@ -1,3 +1,4 @@
+import os
 import uuid
 from contextlib import asynccontextmanager
 
@@ -22,6 +23,9 @@ async def lifespan(app: FastAPI):
     validate_runtime_config()
     if not DATABASE_URL.startswith(("postgresql://", "postgresql+psycopg://")):
         init_db()
+    if os.getenv("SEED_PUBLIC_DEMO", "0") == "1":
+        from .scripts.seed_demo_public import main as seed_public_demo
+        seed_public_demo()
     yield
     # Shutdown
 
