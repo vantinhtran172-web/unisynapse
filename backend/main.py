@@ -68,17 +68,28 @@ async def add_request_id(request: Request, call_next):
                 )
 
         if response is None and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
-            session_cookie = request.cookies.get("unisynapse_member_session") or request.cookies.get(
-                "unisynapse_admin_session"
+            has_admin_key_header = bool(
+                request.headers.get("X-Admin-Security-Key")
+                or request.headers.get("x-admin-security-key")
+                or request.headers.get("x-admin-key")
             )
-            if session_cookie:
-                csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME)
-                csrf_header = request.headers.get(CSRF_HEADER_NAME)
-                if not token_matches(csrf_cookie, csrf_header):
-                    response = JSONResponse(
-                        status_code=403,
-                        content={"detail": "CSRF token missing or invalid", "request_id": request_id},
+            is_admin_key_verify = request.url.path == "/api/v1/admin/verify-key"
+
+            if not has_admin_key_header and not is_admin_key_verify:
+                if request.url.path.startswith("/api/v1/admin"):
+                    session_cookie = request.cookies.get("unisynapse_admin_session")
+                else:
+                    session_cookie = request.cookies.get("unisynapse_member_session") or request.cookies.get(
+                        "unisynapse_admin_session"
                     )
+                if session_cookie:
+                    csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME)
+                    csrf_header = request.headers.get(CSRF_HEADER_NAME)
+                    if not token_matches(csrf_cookie, csrf_header):
+                        response = JSONResponse(
+                            status_code=403,
+                            content={"detail": "CSRF token missing or invalid", "request_id": request_id},
+                        )
 
         if response is None:
             response = await call_next(request)

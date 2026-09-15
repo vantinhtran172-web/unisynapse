@@ -206,12 +206,22 @@ export default function OnlineAdminPage() {
     setTimeout(() => setNotification(null), 4500);
   };
 
+  const getCsrfHeader = (): Record<string, string> => {
+    if (typeof document === "undefined") return {};
+    const token = document.cookie
+      .split("; ")
+      .find((part) => part.startsWith("unisynapse_csrf="))
+      ?.split("=")[1];
+    return token ? { "X-CSRF-Token": decodeURIComponent(token) } : {};
+  };
+
   // Helper fetch with X-Admin-Security-Key header
   const adminRequest = useCallback(async (path: string, options: RequestInit = {}) => {
     const cleanBase = apiBase.replace(/\/+$/, "");
     const url = `${cleanBase}${path}`;
     const headers = new Headers(options.headers || {});
     headers.set("X-Admin-Security-Key", securityKey);
+    Object.entries(getCsrfHeader()).forEach(([k, v]) => headers.set(k, v));
     if (options.body && !(options.body instanceof FormData)) {
       headers.set("Content-Type", "application/json");
     }
@@ -253,6 +263,7 @@ export default function OnlineAdminPage() {
         headers: {
           "Content-Type": "application/json",
           "X-Admin-Security-Key": keyToTest,
+          ...getCsrfHeader(),
         },
         credentials: "include"
       });
