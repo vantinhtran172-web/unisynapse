@@ -54,7 +54,6 @@ def create_wallet_challenge(wallet_address: str) -> dict[str, str | int]:
 def verify_wallet_challenge(wallet_address: str, nonce: str, message: str, signature: str) -> bool:
     address = wallet_address.strip()
     now = int(time.time())
-    expected_message = None
     with get_db() as conn:
         challenge = conn.execute(
             "SELECT wallet_address, issued_at, expires_at, consumed_at "
@@ -66,13 +65,28 @@ def verify_wallet_challenge(wallet_address: str, nonce: str, message: str, signa
         if challenge["consumed_at"] is not None or challenge["expires_at"] < now:
             return False
         expected_message = _wallet_message(address, nonce, int(challenge["issued_at"]))
-        if message != expected_message:
+
+        norm_msg = message.replace("\r\n", "\n").strip()
+        norm_expected = expected_message.replace("\r\n", "\n").strip()
+        if norm_msg != norm_expected:
             return False
+
         try:
             public_key = VerifyKey(base58.b58decode(address))
-            public_key.verify(message.encode("utf-8"), base58.b58decode(signature))
+            sig_bytes = base58.b58decode(signature)
+            verified = False
+            for m in (message.encode("utf-8"), norm_msg.encode("utf-8"), expected_message.encode("utf-8")):
+                try:
+                    public_key.verify(m, sig_bytes)
+                    verified = True
+                    break
+                except BadSignatureError:
+                    continue
+            if not verified:
+                return False
         except (ValueError, TypeError, BadSignatureError):
             return False
+
         updated = conn.execute(
             "UPDATE wallet_challenges SET consumed_at = ? "
             "WHERE nonce = ? AND consumed_at IS NULL AND expires_at >= ?",
@@ -203,8 +217,15 @@ def require_admin_session(
 
 
 def require_member_session(session: Optional[str] = Cookie(None, alias=_MEMBER_SESSION_COOKIE)) -> dict:
-    if not session:
+    user = get_optional_member_session(session)
+    if not user:
         raise HTTPException(status_code=401, detail="Member authentication required")
+    return user
+
+
+def get_optional_member_session(session: Optional[str] = Cookie(None, alias=_MEMBER_SESSION_COOKIE)) -> Optional[dict]:
+    if not session:
+        return None
     token_hash = hashlib.sha256(session.encode()).hexdigest()
     now = time.time()
     with get_db() as conn:
@@ -215,7 +236,7 @@ def require_member_session(session: Optional[str] = Cookie(None, alias=_MEMBER_S
             (token_hash, now),
         ).fetchone()
     if not row:
-        raise HTTPException(status_code=401, detail="Invalid or expired member session")
+        return None
     return dict(row)
 
 

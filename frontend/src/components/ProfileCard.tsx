@@ -101,16 +101,7 @@ export default function ProfileCard() {
 
         {/* Action button based on auth & wallet status */}
         <div className="flex items-center gap-2 self-start sm:self-center">
-          {!user ? (
-            <div className="flex items-center gap-2">
-              <Link 
-                href="/dang-nhap" 
-                className="btn-cyber-primary text-xs py-1.5 px-3 font-bold"
-              >
-                Đăng nhập để liên kết ví
-              </Link>
-            </div>
-          ) : user.address ? (
+          {user?.address ? (
             <button
               onClick={handleUnlink}
               disabled={unlinking}
@@ -125,7 +116,7 @@ export default function ProfileCard() {
               disabled={isVerifying}
               className="btn-cyber-primary text-xs py-1.5 px-3 font-bold"
             >
-              {isVerifying ? "Đang ký message…" : `Ký liên kết ví (${publicKey.toBase58().slice(0, 4)}...)`}
+              {isVerifying ? "Đang ký message…" : user ? `Ký liên kết ví (${publicKey.toBase58().slice(0, 4)}...)` : `Ký đăng nhập ví (${publicKey.toBase58().slice(0, 4)}...)`}
             </button>
           ) : (
             <button

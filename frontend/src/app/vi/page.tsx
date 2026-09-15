@@ -134,24 +134,10 @@ export default function WalletPage() {
   }
 
   function handleConnectWalletClick() {
-    if (!user) {
-      setMessage("Ràng buộc bảo mật: Bạn cần đăng nhập tài khoản sinh viên trước khi kết nối ví Phantom.");
-      if (confirm("Bạn cần đăng nhập tài khoản UniSynapse trước khi liên kết ví Phantom. Đến trang Đăng nhập ngay?")) {
-        router.push("/dang-nhap");
-      }
-      return;
-    }
     setVisible(true);
   }
 
   async function authenticateWallet() {
-    if (!user) {
-      setMessage("Ràng buộc bảo mật: Cần đăng nhập tài khoản trước khi liên kết ví Phantom.");
-      if (confirm("Đến trang Đăng nhập ngay?")) {
-        router.push("/dang-nhap");
-      }
-      return;
-    }
     if (!wallet.publicKey) {
       setMessage("Hãy kết nối Phantom trước khi xác thực ví.");
       setVisible(true);
@@ -169,11 +155,11 @@ export default function WalletPage() {
       const signed = await wallet.signMessage(new TextEncoder().encode(challenge.message));
       await api.verifyWallet(address, challenge.nonce, challenge.message, bs58.encode(signed));
       setWalletAuthenticated(true);
+      await refreshState();
       const profile = await api.getMe();
       setPoints(profile.unipoints);
       recoveryKey.current = `unisynapse:deposit:${profile.id}`;
-      setMessage("✓ Đã xác thực đúng ví thành công. Bạn có thể nạp SOL đổi UniPoints ngay!");
-      await refreshState();
+      setMessage("✓ Đã xác thực ví thành công! Bạn có thể nạp SOL đổi UniPoints ngay.");
     } catch (e) {
       setWalletAuthenticated(false);
       setMessage(e instanceof Error ? e.message : "Xác thực ví thất bại. Hãy thử lại.");
@@ -536,9 +522,9 @@ export default function WalletPage() {
         </div>
 
         {!user && (
-          <div style={{ padding: "0.75rem 1rem", borderRadius: "8px", background: "rgba(245, 158, 11, 0.15)", border: "1px solid rgba(245, 158, 11, 0.4)", color: "#f59e0b", margin: "1rem 0", fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
-            <span>🔒 <strong>Ràng buộc bảo mật:</strong> Cần có tài khoản sinh viên và đăng nhập trước khi liên kết ví Phantom và nạp UniPoints.</span>
-            <Link href="/dang-nhap" style={{ color: "#fff", background: "#0284c7", padding: "0.35rem 0.75rem", borderRadius: "6px", textDecoration: "none", fontWeight: "bold", fontSize: "0.8rem" }}>Đăng nhập ngay</Link>
+          <div style={{ padding: "0.75rem 1rem", borderRadius: "8px", background: "rgba(6, 182, 212, 0.15)", border: "1px solid rgba(6, 182, 212, 0.4)", color: "#22d3ee", margin: "1rem 0", fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+            <span>⚡ <strong>Sign-in With Solana:</strong> Kết nối ví Phantom và bấm "Xác thực ví" để đăng nhập hoặc nhận ngay 100 UP khởi đầu.</span>
+            <Link href="/dang-nhap" style={{ color: "#fff", background: "#0284c7", padding: "0.35rem 0.75rem", borderRadius: "6px", textDecoration: "none", fontWeight: "bold", fontSize: "0.8rem" }}>Đăng nhập truyền thống</Link>
           </div>
         )}
 
@@ -581,7 +567,7 @@ export default function WalletPage() {
         {/* Wallet Connection & Authentication Box */}
         <div style={{ margin: "1rem 0" }}>
           <button id="wallet-connect" disabled={busy || authenticating} onClick={handleConnectWalletClick}>
-            {user ? (wallet.publicKey ? "Thay đổi / Kết nối lại ví Phantom" : "Chọn / kết nối Phantom") : "Khóa ví (Cần đăng nhập tài khoản)"}
+            {wallet.publicKey ? "Thay đổi / Kết nối lại ví Phantom" : "Chọn / kết nối Phantom"}
           </button>
           <p className={styles.address} style={{ marginTop: "0.4rem" }}>
             {wallet.publicKey ? wallet.publicKey.toBase58() : "Chưa kết nối ví"}

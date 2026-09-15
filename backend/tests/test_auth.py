@@ -84,8 +84,11 @@ def test_member_me_rejects_forged_session():
 
 def test_wallet_endpoints_require_member_session():
     with TestClient(app) as client:
-        assert client.post("/api/v1/auth/wallet/challenge", json={"publicKey": "11111111111111111111111111111111"}).status_code == 401
+        # Challenge is public (SIWS enabled)
+        assert client.post("/api/v1/auth/wallet/challenge", json={"publicKey": "11111111111111111111111111111111"}).status_code == 200
+        # Verify with invalid challenge/signature is rejected
         assert client.post("/api/v1/auth/wallet/verify", json={"publicKey": "11111111111111111111111111111111", "signature": "xxx", "nonce": "yyy", "message": "zzz"}).status_code == 401
+        # Unlink requires an active member session
         assert client.post("/api/v1/auth/wallet/unlink").status_code == 401
 
 

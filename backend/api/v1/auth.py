@@ -10,6 +10,7 @@ from ...core.security import (
     clear_session_cookie,
     create_member_session,
     create_session,
+    get_optional_member_session,
     require_admin_session,
     require_member_session,
     revoke_member_session,
@@ -91,7 +92,6 @@ class SSORequest(BaseModel):
 @router.post("/wallet/challenge")
 def wallet_challenge(
     request: WalletChallengeRequest,
-    session_user: dict = Depends(require_member_session),
 ):
     from ...core.security import create_wallet_challenge
 
@@ -105,8 +105,9 @@ def wallet_challenge(
 def wallet_verify(
     request: WalletVerifyRequest,
     response: Response,
-    session_user: dict = Depends(require_member_session),
+    session_user: Optional[dict] = Depends(get_optional_member_session),
 ):
+    import uuid
     from ...core.database import get_db
     from ...core.security import verify_wallet_challenge
 
@@ -120,28 +121,62 @@ def wallet_verify(
 
     wallet_address = request.publicKey.strip()
     with get_db() as conn:
-        # Ràng buộc: Kiểm tra ví đã liên kết với tài khoản khác chưa
-        existing = conn.execute(
-            "SELECT id, username FROM users WHERE address = ? AND id != ? AND disabled = 0",
-            (wallet_address, session_user["id"]),
-        ).fetchone()
-        if existing:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Ví Phantom này đã được liên kết với tài khoản '{existing['username']}'. Mỗi tài khoản chỉ dùng một ví riêng biệt.",
+        if session_user:
+            # Trường hợp 1: Người dùng đã đăng nhập -> Liên kết ví vào tài khoản hiện tại
+            existing = conn.execute(
+                "SELECT id, username FROM users WHERE address = ? AND id != ? AND disabled = 0",
+                (wallet_address, session_user["id"]),
+            ).fetchone()
+            if existing:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Ví Phantom này đã được liên kết với tài khoản '{existing['username']}'. Mỗi tài khoản chỉ dùng một ví riêng biệt.",
+                )
+
+            conn.execute(
+                "UPDATE users SET address = ? WHERE id = ?",
+                (wallet_address, session_user["id"]),
             )
+            conn.commit()
 
-        # Cập nhật địa chỉ ví cho tài khoản đang đăng nhập
-        conn.execute(
-            "UPDATE users SET address = ? WHERE id = ?",
-            (wallet_address, session_user["id"]),
-        )
-        conn.commit()
+            member = conn.execute(
+                "SELECT id, username, role, address, unipoints, reputation FROM users WHERE id = ?",
+                (session_user["id"],),
+            ).fetchone()
+        else:
+            # Trường hợp 2: Chưa đăng nhập -> Đăng nhập trực tiếp bằng ví Solana (SIWS)
+            existing = conn.execute(
+                "SELECT id, username, role, address, unipoints, reputation FROM users WHERE address = ? AND disabled = 0",
+                (wallet_address,),
+            ).fetchone()
 
-        member = conn.execute(
-            "SELECT id, username, role, address, unipoints, reputation FROM users WHERE id = ?",
-            (session_user["id"],),
-        ).fetchone()
+            if existing:
+                member = existing
+            else:
+                # Tự động tạo tài khoản sinh viên mới cho địa chỉ ví này
+                short_addr = f"{wallet_address[:4]}...{wallet_address[-4:]}"
+                new_username = f"sol_{wallet_address[:6]}_{wallet_address[-4:]}"
+                check_name = conn.execute("SELECT id FROM users WHERE username = ?", (new_username,)).fetchone()
+                if check_name:
+                    new_username = f"sol_{uuid.uuid4().hex[:8]}"
+
+                new_id = f"usr_{uuid.uuid4().hex}"
+                now = time.time()
+                conn.execute(
+                    """INSERT INTO users (id, address, username, role, disabled, unipoints, reputation, created_at)
+                       VALUES (?, ?, ?, 'student', 0, 100, 100, ?)""",
+                    (new_id, wallet_address, new_username, now),
+                )
+                conn.commit()
+
+                member = conn.execute(
+                    "SELECT id, username, role, address, unipoints, reputation FROM users WHERE id = ?",
+                    (new_id,),
+                ).fetchone()
+
+            # Thiết lập session đăng nhập và cookie
+            token = create_member_session(member["id"])
+            set_member_session_cookie(response, token)
 
     return {
         "authenticated": True,
