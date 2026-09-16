@@ -804,7 +804,7 @@ export default function WalletPage() {
 
         {!user && (
           <div style={{ padding: "0.75rem 1rem", borderRadius: "8px", background: "rgba(6, 182, 212, 0.15)", border: "1px solid rgba(6, 182, 212, 0.4)", color: "#22d3ee", margin: "1rem 0", fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
-            <span>⚡ <strong>Sign-in With Solana:</strong> Kết nối ví Phantom và bấm "Xác thực ví" để đăng nhập hoặc nhận ngay 100 UP khởi đầu.</span>
+            <span>⚡ <strong>Sign-in With Solana:</strong> Kết nối ví Phantom và bấm &quot;Xác thực ví&quot; để đăng nhập hoặc nhận ngay 100 UP khởi đầu.</span>
             <Link href="/dang-nhap" style={{ color: "#fff", background: "#0284c7", padding: "0.35rem 0.75rem", borderRadius: "6px", textDecoration: "none", fontWeight: "bold", fontSize: "0.8rem" }}>Đăng nhập truyền thống</Link>
           </div>
         )}

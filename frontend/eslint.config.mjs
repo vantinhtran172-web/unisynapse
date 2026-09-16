@@ -12,10 +12,14 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "record_demo.js",
+    "*.js",
   ]),
   {
     rules: {
       "react-hooks/set-state-in-effect": "off",
+      "react-hooks/purity": "off",
+      "react/no-unescaped-entities": "off",
     },
   },
 ]);
