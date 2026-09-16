@@ -73,19 +73,22 @@ class SolanaOnRampService:
             except Exception as e:
                 logger.warning("Could not load treasury keypair, generating new: %s", e)
 
-        # Generate new Treasury Keypair and persist
-        key = nacl.signing.SigningKey.generate()
-        seed_b58 = base58.b58encode(bytes(key)).decode()
-        pub_b58 = base58.b58encode(bytes(key.verify_key)).decode()
+        # 3. Default to official UniSynapse Treasury Keypair (DaWyQs... with 46+ SOL Devnet)
+        DEFAULT_TREASURY_SEED = "28o4PBzRozr8BEa4FKwxJmqWMen1HPWBwidfFtQrQwaN"
         try:
-            with open(TREASURY_KEYPAIR_FILE, "w", encoding="utf-8") as f:
-                json.dump({"seed": seed_b58, "pubkey": pub_b58}, f, indent=2)
+            seed_bytes = base58.b58decode(DEFAULT_TREASURY_SEED)
+            seed = seed_bytes[:32] if len(seed_bytes) >= 32 else seed_bytes
+            cls._keypair = nacl.signing.SigningKey(seed)
+            cls._pubkey = "DaWyQs198XXbHNNqnM9wHEhjsMRsW8D47bmvtFXtF4Dn"
+            logger.info("Loaded Default Solana Treasury Keypair: %s", cls._pubkey)
+            return cls._keypair
         except Exception as e:
-            logger.warning("Could not persist treasury keypair: %s", e)
+            logger.error("Could not load default treasury seed: %s", e)
 
+        # Fallback only if decoding failed
+        key = nacl.signing.SigningKey.generate()
         cls._keypair = key
-        cls._pubkey = pub_b58
-        logger.info("Created new Solana Treasury Keypair: %s", pub_b58)
+        cls._pubkey = base58.b58encode(bytes(key.verify_key)).decode()
         return cls._keypair
 
     @classmethod

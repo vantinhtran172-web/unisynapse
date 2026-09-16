@@ -74,6 +74,43 @@ def _check_and_settle_pending_bank_deposits():
             for er in expired_rows:
                 logger.info("⌛ [ACB TIMEOUT] Order %s marked as expired (> 10 mins).", er["order_code"])
 
+        # 1.5. Self-heal: Retry any paid sol_swap orders missing solana_signature
+        retry_rows = conn.execute("""
+            SELECT id, user_id, order_code, amount_vnd, points, status, created_at,
+                   payout_mode, sol_amount, target_wallet, solana_signature
+            FROM bank_deposits
+            WHERE status = 'paid' AND payout_mode = 'sol_swap' AND (solana_signature IS NULL OR solana_signature = '')
+            ORDER BY created_at ASC
+            LIMIT 5
+        """).fetchall()
+        for rr in retry_rows:
+            r_dict = dict(rr)
+            code = r_dict["order_code"]
+            wallet = r_dict.get("target_wallet")
+            amount = r_dict.get("sol_amount", 0.0)
+            if code == "UPM10Z7":
+                known_sig = "5TQexW6sXxZq5sGQGidT3RMUa3zTwhRuS26Y3kUWYrrcVrHJbVEjYoK2TZsoyuLkJhQErUp3PRgPoGbVo67c2YUq"
+                conn.execute("UPDATE bank_deposits SET solana_signature = ? WHERE order_code = ?", (known_sig, code))
+                conn.execute("UPDATE reward_ledger SET solana_signature = ? WHERE reward_event_key = ?", (known_sig, f"acb_deposit:{code}"))
+                conn.commit()
+                logger.info("⚡ [SOL ON-RAMP RECOVERY] Linked known tx %s to order %s", known_sig, code)
+            elif wallet and amount > 0:
+                from ..services.solana_onramp_service import SolanaOnRampService
+                try:
+                    t_res = SolanaOnRampService.transfer_sol_to_student(
+                        recipient_pubkey=wallet,
+                        amount_sol=amount,
+                        memo=f"UniSynapse:OnRamp:{code}"
+                    )
+                    if t_res.get("onchain_confirmed") or (t_res.get("ok") and t_res.get("signature")):
+                        new_sig = t_res.get("signature")
+                        conn.execute("UPDATE bank_deposits SET solana_signature = ? WHERE order_code = ?", (new_sig, code))
+                        conn.execute("UPDATE reward_ledger SET solana_signature = ? WHERE reward_event_key = ?", (new_sig, f"acb_deposit:{code}"))
+                        conn.commit()
+                        logger.info("⚡ [SOL ON-RAMP RECOVERY] Transferred %.3f SOL to %s: Tx %s", amount, wallet, new_sig)
+                except Exception as ex:
+                    logger.error("Error in bank_watcher SOL recovery for %s: %s", code, ex)
+
         # 2. Fetch only active pending orders within 10-minute window
         rows = conn.execute("""
             SELECT id, user_id, order_code, amount_vnd, points, status, created_at, initial_balance,
@@ -134,6 +171,7 @@ def _check_and_settle_pending_bank_deposits():
                         source_id=order["id"],
                         reward_event_key=f"acb_deposit:{order_code}",
                         proof_hash=order_code,
+                        solana_signature=solana_sig,
                     )
                     tx_meta = check_res.get("transaction") or {}
                     final_bal = tx_meta.get("live_balance") if isinstance(tx_meta, dict) else None
@@ -142,6 +180,8 @@ def _check_and_settle_pending_bank_deposits():
                         SET status = 'paid', credited_at = ?, final_balance = ?, solana_signature = ?
                         WHERE order_code = ?
                     """, (time.time(), final_bal, solana_sig, order_code))
+                    if solana_sig:
+                        conn.execute("UPDATE reward_ledger SET solana_signature = ? WHERE reward_event_key = ?", (solana_sig, f"acb_deposit:{order_code}"))
                     conn.commit()
 
                 logger.info(
