@@ -10,7 +10,26 @@ router = APIRouter(prefix="/tutor", tags=["AI Tutor & RAG"])
 class AskQuestionRequest(BaseModel):
     question: str
     model: Optional[str] = "cx/gpt-5.6-luna"
+    subject_code: Optional[str] = None
     request_id: Optional[str] = None
+
+
+@router.get("/tier")
+def get_tutor_tier(session_user: dict = Depends(require_member_session)):
+    from ...core.config import AI_CHAT_COST_POINTS
+    user = session_user["id"]
+    with get_db() as conn:
+        completed_count = conn.execute(
+            "SELECT COUNT(*) FROM ai_usage WHERE user_id = ? AND status = 'completed'",
+            (user,)
+        ).fetchone()[0]
+        free_left = max(0, 3 - completed_count)
+        return {
+            "free_questions_left": free_left,
+            "is_free_tier": free_left > 0,
+            "chat_cost_points": 0 if free_left > 0 else AI_CHAT_COST_POINTS,
+            "standard_cost": AI_CHAT_COST_POINTS,
+        }
 
 
 @router.post("/ask")
@@ -31,9 +50,8 @@ def ask_tutor(payload: AskQuestionRequest,
         raise HTTPException(400, "Mã yêu cầu không hợp lệ.")
 
     user = session_user["id"]
-    cost = AI_CHAT_COST_POINTS  # 80 UniPoints
     usage = hashlib.sha256(f"{user}:{request_id}".encode()).hexdigest()
-    fingerprint = hashlib.sha256(json.dumps([question, payload.model]).encode()).hexdigest()
+    fingerprint = hashlib.sha256(json.dumps([question, payload.model, payload.subject_code]).encode()).hexdigest()
 
     def lock(conn):
         if DATABASE_URL.startswith("postgresql"):
@@ -43,6 +61,15 @@ def ask_tutor(payload: AskQuestionRequest,
 
     with get_db() as conn:
         lock(conn)
+
+        # Check Free Tier (first 3 questions are 100% free of charge)
+        completed_count = conn.execute(
+            "SELECT COUNT(*) FROM ai_usage WHERE user_id = ? AND status = 'completed'",
+            (user,)
+        ).fetchone()[0]
+        is_free_tier = completed_count < 3
+        cost = 0 if is_free_tier else AI_CHAT_COST_POINTS
+
         old = conn.execute("SELECT * FROM ai_usage WHERE id = ?", (usage,)).fetchone()
         if old:
             if old["request_hash"] != fingerprint:
@@ -70,6 +97,8 @@ def ask_tutor(payload: AskQuestionRequest,
                     "citations": [], "grounded": False,
                     "engine": "recovered", "points_cost": 0,
                     "points_debited": False, "source_type": "unavailable",
+                    "is_free_tier": is_free_tier,
+                    "free_questions_left": max(0, 3 - completed_count),
                 }
                 conn.execute("UPDATE ai_usage SET status='completed', cost=0, response=? WHERE id=?",
                              (json.dumps(recovery), usage))
@@ -77,11 +106,12 @@ def ask_tutor(payload: AskQuestionRequest,
                 return recovery
             raise HTTPException(409, "Yêu cầu đang xử lý.")
 
-        # Debit 80 UniPoints before processing
-        try:
-            debit_ai_points(conn, user, cost, usage)
-        except LedgerInvariantError as err:
-            raise HTTPException(402, f"Không đủ điểm. Cần ít nhất {cost} UniPoints để chat AI.")
+        # Debit points only if not in free tier
+        if cost > 0:
+            try:
+                debit_ai_points(conn, user, cost, usage)
+            except LedgerInvariantError as err:
+                raise HTTPException(402, f"Không đủ điểm. Cần ít nhất {cost} UniPoints để chat AI (hoặc nạp SOL để đổi điểm).")
 
         conn.execute(
             "INSERT INTO ai_usage (id,user_id,request_hash,status,cost,created_at) "
@@ -93,7 +123,10 @@ def ask_tutor(payload: AskQuestionRequest,
     failed = False
     try:
         result = RAGService.answer_question(
-            question=question, model=payload.model or "cx/gpt-5.6-luna")
+            question=question,
+            model=payload.model or "cx/gpt-5.6-luna",
+            subject_code=payload.subject_code,
+        )
     except Exception:
         failed = True
         result = {
@@ -102,32 +135,47 @@ def ask_tutor(payload: AskQuestionRequest,
             "source_type": "unavailable",
         }
 
-    # If AI processing failed, refund the 80 UniPoints
+    free_left = max(0, 3 - completed_count - (1 if is_free_tier else 0))
+
+    # If AI processing failed, refund points if debited
     if failed or result.get("engine") == "error":
         with get_db() as conn:
             lock(conn)
-            try:
-                settle_reward(
-                    conn,
-                    user_id=user,
-                    delta=cost,
-                    reason="Hoàn tiền chat AI do lỗi hệ thống",
-                    source_type="ai_refund",
-                    source_id=usage,
-                    reward_event_key=f"ai_refund:{user}:{usage}",
-                    proof_hash=usage,
-                    proof_status="verified",
-                )
-            except Exception:
-                pass
-            result.update(points_cost=0, points_debited=False, usage_id=usage)
+            if cost > 0:
+                try:
+                    settle_reward(
+                        conn,
+                        user_id=user,
+                        delta=cost,
+                        reason="Hoàn tiền chat AI do lỗi hệ thống",
+                        source_type="ai_refund",
+                        source_id=usage,
+                        reward_event_key=f"ai_refund:{user}:{usage}",
+                        proof_hash=usage,
+                        proof_status="verified",
+                    )
+                except Exception:
+                    pass
+            result.update(
+                points_cost=0,
+                points_debited=False,
+                is_free_tier=is_free_tier,
+                free_questions_left=free_left,
+                usage_id=usage
+            )
             conn.execute("UPDATE ai_usage SET status='error', cost=0, response=? WHERE id=?",
                          (json.dumps(result), usage))
             conn.commit()
         return result
 
-    # Success: 80 UniPoints debited
-    result.update(points_cost=cost, points_debited=True, usage_id=usage)
+    # Success
+    result.update(
+        points_cost=cost,
+        points_debited=(cost > 0),
+        is_free_tier=is_free_tier,
+        free_questions_left=free_left,
+        usage_id=usage
+    )
 
     with get_db() as conn:
         lock(conn)

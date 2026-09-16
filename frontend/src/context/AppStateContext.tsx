@@ -19,7 +19,7 @@ interface AppStateContextType {
   setActiveTab: (tab: string) => void;
   refreshState: () => Promise<void>;
   submitTask: (taskId: string, label: string) => Promise<TaskSubmissionResult>;
-  uploadDocument: (file: File) => Promise<DocumentUploadResponse>;
+  uploadDocument: (file: File, university?: string, subject_code?: string, subject_name?: string) => Promise<DocumentUploadResponse>;
   setWalletAddress: (address: string) => Promise<void>;
 }
 
@@ -118,8 +118,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     return res;
   };
 
-  const uploadDocument = async (file: File) => {
-    const res = await api.uploadDocument(file, true);
+  const uploadDocument = async (file: File, university?: string, subject_code?: string, subject_name?: string) => {
+    const res = await api.uploadDocument(file, true, university, subject_code, subject_name);
     await refreshState();
     return res;
   };

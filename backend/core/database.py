@@ -433,6 +433,9 @@ def init_db():
 
         for tbl, col_def in [
             ("documents", "solana_tx TEXT"),
+            ("documents", "university TEXT DEFAULT 'Đại học Bách Khoa TP.HCM'"),
+            ("documents", "subject_code TEXT DEFAULT 'CS101'"),
+            ("documents", "subject_name TEXT DEFAULT 'Lập trình C & Cấu trúc Dữ liệu'"),
             ("tasks", "solana_tx TEXT"),
         ]:
             try:

@@ -13,7 +13,17 @@ import { useAppState } from "@/context/AppStateContext";
 
 type PublicTab = "overview" | "challenges" | "learning" | "tutor" | "ledger" | "upload" | "labeling";
 type Challenge = { title: string; domain: string; reward: string; difficulty: string; progress: number; color: string; icon: string };
-type Track = { title: string; description: string; lessons: number; level: string; accent: string; icon: string };
+type Track = { 
+  title: string; 
+  description: string; 
+  lessons: number; 
+  level: string; 
+  accent: string; 
+  icon: string;
+  university?: string;
+  subject_code?: string;
+  subject_name?: string;
+};
 type Activity = { id?: string; title: string; meta: string; amount?: string; tone: string; icon: string };
 
 
@@ -35,7 +45,34 @@ function ChallengeCard({ challenge, onSelect }: { challenge: Challenge; onSelect
 }
 
 function TrackCard({ track }: { track: Track }) {
-  return <article className={`track-card track-${track.accent}`}><div className="track-icon"><span>{track.icon}</span></div><div className="track-body"><div className="track-line"><span className="eyebrow">{track.level}</span><span>{track.lessons} đoạn tài liệu</span></div><h3>{track.title}</h3><p>{track.description}</p><button className="track-button">Tiếp tục lộ trình <span>→</span></button></div></article>;
+  return (
+    <article className={`track-card track-${track.accent}`}>
+      <div className="track-icon"><span>{track.icon}</span></div>
+      <div className="track-body">
+        <div className="track-line">
+          <span className="eyebrow">{track.level}</span>
+          <span>{track.lessons} đoạn tài liệu</span>
+        </div>
+        <h3>{track.title}</h3>
+        {(track.university || track.subject_code) && (
+          <div className="flex flex-wrap gap-1.5 my-1.5 text-[10px]">
+            {track.university && (
+              <span className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded font-medium">
+                🏛️ {track.university}
+              </span>
+            )}
+            {track.subject_code && (
+              <span className="bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 px-1.5 py-0.5 rounded font-medium">
+                📚 {track.subject_code} {track.subject_name ? `- ${track.subject_name}` : ""}
+              </span>
+            )}
+          </div>
+        )}
+        <p>{track.description}</p>
+        <button className="track-button">Tiếp tục lộ trình <span>→</span></button>
+      </div>
+    </article>
+  );
 }
 
 function ActivityRow({ item }: { item: Activity }) {
@@ -62,7 +99,17 @@ export default function Home() {
     ...ledger.slice(0, 3).map((entry, idx) => ({ id: `led-${entry.id || idx}`, title: entry.reason, meta: entry.solana_signature ? `Solana Devnet (${entry.solana_signature.slice(0, 8)}...)` : `${entry.proof_status} · ${new Date(entry.created_at * 1000).toLocaleDateString("vi-VN")}`, amount: `${entry.delta > 0 ? "+" : ""}${entry.delta} UP`, tone: entry.delta >= 0 ? "cyan" : "amber", icon: "✓" })),
   ], [documents, ledger]);
   const challenges = liveChallenges;
-  const tracks: Track[] = documents.map(doc => ({ title: doc.original_name, description: `${doc.size_bytes} bytes`, lessons: doc.chunk_count, level: doc.status, accent: "cyan", icon: "◉" }));
+  const tracks: Track[] = documents.map(doc => ({
+    title: doc.original_name,
+    description: `${doc.size_bytes} bytes`,
+    lessons: doc.chunk_count,
+    level: doc.status,
+    accent: "cyan",
+    icon: "◉",
+    university: doc.university,
+    subject_code: doc.subject_code,
+    subject_name: doc.subject_name,
+  }));
   const activeView = activeTab === "dashboard" ? "overview" : activeTab;
   const visibleActivities = useMemo(() => showAllActivity ? liveActivities : liveActivities.slice(0, 3), [showAllActivity, liveActivities]);
   const goToTab = (tab: PublicTab) => {

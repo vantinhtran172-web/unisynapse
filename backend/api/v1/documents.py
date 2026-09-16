@@ -1,5 +1,6 @@
 import time
 import uuid
+from typing import Optional, List, Dict, Any
 from pathlib import Path
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from ...core.config import UPLOADS_DIR
@@ -46,6 +47,9 @@ def list_documents(session_user: dict = Depends(require_member_session)):
 async def upload_document(
     file: UploadFile = File(...),
     permission_confirmed: bool = Form(False),
+    university: Optional[str] = Form("Đại học Bách Khoa TP.HCM"),
+    subject_code: Optional[str] = Form("CS101"),
+    subject_name: Optional[str] = Form("Lập trình C & Kỹ thuật Con trỏ"),
     session_user: dict = Depends(require_member_session),
 ):
     owner_id = session_user["id"]
@@ -90,12 +94,17 @@ async def upload_document(
                 id, owner_id, filename, original_name, file_type, size_bytes,
                 checksum, status, mime_check, pii_check, dedupe_check,
                 copyright_check, quality_check, rejection_reason, chunk_count,
+                university, subject_code, subject_name,
                 created_at, approved_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', 'passed', 'pending',
-                      'passed', 'pending', 'pending', NULL, 0, ?, NULL)
+                      'passed', 'pending', 'pending', NULL, 0, ?, ?, ?, ?, NULL)
             """, (
                 doc_id, owner_id, saved_filename, original_name,
-                file.content_type or ext, size_bytes, checksum, now,
+                file.content_type or ext, size_bytes, checksum,
+                university or "Đại học Bách Khoa TP.HCM",
+                subject_code or "CS101",
+                subject_name or "Lập trình C & Kỹ thuật Con trỏ",
+                now,
             ))
             conn.commit()
         except Exception as exc:
@@ -213,6 +222,9 @@ async def upload_document(
         "success": True,
         "document_id": doc_id,
         "filename": original_name,
+        "university": university or "Đại học Bách Khoa TP.HCM",
+        "subject_code": subject_code or "CS101",
+        "subject_name": subject_name or "Lập trình C & Kỹ thuật Con trỏ",
         "status": "approved",
         "chunk_count": chunk_count,
         "reward_points": award_points,
@@ -229,6 +241,53 @@ async def upload_document(
             "approval": "approved",
         },
     }
+
+@router.get("/{document_id}/content")
+def get_document_content(
+    document_id: str,
+    session_user: dict = Depends(require_member_session),
+):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM documents WHERE id = ?", (document_id,))
+        doc = cursor.fetchone()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
+        doc_dict = dict(doc)
+
+        # Get chunks
+        cursor.execute(
+            "SELECT chunk_index, page_number, content FROM document_chunks WHERE document_id = ? ORDER BY chunk_index ASC",
+            (document_id,)
+        )
+        chunks = [dict(c) for c in cursor.fetchall()]
+
+        full_text = ""
+        file_path = UPLOADS_DIR / doc_dict["filename"]
+        if file_path.exists():
+            try:
+                pages = RAGService.extract_text_from_file(file_path, doc_dict.get("file_type", ""))
+                full_text = "\n\n".join(p["text"] for p in pages)
+            except Exception:
+                pass
+
+        if not full_text and chunks:
+            full_text = "\n\n".join(c["content"] for c in chunks)
+
+        return {
+            "id": doc_dict["id"],
+            "document_id": doc_dict["id"],
+            "original_name": doc_dict["original_name"],
+            "university": doc_dict.get("university") or "Đại học Bách Khoa TP.HCM",
+            "subject_code": doc_dict.get("subject_code") or "CS101",
+            "subject_name": doc_dict.get("subject_name") or "Lập trình C & Cấu trúc Dữ liệu",
+            "status": doc_dict["status"],
+            "chunk_count": doc_dict.get("chunk_count", 0),
+            "solana_tx": doc_dict.get("solana_tx"),
+            "full_text": full_text,
+            "content": full_text,
+            "chunks": chunks,
+        }
 
 @router.get("/{document_id}")
 def get_document_details(

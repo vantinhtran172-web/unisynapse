@@ -121,7 +121,7 @@ class RAGService:
         return len(chunks)
 
     @classmethod
-    def search_relevant_chunks(cls, question: str, top_k: int = 4) -> List[Dict[str, Any]]:
+    def search_relevant_chunks(cls, question: str, top_k: int = 4, subject_code: Optional[str] = None) -> List[Dict[str, Any]]:
         q_tf = extract_term_frequencies(question)
         if not q_tf:
             return []
@@ -129,15 +129,20 @@ class RAGService:
         results = []
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            sql = """
             SELECT dc.id, dc.document_id, dc.document_name, dc.chunk_index,
-                   dc.page_number, dc.content, dc.embedding, d.solana_tx
+                   dc.page_number, dc.content, dc.embedding, d.solana_tx, d.subject_code
             FROM document_chunks dc
             JOIN documents d ON dc.document_id = d.id
             WHERE d.status = 'approved'
-            """)
+            """
+            params = []
+            if subject_code and subject_code.upper() not in {"ALL", "ALL_SUBJECTS", "TẤT CẢ"}:
+                sql += " AND (UPPER(d.subject_code) = ? OR d.subject_code IS NULL)"
+                params.append(subject_code.strip().upper())
+            cursor.execute(sql, tuple(params))
             rows = cursor.fetchall()
-            
+
             for row in rows:
                 doc_tf = json.loads(row["embedding"])
                 score = cosine_similarity_tf(q_tf, doc_tf)
@@ -150,8 +155,9 @@ class RAGService:
                     "content": row["content"],
                     "score": score,
                     "solana_tx": row["solana_tx"],
+                    "subject_code": row["subject_code"],
                 })
-                
+
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]
 
@@ -223,8 +229,8 @@ class RAGService:
         raise RuntimeError(f"Gemini API call failed: {last_error}")
 
     @classmethod
-    def answer_question(cls, question: str, api_key: Optional[str] = None, model: str = "gemini-flash-latest") -> Dict[str, Any]:
-        top_chunks = cls.search_relevant_chunks(question, top_k=3)
+    def answer_question(cls, question: str, api_key: Optional[str] = None, model: str = "gemini-flash-latest", subject_code: Optional[str] = None) -> Dict[str, Any]:
+        top_chunks = cls.search_relevant_chunks(question, top_k=3, subject_code=subject_code)
         
         import os
         from ..core.config import GEMINI_API_KEY, ENVIRONMENT

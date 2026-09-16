@@ -31,6 +31,9 @@ interface AdminDocument {
   created_at?: number;
   rejection_reason?: string;
   chunk_count?: number;
+  university?: string;
+  subject_code?: string;
+  subject_name?: string;
 }
 
 interface AdminTask {
@@ -391,6 +394,21 @@ export default function OnlineAdminPage() {
       loadAllData();
     } catch (err: unknown) {
       showToast("Lỗi khi duyệt: " + (err instanceof Error ? err.message : "Lỗi"), "error");
+    }
+  };
+
+  const handleRevokeDoc = async (docId: string) => {
+    const reason = prompt(`Nhập lý do thu hồi tài liệu [${docId}] (Toàn bộ vector chunks sẽ bị gỡ khỏi RAG Vector DB ngay lập tức):`, "Thu hồi theo yêu cầu kiểm duyệt / vi phạm chính sách");
+    if (reason === null) return;
+    try {
+      await adminRequest(`/admin/documents/${docId}/revoke`, {
+        method: "POST",
+        body: JSON.stringify({ reason: reason.trim() || "Thu hồi bởi Quản trị viên" })
+      });
+      showToast("Đã thu hồi tài liệu và gỡ bỏ toàn bộ chunks khỏi RAG Vector DB thành công!", "success");
+      loadAllData();
+    } catch (err: unknown) {
+      showToast("Lỗi khi thu hồi: " + (err instanceof Error ? err.message : "Lỗi"), "error");
     }
   };
 
@@ -1223,6 +1241,7 @@ export default function OnlineAdminPage() {
                         const st = (doc.status || "").toLowerCase();
                         const isPending = st.includes("pending");
                         const isApproved = st.includes("approved");
+                        const isRevoked = st.includes("revoked");
 
                         return (
                           <tr key={doc.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
@@ -1230,7 +1249,19 @@ export default function OnlineAdminPage() {
                               <div className="font-bold text-slate-900 dark:text-white max-w-xs truncate">
                                 {doc.original_name || doc.filename}
                               </div>
-                              <div className="text-[10px] text-slate-400 font-mono">{doc.id}</div>
+                              <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                {doc.university && (
+                                  <span className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded font-medium">
+                                    🏛️ {doc.university}
+                                  </span>
+                                )}
+                                {doc.subject_code && (
+                                  <span className="text-[10px] bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 px-1.5 py-0.5 rounded font-medium">
+                                    📚 {doc.subject_code}
+                                  </span>
+                                )}
+                                <span className="text-[10px] text-slate-400 font-mono">{doc.id}</span>
+                              </div>
                             </td>
                             <td className="py-3 px-4">
                               <div className="font-medium text-slate-800 dark:text-slate-200">{doc.owner_name || "Admin"}</div>
@@ -1242,11 +1273,13 @@ export default function OnlineAdminPage() {
                               <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
                                 isApproved
                                   ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                                  : isRevoked
+                                  ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
                                   : isPending
                                   ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                                  : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
+                                  : "bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20"
                               }`}>
-                                {isApproved ? "Đã duyệt" : isPending ? "Chờ duyệt" : "Từ chối"}
+                                {isApproved ? "Đã duyệt" : isRevoked ? "Đã thu hồi" : isPending ? "Chờ duyệt" : "Từ chối"}
                               </span>
                             </td>
                             <td className="py-3 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">
@@ -1274,6 +1307,15 @@ export default function OnlineAdminPage() {
                                       ✕ Từ chối
                                     </button>
                                   </>
+                                )}
+                                {isApproved && (
+                                  <button
+                                    onClick={() => handleRevokeDoc(doc.id)}
+                                    className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold text-[11px] transition-colors"
+                                    title="Thu hồi tài liệu và xóa chunks khỏi RAG Vector DB"
+                                  >
+                                    🚫 Thu hồi
+                                  </button>
                                 )}
                                 <button
                                   onClick={() => openEditDoc(doc)}

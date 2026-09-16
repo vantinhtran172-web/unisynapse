@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { api, Citation } from "../lib/api";
+import { api, Citation, DocumentContentResponse, TutorTierResponse } from "../lib/api";
 
 type Message = {
   id: string;
@@ -19,7 +19,7 @@ export default function AITutorChat() {
     { 
       id: '1', 
       role: 'ai', 
-      content: "Chào bạn! Tôi là UniSynapse AI Tutor vận hành bởi mô hình GPT-5.6 Luna. Hãy đặt câu hỏi về bài giảng, tài liệu học tập hoặc kiến thức chung (chi phí: 80 UniPoints/lượt).",
+      content: "Chào bạn! Tôi là UniSynapse AI Tutor vận hành bởi mô hình GPT-5.6 Luna kết hợp kho học liệu kiểm định. Bạn có thể chọn môn học cụ thể hoặc hỏi chung (3 lượt đầu hoàn toàn miễn phí không trừ điểm).",
       grounded: false
     }
   ]);
@@ -28,12 +28,59 @@ export default function AITutorChat() {
   const [ragStatus, setRagStatus] = useState<string | null>(null);
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
 
+  // Free tier & subject context filter
+  const [tierInfo, setTierInfo] = useState<TutorTierResponse | null>(null);
+  const [selectedSubject, setSelectedSubject] = useState<string>("ALL");
+
+  // Document Reader Modal
+  const [docReader, setDocReader] = useState<{
+    isOpen: boolean;
+    loading: boolean;
+    doc: DocumentContentResponse | null;
+    error: string | null;
+    highlightExcerpt?: string;
+  }>({
+    isOpen: false,
+    loading: false,
+    doc: null,
+    error: null,
+  });
+
   // AI model selection (default: GPT-5.6 Luna)
   const [geminiModel, setGeminiModel] = useState<string>("cx/gpt-5.6-luna");
   const [showConfigModal, setShowConfigModal] = useState<boolean>(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageIdRef = useRef(0);
+
+  const fetchTier = async () => {
+    try {
+      const data = await api.getTutorTier();
+      setTierInfo(data);
+    } catch {
+      // Ignore
+    }
+  };
+
+  useEffect(() => {
+    fetchTier();
+  }, []);
+
+  const handleOpenDocumentReader = async (docId: string, excerpt?: string) => {
+    setDocReader({ isOpen: true, loading: true, doc: null, error: null, highlightExcerpt: excerpt });
+    try {
+      const data = await api.getDocumentContent(docId);
+      setDocReader({ isOpen: true, loading: false, doc: data, error: null, highlightExcerpt: excerpt });
+    } catch (err: unknown) {
+      setDocReader({
+        isOpen: true,
+        loading: false,
+        doc: null,
+        error: err instanceof Error ? err.message : "Không thể tải nội dung tài liệu",
+        highlightExcerpt: excerpt,
+      });
+    }
+  };
 
   const handleSaveGeminiConfig = () => {
     setShowConfigModal(false);
@@ -61,10 +108,11 @@ export default function AITutorChat() {
     setIsTyping(true);
 
     // Realistic RAG pipeline status feedback
-    setRagStatus("Đang chờ phản hồi từ máy chủ…");
+    const subjectPrefix = selectedSubject !== "ALL" ? `[${selectedSubject}] ` : "";
+    setRagStatus(`Đang truy vấn kho học liệu ${subjectPrefix}và đối chiếu câu trả lời…`);
 
     try {
-      const res = await api.askTutor(q, geminiModel);
+      const res = await api.askTutor(q, geminiModel, selectedSubject);
       const aiMsg: Message = {
         id: `ai-${++messageIdRef.current}`,
         role: 'ai',
@@ -76,6 +124,7 @@ export default function AITutorChat() {
         sourceLabel: res.source_label,
       };
       setMessages(prev => [...prev, aiMsg]);
+      await fetchTier();
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Lỗi không xác định";
       setMessages(prev => [
@@ -123,11 +172,35 @@ export default function AITutorChat() {
           </div>
         </div>
 
-        {/* Server-managed AI engine settings & Cost badge */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs px-2.5 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-blue-300 font-semibold flex items-center gap-1 shadow-sm">
-            🪙 80 UniPoints/lượt
-          </span>
+        {/* Server-managed AI engine settings & Subject Context Filter & Cost badge */}
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* Subject Context Selector */}
+          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 shadow-xs">
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">Môn:</span>
+            <select
+              value={selectedSubject}
+              onChange={(e) => setSelectedSubject(e.target.value)}
+              className="text-xs bg-transparent border-none text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer"
+            >
+              <option value="ALL" className="dark:bg-slate-900">🌐 Toàn trường (Tất cả)</option>
+              <option value="CS101" className="dark:bg-slate-900">💻 CS101 - Lập trình</option>
+              <option value="CS202" className="dark:bg-slate-900">🌳 CS202 - Cấu trúc dữ liệu</option>
+              <option value="POL101" className="dark:bg-slate-900">📖 POL101 - Triết học Mác</option>
+              <option value="CRYPTO201" className="dark:bg-slate-900">⛓️ CRYPTO201 - Solana Crypto</option>
+            </select>
+          </div>
+
+          {/* Free Tier / Cost Badge */}
+          {tierInfo && tierInfo.is_free_tier ? (
+            <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-1 shadow-sm" title="Mỗi sinh viên mới được 3 lượt truy vấn AI hoàn toàn miễn phí không trừ UniPoints">
+              🎁 Miễn phí: Còn {tierInfo.free_queries_remaining}/3 câu
+            </span>
+          ) : (
+            <span className="text-xs px-2.5 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-blue-300 font-semibold flex items-center gap-1 shadow-sm">
+              🪙 80 UniPoints/lượt
+            </span>
+          )}
+
           <button
             onClick={() => setShowConfigModal(true)}
             className="text-xs px-3 py-1.5 rounded-full border flex items-center gap-1.5 transition-all shadow-sm bg-cyan-50 dark:bg-cyan-950/60 hover:bg-cyan-100 dark:hover:bg-cyan-900/60 text-cyan-700 dark:text-cyan-200 border-cyan-200 dark:border-cyan-500/40"
@@ -274,6 +347,15 @@ export default function AITutorChat() {
             <p className="text-slate-700 dark:text-slate-300 mt-1 italic line-clamp-2">
                &quot;{activeCitation.excerpt}&quot;
             </p>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                onClick={() => handleOpenDocumentReader(activeCitation.document_id, activeCitation.excerpt)}
+                className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-[11px] inline-flex items-center gap-1.5 shadow-sm transition-colors"
+                title="Mở toàn văn tài liệu và xem đoạn trích trong ngữ cảnh học thuật"
+              >
+                📖 Xem toàn văn tài liệu
+              </button>
+            </div>
           </div>
           <button 
             onClick={() => setActiveCitation(null)}
@@ -365,6 +447,103 @@ export default function AITutorChat() {
                 className="bg-blue-600 hover:bg-blue-500 text-white py-1.5 px-4 text-xs font-semibold rounded-lg shadow-md transition-colors"
               >
                 Lưu model
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full Document Reader Modal */}
+      {docReader.isOpen && (
+        <div className="fixed inset-0 bg-black/70 dark:bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-blue-500/30 rounded-2xl max-w-3xl w-full h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-800/80 flex items-center justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    📖 Toàn Văn Học Liệu: {docReader.doc?.original_name || docReader.doc?.filename || "Đang tải..."}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap text-[11px]">
+                  {docReader.doc?.university && (
+                    <span className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full font-medium">
+                      🏛️ {docReader.doc.university}
+                    </span>
+                  )}
+                  {docReader.doc?.subject_code && (
+                    <span className="bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 px-2 py-0.5 rounded-full font-medium">
+                      📚 {docReader.doc.subject_code} - {docReader.doc.subject_name}
+                    </span>
+                  )}
+                  {docReader.doc?.chunk_count && (
+                    <span className="text-slate-500 dark:text-slate-400 font-mono">
+                      • {docReader.doc.chunk_count} đoạn tri thức
+                    </span>
+                  )}
+                  {docReader.doc?.solana_tx && (
+                    <a
+                      href={`https://explorer.solana.com/tx/${docReader.doc.solana_tx}?cluster=devnet`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono font-semibold hover:underline"
+                    >
+                      ⛓️ Solana Devnet Proof ↗
+                    </a>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => setDocReader(prev => ({ ...prev, isOpen: false }))}
+                className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white text-base p-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-full transition-colors"
+                aria-label="Đóng đọc tài liệu"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-grow p-5 overflow-y-auto font-sans leading-relaxed text-slate-800 dark:text-slate-200 text-sm space-y-4">
+              {docReader.loading && (
+                <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-500">
+                  <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Đang tải toàn văn tài liệu học thuật…</span>
+                </div>
+              )}
+
+              {docReader.error && (
+                <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-600 dark:text-rose-400 text-xs">
+                  {docReader.error}
+                </div>
+              )}
+
+              {docReader.doc && (
+                <div className="space-y-4">
+                  {docReader.highlightExcerpt && (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-500/30 rounded-xl text-xs">
+                      <span className="font-bold text-blue-700 dark:text-blue-300 block mb-1">
+                        🎯 Đoạn trích dẫn được AI Tutor tham chiếu:
+                      </span>
+                      <p className="italic text-slate-700 dark:text-slate-300 bg-amber-100/70 dark:bg-amber-900/40 p-2 rounded border border-amber-300 dark:border-amber-700/50">
+                        &quot;{docReader.highlightExcerpt}&quot;
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-white/5 rounded-xl p-4 whitespace-pre-wrap font-mono text-xs leading-relaxed overflow-x-auto select-text">
+                    {docReader.doc.content}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-white/10 flex justify-end">
+              <button
+                onClick={() => setDocReader(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-xs font-semibold text-slate-800 dark:text-white transition-colors"
+              >
+                Đóng
               </button>
             </div>
           </div>

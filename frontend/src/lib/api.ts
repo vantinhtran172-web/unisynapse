@@ -110,12 +110,15 @@ export interface DocumentItem {
   file_type: string;
   size_bytes: number;
   checksum: string;
-  status: 'pending_review' | 'approved' | 'rejected';
+  status: 'pending_review' | 'approved' | 'rejected' | 'revoked';
   quality_check?: string;
   rejection_reason?: string;
   chunk_count: number;
   solana_tx?: string;
   explorer_url?: string;
+  university?: string;
+  subject_code?: string;
+  subject_name?: string;
   created_at: number;
   approved_at?: number;
 }
@@ -129,6 +132,34 @@ export interface Citation {
   excerpt: string;
   solana_tx?: string;
   explorer_url?: string;
+}
+
+export interface DocumentChunkContent {
+  chunk_index: number;
+  page_number: number;
+  content: string;
+}
+
+export interface DocumentContentResponse {
+  document_id: string;
+  filename: string;
+  original_name: string;
+  university?: string;
+  subject_code?: string;
+  subject_name?: string;
+  status: string;
+  content: string;
+  chunk_count: number;
+  chunks: DocumentChunkContent[];
+  solana_tx?: string;
+}
+
+export interface TutorTierResponse {
+  free_queries_remaining: number;
+  free_queries_limit: number;
+  free_queries_used: number;
+  is_free_tier: boolean;
+  message: string;
 }
 
 export interface TutorResponse {
@@ -200,6 +231,9 @@ export interface DocumentUploadResponse {
   reputation_gain: number;
   solana_signature?: string;
   explorer_url?: string;
+  university?: string;
+  subject_code?: string;
+  subject_name?: string;
   steps: Record<string, string>;
 }
 
@@ -381,10 +415,19 @@ export const api = {
   },
 
 
-  async uploadDocument(file: File, permissionConfirmed = true): Promise<DocumentUploadResponse> {
+  async uploadDocument(
+    file: File, 
+    permissionConfirmed = true,
+    university?: string,
+    subject_code?: string,
+    subject_name?: string
+  ): Promise<DocumentUploadResponse> {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("permission_confirmed", permissionConfirmed ? "true" : "false");
+    if (university) formData.append("university", university);
+    if (subject_code) formData.append("subject_code", subject_code);
+    if (subject_name) formData.append("subject_name", subject_name);
 
     const res = await fetch(`${API_BASE}/documents/upload`, {
       method: "POST",
@@ -408,12 +451,25 @@ export const api = {
     return payload as DocumentItem[];
   },
 
-  async askTutor(question: string, model: string = "cx/gpt-5.6-luna"): Promise<TutorResponse> {
+  async getDocumentContent(documentId: string): Promise<DocumentContentResponse> {
+    return request<DocumentContentResponse>(`/documents/${documentId}/content`);
+  },
+
+  async getTutorTier(): Promise<TutorTierResponse> {
+    return request<TutorTierResponse>("/tutor/tier");
+  },
+
+  async askTutor(question: string, model: string = "cx/gpt-5.6-luna", subject_code?: string): Promise<TutorResponse> {
     const res = await fetch(`${API_BASE}/tutor/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...csrfHeaders() },
       credentials: "include",
-      body: JSON.stringify({ question, model, request_id: crypto.randomUUID() }),
+      body: JSON.stringify({ 
+        question, 
+        model, 
+        subject_code: subject_code && subject_code !== "ALL" ? subject_code : undefined,
+        request_id: crypto.randomUUID() 
+      }),
     });
     if (!res.ok) {
       const { payload, text } = await parseErrorResponse(res);
@@ -423,6 +479,13 @@ export const api = {
       throw new ApiError(res.status, detail);
     }
     return res.json();
+  },
+
+  async revokeDocument(documentId: string, reason = "Thu hồi bởi quản trị viên"): Promise<{ success: boolean; message: string }> {
+    return request<{ success: boolean; message: string }>(`/admin/documents/${documentId}/revoke`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
   },
 
   async askNineRouter(

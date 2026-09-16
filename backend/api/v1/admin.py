@@ -267,6 +267,34 @@ def reject_document_by_admin(doc_id: str, req: RejectDocRequest):
 
     return {"success": True, "message": f"Đã từ chối tài liệu: {req.reason}"}
 
+@router.post("/documents/{doc_id}/revoke")
+def revoke_document_by_admin(doc_id: str, req: RejectDocRequest):
+    now = time.time()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM documents WHERE id = ?", (doc_id,))
+        doc = cursor.fetchone()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu")
+
+        reason = req.reason or "Thu hồi theo yêu cầu của Reviewer/Giảng viên"
+        cursor.execute("""
+        UPDATE documents
+        SET status = 'revoked', rejection_reason = ?, quality_check = 'Revoked by Reviewer/Admin'
+        WHERE id = ?
+        """, (reason, doc_id))
+
+        cursor.execute("DELETE FROM document_chunks WHERE document_id = ?", (doc_id,))
+        cursor.execute("UPDATE documents SET chunk_count = 0 WHERE id = ?", (doc_id,))
+
+        log_audit(cursor, "document_revoked", f"Admin/Reviewer revoked document {doc['original_name']}: {reason}")
+
+    return {
+        "success": True,
+        "message": f"Đã thu hồi tài liệu '{doc['original_name']}'! Các đoạn tri thức đã được cô lập hoàn toàn khỏi RAG AI Tutor.",
+        "status": "revoked"
+    }
+
 @router.post("/documents")
 def create_document_by_admin(req: CreateDocRequest):
     now = time.time()
