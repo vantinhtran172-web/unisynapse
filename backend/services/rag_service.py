@@ -131,7 +131,7 @@ class RAGService:
             cursor = conn.cursor()
             cursor.execute("""
             SELECT dc.id, dc.document_id, dc.document_name, dc.chunk_index,
-                   dc.page_number, dc.content, dc.embedding
+                   dc.page_number, dc.content, dc.embedding, d.solana_tx
             FROM document_chunks dc
             JOIN documents d ON dc.document_id = d.id
             WHERE d.status = 'approved'
@@ -148,7 +148,8 @@ class RAGService:
                     "chunk_index": row["chunk_index"],
                     "page_number": row["page_number"],
                     "content": row["content"],
-                    "score": score
+                    "score": score,
+                    "solana_tx": row["solana_tx"],
                 })
                 
         results.sort(key=lambda x: x["score"], reverse=True)
@@ -233,14 +234,38 @@ class RAGService:
         if has_grounded_context:
             for c in top_chunks:
                 if c["score"] >= 0.15:
+                    sol_tx = c.get("solana_tx")
                     citations.append({
                         "document_id": c["document_id"],
                         "document_name": c["document_name"],
                         "page": f"Trang {c['page_number']}" if c["page_number"] else f"Đoạn {c['chunk_index'] + 1}",
                         "chunk_index": c["chunk_index"],
                         "score": c["score"],
-                        "excerpt": c["content"][:180] + "..."
+                        "excerpt": c["content"][:180] + "...",
+                        "solana_tx": sol_tx,
+                        "explorer_url": f"https://explorer.solana.com/tx/{sol_tx}?cluster=devnet" if sol_tx else None,
                     })
+
+        # GPT-5.6 Luna model gateway support (cx/gpt-5.6-luna)
+        if model and (model.startswith("cx/") or "luna" in model or "9router" in model.lower() or model == "cx/gpt-5.6-luna"):
+            from .ninerouter_service import NineRouterService
+            try:
+                nine_res = NineRouterService.answer_with_context(
+                    question=question,
+                    context_chunks=top_chunks if has_grounded_context else [],
+                    mode="academic",
+                    model=model if model.startswith("cx/") else "cx/gpt-5.6-luna",
+                )
+                return {
+                    "answer": nine_res["content"],
+                    "citations": citations if has_grounded_context else [],
+                    "grounded": has_grounded_context,
+                    "engine": "GPT-5.6 Luna",
+                    "source_type": "approved_documents" if has_grounded_context else "ai_outside_knowledge_base",
+                    "source_label": "Tài liệu UniSynapse đã kiểm định (GPT-5.6 Luna)" if has_grounded_context else "Nguồn từ GPT-5.6 Luna — Không có trong tài liệu",
+                }
+            except Exception as err:
+                print(f"[RAG] GPT-5.6 Luna call notice ({err}). Falling back to Gemini or baseline.")
 
         client_key = "" if ENVIRONMENT == "production" else (api_key or "")
         active_key = (client_key or os.getenv("GEMINI_API_KEY") or GEMINI_API_KEY or "").strip()

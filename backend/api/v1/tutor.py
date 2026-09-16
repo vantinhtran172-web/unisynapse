@@ -9,7 +9,7 @@ router = APIRouter(prefix="/tutor", tags=["AI Tutor & RAG"])
 
 class AskQuestionRequest(BaseModel):
     question: str
-    model: Optional[str] = "gemini-flash-latest"
+    model: Optional[str] = "cx/gpt-5.6-luna"
     request_id: Optional[str] = None
 
 
@@ -93,7 +93,7 @@ def ask_tutor(payload: AskQuestionRequest,
     failed = False
     try:
         result = RAGService.answer_question(
-            question=question, model=payload.model or "gemini-flash-latest")
+            question=question, model=payload.model or "cx/gpt-5.6-luna")
     except Exception:
         failed = True
         result = {
@@ -144,7 +144,7 @@ def get_knowledge_base():
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-        SELECT d.id, d.original_name, d.chunk_count, d.approved_at, d.size_bytes
+        SELECT d.id, d.original_name, d.chunk_count, d.approved_at, d.size_bytes, d.solana_tx
         FROM documents d
         WHERE d.status = 'approved'
         ORDER BY d.approved_at DESC
@@ -159,3 +159,157 @@ def get_knowledge_base():
         "total_documents": len(docs),
         "total_chunks": total_chunks
     }
+
+
+class NineRouterChatRequest(BaseModel):
+    prompt: str
+    mode: Optional[str] = "coding"  # coding, academic, general
+    model: Optional[str] = "cx/gpt-5.6-luna"
+    include_context: Optional[bool] = False
+    request_id: Optional[str] = None
+
+
+@router.post("/ninerouter/chat")
+def ninerouter_chat(payload: NineRouterChatRequest,
+                    session_user: dict = Depends(require_member_session)):
+    import hashlib
+    import json
+    import time
+    import uuid
+    from ...core.config import DATABASE_URL, AI_CHAT_COST_POINTS
+    from ...services.ledger_service import debit_ai_points, settle_reward, LedgerInvariantError
+    from ...services.ninerouter_service import NineRouterService
+
+    prompt = payload.prompt.strip()
+    if not 2 <= len(prompt) <= 15000:
+        raise HTTPException(400, "Nội dung cần từ 2 đến 15000 ký tự.")
+    request_id = payload.request_id or str(uuid.uuid4())
+
+    user = session_user["id"]
+    cost = AI_CHAT_COST_POINTS  # 80 UniPoints
+    usage = hashlib.sha256(f"{user}:{request_id}".encode()).hexdigest()
+    fingerprint = hashlib.sha256(json.dumps([prompt, payload.model, payload.mode]).encode()).hexdigest()
+
+    def lock(conn):
+        if DATABASE_URL.startswith("postgresql"):
+            conn.execute("SELECT id FROM users WHERE id = ? FOR UPDATE", (user,))
+        else:
+            conn.execute("BEGIN IMMEDIATE")
+
+    with get_db() as conn:
+        lock(conn)
+        old = conn.execute("SELECT * FROM ai_usage WHERE id = ?", (usage,)).fetchone()
+        if old:
+            if old["request_hash"] != fingerprint:
+                raise HTTPException(409, "Mã yêu cầu đã dùng cho câu hỏi khác.")
+            if old["response"]:
+                return json.loads(old["response"])
+            if time.time() - old["created_at"] > 600:
+                if old["cost"] > 0:
+                    try:
+                        settle_reward(
+                            conn,
+                            user_id=user,
+                            delta=old["cost"],
+                            reason="Hoàn điểm yêu cầu 9Router bị gián đoạn",
+                            source_type="ai_refund",
+                            source_id=usage,
+                            reward_event_key=f"ai_refund:{user}:{usage}",
+                            proof_hash=usage,
+                            proof_status="verified",
+                        )
+                    except Exception:
+                        pass
+                recovery = {
+                    "content": "Yêu cầu trước bị gián đoạn và đã được hoàn điểm. Hãy gửi câu hỏi mới.",
+                    "success": False,
+                    "model": payload.model or "cx/gpt-5.6-luna",
+                    "points_cost": 0,
+                    "points_debited": False,
+                }
+                conn.execute("UPDATE ai_usage SET status='completed', cost=0, response=? WHERE id=?",
+                             (json.dumps(recovery), usage))
+                conn.commit()
+                return recovery
+            raise HTTPException(409, "Yêu cầu đang xử lý.")
+
+        # Debit 80 UniPoints before processing
+        try:
+            debit_ai_points(conn, user, cost, usage)
+        except LedgerInvariantError as err:
+            raise HTTPException(402, f"Không đủ điểm. Cần ít nhất {cost} UniPoints để sử dụng 9Router AI Studio.")
+
+        conn.execute(
+            "INSERT INTO ai_usage (id,user_id,request_hash,status,cost,created_at) "
+            "VALUES (?, ?, ?, 'pending', ?, ?)",
+            (usage, user, fingerprint, cost, time.time()),
+        )
+        conn.commit()
+
+    context_chunks = []
+    if payload.include_context:
+        context_chunks = RAGService.search_relevant_chunks(prompt, top_k=2)
+
+    failed = False
+    try:
+        nine_res = NineRouterService.answer_with_context(
+            question=prompt,
+            context_chunks=context_chunks,
+            mode=payload.mode or "coding",
+            model=payload.model or "cx/gpt-5.6-luna",
+        )
+        result = {
+            "success": True,
+            "content": nine_res["content"],
+            "model": nine_res.get("model", payload.model),
+            "provider": "9Router AI Gateway",
+            "elapsed_sec": nine_res.get("elapsed_sec", 0),
+            "usage": nine_res.get("usage", {}),
+            "citations": [
+                {"document_name": c["document_name"], "page": f"Trang {c.get('page_number', 1)}"}
+                for c in context_chunks
+            ],
+            "points_cost": cost,
+            "points_debited": True,
+            "usage_id": usage,
+        }
+    except Exception as exc:
+        failed = True
+        result = {
+            "success": False,
+            "content": f"Máy chủ 9Router hiện không thể phản hồi: {exc}. Điểm đã được hoàn lại.",
+            "model": payload.model,
+            "provider": "9Router AI Gateway",
+            "points_cost": 0,
+            "points_debited": False,
+            "usage_id": usage,
+        }
+
+    if failed:
+        with get_db() as conn:
+            lock(conn)
+            try:
+                settle_reward(
+                    conn,
+                    user_id=user,
+                    delta=cost,
+                    reason="Hoàn tiền 9Router do lỗi kết nối",
+                    source_type="ai_refund",
+                    source_id=usage,
+                    reward_event_key=f"ai_refund:{user}:{usage}",
+                    proof_hash=usage,
+                    proof_status="verified",
+                )
+            except Exception:
+                pass
+            conn.execute("UPDATE ai_usage SET status='error', cost=0, response=? WHERE id=?",
+                         (json.dumps(result), usage))
+            conn.commit()
+    else:
+        with get_db() as conn:
+            lock(conn)
+            conn.execute("UPDATE ai_usage SET status='completed', cost=?, response=? WHERE id=?",
+                         (cost, json.dumps(result), usage))
+            conn.commit()
+
+    return result

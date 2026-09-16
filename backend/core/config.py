@@ -58,7 +58,7 @@ AI_CHAT_COST_POINTS = 80
 POINTS_PER_DEVNET_SOL = 1000
 DEVNET_TREASURY_ADDRESS = os.getenv(
     "DEVNET_TREASURY_ADDRESS",
-    "FEdvEMCedQ2xonCfGLNKAyqdbeyP6HJz6bVHqYQE2hgq",
+    "DaWyQs198XXbHNNqnM9wHEhjsMRsW8D47bmvtFXtF4Dn",
 ).strip()
 DEVNET_DEPOSIT_COMMITMENT = os.getenv("DEVNET_DEPOSIT_COMMITMENT", "confirmed").strip().lower()
 DEVNET_MIN_DEPOSIT_LAMPORTS = 1_000_000
@@ -70,6 +70,22 @@ ADMIN_ACCESS_KEY = ADMIN_SECURITY_KEY
 MOCK_MODE = os.getenv("MOCK_MODE", "0") == "1"
 CONSENSUS_DEFAULT_VOTES = 5
 CONSENSUS_DEFAULT_THRESHOLD = 0.8
+
+# 9Router AI Gateway Configuration
+NINEROUTER_BASE_URL = os.getenv("NINEROUTER_BASE_URL", "https://rrzqgu4.abc-tunnel.us/v1").rstrip("/")
+NINEROUTER_API_KEY = os.getenv("NINEROUTER_API_KEY", "sk-7d22549baacade14-wn4lw5-471a8dbb").strip()
+NINEROUTER_DEFAULT_MODEL = os.getenv("NINEROUTER_DEFAULT_MODEL", "cx/gpt-5.6-luna").strip()
+
+# ACB Bank API Configuration
+ACB_API_URL = os.getenv("ACB_API_URL", "https://apiapp.acb.com.vn").rstrip("/")
+ACB_CLIENT_ID = os.getenv("ACB_CLIENT_ID", "iuSuHYVufIUuNIREV0FB9EoLn9kHsDbm").strip()
+ACB_USERNAME = os.getenv("ACB_USERNAME", "0388890465").strip()
+ACB_PASSWORD = os.getenv("ACB_PASSWORD", "Tinhtranvan987@").strip()
+ACB_ACCOUNT_NUMBER = os.getenv("ACB_ACCOUNT_NUMBER", "38038627").strip()
+ACB_ACCOUNT_NAME = os.getenv("ACB_ACCOUNT_NAME", "TRAN VAN TINH").strip()
+ACB_BANK_NAME = os.getenv("ACB_BANK_NAME", "ACB").strip()
+ACB_DEPOSITS_ENABLED = os.getenv("ACB_DEPOSITS_ENABLED", "1").strip().lower() in ("1", "true", "yes", "on")
+POINTS_PER_10K_VND = int(os.getenv("POINTS_PER_10K_VND", "1000"))  # 10,000 VND = 1,000 UniPoints
 
 
 def validate_runtime_config() -> None:

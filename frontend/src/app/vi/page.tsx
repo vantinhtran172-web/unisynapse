@@ -7,7 +7,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { Buffer } from "buffer";
-import { api, LedgerEntry } from "@/lib/api";
+import { api, LedgerEntry, BankDepositIntent, BankDepositRecord } from "@/lib/api";
 import { useAppState } from "@/context/AppStateContext";
 import styles from "./wallet.module.css";
 
@@ -22,6 +22,38 @@ const PRESETS = [
   { sol: "1.00", points: 1000, desc: "12 lượt hỏi AI" },
 ];
 
+const BANK_PRESETS = [
+  { amount: 10000, points: 1000, bonus: "", desc: "12 lượt hỏi AI Luna" },
+  { amount: 20000, points: 2200, bonus: "+10% Thưởng", desc: "27 lượt hỏi AI Luna" },
+  { amount: 50000, points: 6000, bonus: "+20% Thưởng", desc: "75 lượt hỏi AI Luna (Hot)" },
+  { amount: 100000, points: 13000, bonus: "+30% Thưởng", desc: "162 lượt hỏi AI Luna (Tiết kiệm)" },
+];
+
+const SOL_SWAP_PRESETS = [
+  { amount: 10000, sol: 0.05, points: 500, bonus: "", desc: "Trải nghiệm dApp Solana" },
+  { amount: 20000, sol: 0.12, points: 1100, bonus: "+20% SOL", desc: "Đủ phí gas 50+ task" },
+  { amount: 50000, sol: 0.35, points: 3000, bonus: "+40% SOL (Hot)", desc: "Xác thực minh chứng & NFT" },
+  { amount: 100000, sol: 0.80, points: 7000, bonus: "+60% SOL (Tiết kiệm)", desc: "Gói Web3 Hacker" },
+];
+
+function calculateBankPoints(vnd: number): number {
+  if (vnd < 10000) return 0;
+  const basePoints = Math.floor((vnd / 10000) * 1000);
+  let bonusRate = 0;
+  if (vnd >= 100000) bonusRate = 0.30;
+  else if (vnd >= 50000) bonusRate = 0.20;
+  else if (vnd >= 20000) bonusRate = 0.10;
+  return Math.round(basePoints * (1 + bonusRate));
+}
+
+function calculateSolAmount(vnd: number): number {
+  if (vnd < 10000) return 0;
+  if (vnd >= 100000) return Math.round((vnd / 125000) * 1000) / 1000;
+  if (vnd >= 50000) return Math.round((vnd / 142857) * 1000) / 1000;
+  if (vnd >= 20000) return Math.round((vnd / 166666) * 1000) / 1000;
+  return Math.round((vnd / 200000) * 1000) / 1000;
+}
+
 export default function WalletPage() {
   const router = useRouter();
   const { connection } = useConnection();
@@ -29,10 +61,23 @@ export default function WalletPage() {
   const { setVisible } = useWalletModal();
   const { refreshState, user } = useAppState();
 
-  const [activeTab, setActiveTab] = useState<"deposit" | "transfer" | "history">("deposit");
+  const [activeTab, setActiveTab] = useState<"bank" | "deposit" | "transfer" | "history">("bank");
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("0.08");
   const [selectedPreset, setSelectedPreset] = useState<string | null>("0.08");
+
+  // ACB VietQR Bank Deposit & Solana On-Ramp State
+  const [bankPayoutMode, setBankPayoutMode] = useState<"sol_swap" | "unipoints">("sol_swap");
+  const [customSolWallet, setCustomSolWallet] = useState<string>("");
+  const [bankAmount, setBankAmount] = useState<number>(20000);
+  const [bankCustomInput, setBankCustomInput] = useState<string>("20000");
+  const [bankSelectedPreset, setBankSelectedPreset] = useState<number | null>(20000);
+  const [bankOrder, setBankOrder] = useState<BankDepositIntent | null>(null);
+  const [bankLoading, setBankLoading] = useState<boolean>(false);
+  const [bankTimeLeft, setBankTimeLeft] = useState<number>(600);
+  const [bankHistory, setBankHistory] = useState<BankDepositRecord[]>([]);
+  const [bankHistoryLoading, setBankHistoryLoading] = useState<boolean>(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [review, setReview] = useState<Review | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [points, setPoints] = useState<number | null>(null);
@@ -128,8 +173,244 @@ export default function WalletPage() {
     try {
       const me = await api.getMe();
       setPoints(me.unipoints);
+      refreshState();
     } catch {
       /* ignore */
+    }
+  }
+
+  // Load bank history
+  async function loadBankHistory() {
+    if (!user) return;
+    setBankHistoryLoading(true);
+    try {
+      const history = await api.getBankDepositHistory();
+      setBankHistory(history);
+    } catch {
+      /* ignore */
+    } finally {
+      setBankHistoryLoading(false);
+    }
+  }
+
+  // Load bank history when user or tab changes
+  useEffect(() => {
+    if (user && (activeTab === "bank" || activeTab === "history")) {
+      void loadBankHistory();
+    }
+  }, [activeTab, user]);
+
+  // 10-Minute Countdown Timer for active VietQR
+  useEffect(() => {
+    if (!bankOrder || bankOrder.status !== "pending") return;
+
+    // Calculate remaining seconds from created_at (max 600s = 10 minutes)
+    const createdSec = bankOrder.created_at || Math.floor(Date.now() / 1000);
+    const elapsed = Math.floor(Date.now() / 1000) - createdSec;
+    const remaining = Math.max(0, Math.floor(600 - elapsed));
+    setBankTimeLeft(remaining);
+
+    if (remaining <= 0) {
+      setBankOrder((prev) => (prev ? { ...prev, status: "expired" } : null));
+      setMessage("⌛ Đã hết thời gian chờ thanh toán (10 phút). Mã VietQR đã bị ngắt để đảm bảo an toàn giao dịch.");
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setBankTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setBankOrder((curr) => (curr ? { ...curr, status: "expired" } : null));
+          setMessage("⌛ Đã hết thời gian chờ thanh toán (10 phút). Mã VietQR đã bị ngắt để đảm bảo an toàn giao dịch.");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [bankOrder?.order_code, bankOrder?.status, bankOrder?.created_at]);
+
+  // Polling bank deposit status when an order is pending
+  useEffect(() => {
+    if (!bankOrder || bankOrder.status !== "pending") return;
+
+    const interval = setInterval(async () => {
+      try {
+        const check = await api.checkBankDeposit(bankOrder.order_code);
+        if (check.status === "paid") {
+          setBankOrder((prev) => (prev ? {
+            ...prev,
+            status: "paid",
+            solana_signature: check.solana_signature,
+            solana_explorer_url: check.solana_explorer_url,
+            sol_amount: check.sol_amount,
+            payout_mode: check.payout_mode,
+          } : null));
+          if (check.payout_mode === "sol_swap") {
+            setMessage(`🎉 ĐỔI SOL THÀNH CÔNG! Đã chuyển +${check.sol_amount} SOL vào ví Phantom của bạn trên Solana Devnet.`);
+          } else {
+            setMessage(`🎉 Giao dịch ACB hoàn tất! Đã cộng +${check.points.toLocaleString("vi-VN")} UniPoints.`);
+          }
+          await refreshPoints();
+          void loadBankHistory();
+          clearInterval(interval);
+        } else if (check.status === "expired") {
+          setBankOrder((prev) => (prev ? { ...prev, status: "expired" } : null));
+          setBankTimeLeft(0);
+          setMessage("⌛ Đơn thanh toán đã hết hạn chờ (10 phút). Ảnh mã QR đã bị ngắt.");
+          clearInterval(interval);
+        }
+      } catch {
+        /* quiet polling retry */
+      }
+    }, 3500);
+
+    return () => clearInterval(interval);
+  }, [bankOrder?.order_code, bankOrder?.status]);
+
+  function handleSelectBankPreset(val: number) {
+    setBankSelectedPreset(val);
+    setBankAmount(val);
+    setBankCustomInput(String(val));
+    setBankOrder(null);
+  }
+
+  function handleBankCustomChange(val: string) {
+    setBankCustomInput(val);
+    setBankSelectedPreset(null);
+    const num = parseInt(val, 10);
+    if (!isNaN(num) && num > 0) {
+      setBankAmount(num);
+    } else {
+      setBankAmount(0);
+    }
+  }
+
+  async function handleCreateBankIntent() {
+    if (!user) {
+      setMessage("Vui lòng đăng nhập tài khoản sinh viên trước khi thực hiện giao dịch.");
+      return;
+    }
+    if (bankAmount < 10000) {
+      setMessage("Số tiền nạp tối thiểu là 10.000 VNĐ.");
+      return;
+    }
+    let targetWallet = customSolWallet.trim();
+    if (bankPayoutMode === "sol_swap") {
+      if (!targetWallet && wallet.publicKey) {
+        targetWallet = wallet.publicKey.toBase58();
+      }
+      if (!targetWallet) {
+        setMessage("Vui lòng kết nối ví Phantom hoặc nhập địa chỉ ví Solana để nhận SOL.");
+        return;
+      }
+    }
+
+    setBankLoading(true);
+    setMessage("");
+    try {
+      const intent = await api.createBankDeposit(bankAmount, bankPayoutMode, targetWallet || undefined);
+      setBankOrder(intent);
+      setBankTimeLeft(600);
+      if (bankPayoutMode === "sol_swap") {
+        setMessage(`Đã tạo mã VietQR đổi ${intent.sol_amount || calculateSolAmount(bankAmount)} SOL vào ví Phantom (${targetWallet.slice(0, 4)}...${targetWallet.slice(-4)}). Quét mã để nhận SOL trong 5 giây!`);
+      } else {
+        setMessage(`Đã tạo mã VietQR thanh toán cho đơn ${intent.order_code}. Mã có hiệu lực trong 10 phút. Quét mã bằng app ACB hoặc bất kỳ app ngân hàng nào.`);
+      }
+    } catch (err) {
+      setMessage((err as Error).message || "Không thể tạo mã VietQR. Vui lòng thử lại.");
+    } finally {
+      setBankLoading(false);
+    }
+  }
+
+  // Tự động kiểm tra và đối soát giao dịch ACB (Tự động mỗi 3 giây)
+  useEffect(() => {
+    if (!user) return;
+    let isCancelled = false;
+
+    const pollStatus = async () => {
+      try {
+        if (bankOrder && bankOrder.status === "pending") {
+          const res = await api.checkBankDeposit(bankOrder.order_code);
+          if (isCancelled) return;
+          if (res.status === "paid") {
+            setBankOrder((prev) => (prev ? {
+              ...prev,
+              status: "paid",
+              solana_signature: res.solana_signature,
+              solana_explorer_url: res.solana_explorer_url,
+              sol_amount: res.sol_amount,
+              payout_mode: res.payout_mode,
+            } : null));
+            if (res.payout_mode === "sol_swap") {
+              setMessage(`🎉 ACB ĐÃ XÁC NHẬN TIỀN VÀO! Hệ thống đã tự động bắn +${res.sol_amount} SOL vào ví Phantom của bạn trên Solana Devnet.`);
+            } else {
+              setMessage(`🎉 ACB ĐÃ XÁC NHẬN TIỀN VÀO! Hệ thống đã tự động cộng +${res.points.toLocaleString("vi-VN")} UniPoints vào tài khoản.`);
+            }
+            await refreshPoints();
+            void loadBankHistory();
+            return;
+          } else if (res.status === "expired") {
+            setBankOrder((prev) => (prev ? { ...prev, status: "expired" } : null));
+            setBankTimeLeft(0);
+            return;
+          }
+        }
+
+        const history = await api.getBankDepositHistory();
+        if (isCancelled) return;
+        setBankHistory(history);
+
+        const anyPending = history.find((h) => h.status === "pending");
+        if (anyPending) {
+          const check = await api.checkBankDeposit(anyPending.order_code);
+          if (isCancelled) return;
+          if (check.status === "paid") {
+            if (bankOrder && bankOrder.order_code === anyPending.order_code) {
+              setBankOrder((prev) => (prev ? {
+                ...prev,
+                status: "paid",
+                solana_signature: check.solana_signature,
+                solana_explorer_url: check.solana_explorer_url,
+                sol_amount: check.sol_amount,
+                payout_mode: check.payout_mode,
+              } : null));
+            }
+            if (check.payout_mode === "sol_swap") {
+              setMessage(`🎉 ACB ĐÃ XÁC NHẬN TIỀN VÀO! Hệ thống đã tự động bắn +${check.sol_amount} SOL vào ví Phantom của bạn.`);
+            } else {
+              setMessage(`🎉 ACB ĐÃ XÁC NHẬN TIỀN VÀO! Hệ thống đã tự động cộng +${check.points.toLocaleString("vi-VN")} UniPoints vào tài khoản.`);
+            }
+            await refreshPoints();
+            void loadBankHistory();
+          } else if (check.status === "expired") {
+            if (bankOrder && bankOrder.order_code === anyPending.order_code) {
+              setBankOrder((prev) => (prev ? { ...prev, status: "expired" } : null));
+              setBankTimeLeft(0);
+            }
+          }
+        }
+      } catch {
+        // Bỏ qua lỗi mạng nền
+      }
+    };
+
+    const interval = setInterval(pollStatus, 3000);
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [user, bankOrder?.order_code, bankOrder?.status]);
+
+
+
+  function handleCopy(text: string, field: string) {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
     }
   }
 
@@ -601,10 +882,17 @@ export default function WalletPage() {
         <div className={styles.tabs}>
           <button
             type="button"
+            className={`${styles.tabBtn} ${activeTab === "bank" ? styles.activeTab : ""}`}
+            onClick={() => setActiveTab("bank")}
+          >
+            ⚡ Đổi VNĐ Sang SOL (VietQR ACB)
+          </button>
+          <button
+            type="button"
             className={`${styles.tabBtn} ${activeTab === "deposit" ? styles.activeTab : ""}`}
             onClick={() => setActiveTab("deposit")}
           >
-            💎 Nạp UniPoints (Đổi SOL)
+            💎 Nạp SOL Devnet
           </button>
           <button
             type="button"
@@ -621,6 +909,491 @@ export default function WalletPage() {
             📜 Lịch Sử & Đối Soát
           </button>
         </div>
+
+        {/* TAB 0: CỔNG ON-RAMP VIETQR ACB -> SOLANA DEVNET */}
+        {activeTab === "bank" && (
+          <div className={styles.bankCard}>
+            {/* Mode Switcher */}
+            <div className={styles.onrampModeSwitch}>
+              <button
+                type="button"
+                className={`${styles.modePillBtn} ${bankPayoutMode === "sol_swap" ? styles.modePillActiveSol : ""}`}
+                onClick={() => {
+                  setBankPayoutMode("sol_swap");
+                  setBankOrder(null);
+                }}
+              >
+                <span>⚡ Đổi VNĐ Lấy SOL Devnet</span>
+                <span className={styles.solanaBadgeGlow}>Khuyên dùng</span>
+              </button>
+              <button
+                type="button"
+                className={`${styles.modePillBtn} ${bankPayoutMode === "unipoints" ? styles.modePillActivePoints : ""}`}
+                onClick={() => {
+                  setBankPayoutMode("unipoints");
+                  setBankOrder(null);
+                }}
+              >
+                <span>🎓 Nạp Điểm UniPoints (AI Luna)</span>
+              </button>
+            </div>
+
+            {bankPayoutMode === "sol_swap" ? (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+                  <h2 style={{ fontSize: "1.2rem", margin: 0, color: "#e0f2fe", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <span>⚡</span> Cổng On-Ramp Tức Thì: VietQR (ACB) ➔ Solana Devnet
+                  </h2>
+                  <span className={styles.solanaBadgeGlow}>
+                    Instant Solana On-Ramp
+                  </span>
+                </div>
+                <p style={{ color: "#94a3b8", fontSize: "0.85rem", marginTop: "0.4rem" }}>
+                  Giải pháp Web2.5 giúp sinh viên Việt Nam sở hữu ngay SOL Devnet vào ví Phantom chỉ bằng 1 thao tác quét mã VietQR ngân hàng ACB trên điện thoại — <strong>hoàn toàn không cần KYC, không cần nạp tiền lên sàn CEX/DEX phức tạp</strong>!
+                </p>
+
+                {/* Target Phantom Wallet Selection */}
+                <div className={styles.solanaWalletBox}>
+                  <label style={{ margin: "0 0 0.35rem 0", color: "#a5f3fc", fontSize: "0.82rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.4rem" }}>
+                    <span>Ví Phantom nhận SOL Devnet:</span>
+                    {wallet.publicKey ? (
+                      <span className={styles.solanaConnectedBadge}>
+                        ✓ Đã kết nối ví Phantom ({wallet.publicKey.toBase58().slice(0, 4)}...{wallet.publicKey.toBase58().slice(-4)})
+                      </span>
+                    ) : (
+                      <span style={{ color: "#fbbf24", fontSize: "0.75rem" }}>
+                        ⚠️ Chưa kết nối ví — Bạn có thể dán địa chỉ ví hoặc bấm nút kết nối bên dưới:
+                      </span>
+                    )}
+                  </label>
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                    <input
+                      type="text"
+                      value={customSolWallet || (wallet.publicKey ? wallet.publicKey.toBase58() : "")}
+                      onChange={(e) => setCustomSolWallet(e.target.value)}
+                      placeholder={wallet.publicKey ? wallet.publicKey.toBase58() : "Dán địa chỉ ví Phantom của bạn hoặc bấm kết nối..."}
+                      style={{ flex: 1, fontFamily: "monospace", fontSize: "0.82rem", borderColor: "rgba(153, 69, 255, 0.5)" }}
+                    />
+                    {!wallet.connected && (
+                      <button
+                        type="button"
+                        onClick={() => setVisible(true)}
+                        style={{ margin: 0, padding: "0.55rem 0.85rem", fontSize: "0.78rem", whiteSpace: "nowrap", background: "linear-gradient(135deg, #9945FF, #14F195)", color: "#030712", fontWeight: 800, borderRadius: "8px" }}
+                      >
+                        Kết nối ví Phantom
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <label style={{ marginTop: "1rem" }}>Chọn nhanh gói đổi SOL Devnet (Tặng kèm UniPoints):</label>
+                <div className={styles.presetGrid}>
+                  {SOL_SWAP_PRESETS.map((p) => (
+                    <button
+                      key={p.amount}
+                      type="button"
+                      className={`${styles.presetBtn} ${bankSelectedPreset === p.amount ? styles.activePreset : ""}`}
+                      onClick={() => handleSelectBankPreset(p.amount)}
+                      style={bankSelectedPreset === p.amount ? { borderColor: "#14F195", boxShadow: "0 0 14px rgba(20, 241, 149, 0.4)" } : {}}
+                    >
+                      <strong>{p.amount.toLocaleString("vi-VN")} đ</strong>
+                      <span style={{ color: "#14F195", fontWeight: 800 }}>⚡ {p.sol} SOL</span>
+                      {p.bonus && <span className={styles.bonusBadge} style={{ background: "rgba(153, 69, 255, 0.25)", color: "#c084fc", borderColor: "rgba(153, 69, 255, 0.6)" }}>{p.bonus}</span>}
+                      <span style={{ fontSize: "0.68rem", color: "#94a3b8" }}>{p.desc} (+{p.points} UP)</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+                  <h2 style={{ fontSize: "1.2rem", margin: 0, color: "#e0f2fe", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <span>🏦</span> Nạp UniPoints qua Ngân hàng ACB (VietQR)
+                  </h2>
+                  <span className={styles.pulseStatus}>
+                    <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#22d3ee", display: "inline-block" }}></span>
+                    Tự động duyệt 24/7
+                  </span>
+                </div>
+                <p style={{ color: "#94a3b8", fontSize: "0.85rem", marginTop: "0.4rem" }}>
+                  Chuyển khoản nhanh qua VietQR bằng bất kỳ App ngân hàng nào (ACB, Vietcombank, MB, Techcombank, Momo, v.v.). Hệ thống tự động ghi có UniPoints vào tài khoản ngay khi nhận được tiền.
+                </p>
+
+                <label style={{ marginTop: "1rem" }}>Chọn nhanh gói nạp điểm (Khuyến mãi tích lũy):</label>
+                <div className={styles.presetGrid}>
+                  {BANK_PRESETS.map((p) => (
+                    <button
+                      key={p.amount}
+                      type="button"
+                      className={`${styles.presetBtn} ${bankSelectedPreset === p.amount ? styles.activePreset : ""}`}
+                      onClick={() => handleSelectBankPreset(p.amount)}
+                    >
+                      <strong>{p.amount.toLocaleString("vi-VN")} đ</strong>
+                      <span style={{ color: "#67e8f9" }}>+{p.points.toLocaleString("vi-VN")} UP</span>
+                      {p.bonus && <span className={styles.bonusBadge}>{p.bonus}</span>}
+                      <span style={{ fontSize: "0.68rem", color: "#94a3b8" }}>{p.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <label htmlFor="bank-custom-amount" style={{ marginTop: "1rem" }}>
+              Hoặc nhập số tiền VNĐ tùy chọn (tối thiểu 10.000đ):
+            </label>
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <input
+                id="bank-custom-amount"
+                type="number"
+                min="10000"
+                step="5000"
+                value={bankCustomInput}
+                onChange={(e) => handleBankCustomChange(e.target.value)}
+                placeholder="Ví dụ: 20000"
+                style={{ flex: 1 }}
+              />
+              <span style={{ color: "#94a3b8", fontWeight: 700, fontSize: "0.9rem", minWidth: "40px" }}>VNĐ</span>
+            </div>
+
+            {bankPayoutMode === "sol_swap" ? (
+              <div style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: "#a5f3fc" }}>
+                Dự kiến nhận: <strong style={{ color: "#14F195", fontSize: "1.1rem" }}>{calculateSolAmount(bankAmount)} SOL</strong>
+                <span style={{ marginLeft: "0.5rem", color: "#38bdf8" }}>+ Tặng {Math.round(calculateBankPoints(bankAmount) / 2).toLocaleString("vi-VN")} UP</span>
+                <span style={{ marginLeft: "0.5rem", color: "#94a3b8" }}>➔ Chuyển thẳng về ví Phantom trên Solana Devnet</span>
+              </div>
+            ) : (
+              <div style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: "#a5f3fc" }}>
+                Dự kiến nhận: <strong style={{ color: "#38bdf8", fontSize: "1.05rem" }}>{calculateBankPoints(bankAmount).toLocaleString("vi-VN")} UP</strong>
+                {bankAmount >= 100000 && <span style={{ marginLeft: "0.5rem", color: "#fbbf24" }}>(Đã gồm +30% Thưởng)</span>}
+                {bankAmount >= 50000 && bankAmount < 100000 && <span style={{ marginLeft: "0.5rem", color: "#fbbf24" }}>(Đã gồm +20% Thưởng)</span>}
+                {bankAmount >= 20000 && bankAmount < 50000 && <span style={{ marginLeft: "0.5rem", color: "#fbbf24" }}>(Đã gồm +10% Thưởng)</span>}
+                <span style={{ marginLeft: "0.5rem", color: "#94a3b8" }}>≈ {Math.floor(calculateBankPoints(bankAmount) / 80)} lượt hỏi AI</span>
+              </div>
+            )}
+
+            {!bankOrder ? (
+              <button
+                type="button"
+                id="create-vietqr-btn"
+                disabled={bankLoading || bankAmount < 10000}
+                onClick={handleCreateBankIntent}
+                style={{
+                  marginTop: "1.2rem",
+                  width: "100%",
+                  background: bankPayoutMode === "sol_swap" ? "linear-gradient(135deg, #9945FF, #14F195)" : undefined,
+                  color: bankPayoutMode === "sol_swap" ? "#030712" : undefined,
+                  boxShadow: bankPayoutMode === "sol_swap" ? "0 0 20px rgba(20, 241, 149, 0.4)" : undefined,
+                }}
+              >
+                {bankLoading
+                  ? "Đang tạo mã VietQR…"
+                  : bankPayoutMode === "sol_swap"
+                  ? `⚡ Tạo Mã VietQR Đổi ${bankAmount.toLocaleString("vi-VN")}đ Lấy ${calculateSolAmount(bankAmount)} SOL Devnet`
+                  : `Tạo Mã VietQR Nạp ${bankAmount.toLocaleString("vi-VN")}đ (+${calculateBankPoints(bankAmount).toLocaleString("vi-VN")} UP)`
+                }
+              </button>
+            ) : (
+              <div className={styles.bankQrSection}>
+                <div className={styles.bankQrWrapper}>
+                  {bankOrder.status === "expired" ? (
+                    <div className={styles.expiredQrWrapper}>
+                      <div className={styles.expiredIcon}>⌛</div>
+                      <div className={styles.expiredTitle}>HẾT THỜI GIAN CHỜ</div>
+                      <div className={styles.expiredSubtitle}>
+                        Thời gian 10 phút đã hết.<br />Ảnh mã VietQR đã bị ngắt tự động.
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* VietQR Code Image */}
+                      <img
+                        src={bankOrder.qr_url}
+                        alt={`Mã VietQR ${bankOrder.order_code}`}
+                        className={styles.bankQrImg}
+                      />
+                      <div style={{ marginTop: "0.5rem", textAlign: "center" }}>
+                        <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 600 }}>Quét mã bằng App Ngân Hàng</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className={styles.bankDetailsCol}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+                    <span style={{ fontSize: "0.85rem", color: "#38bdf8", fontWeight: 700 }}>
+                      MÃ ĐƠN: {bankOrder.order_code}
+                    </span>
+                    {bankOrder.status === "paid" && (
+                      <span className={styles.badgeVerified}>✓ ĐÃ THANH TOÁN</span>
+                    )}
+                    {bankOrder.status === "expired" && (
+                      <span className={styles.badgeExpired}>⌛ HẾT THỜI GIAN CHỜ</span>
+                    )}
+                    {bankOrder.status === "pending" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <span className={styles.pulseStatus}>⏳ Đang chờ quét mã</span>
+                        <span className={`${styles.countdownBadge} ${bankTimeLeft <= 120 ? styles.countdownUrgent : ""}`}>
+                          ⏱️ {Math.floor(bankTimeLeft / 60).toString().padStart(2, "0")}:{Math.floor(bankTimeLeft % 60).toString().padStart(2, "0")}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={styles.bankDetailRow}>
+                    <span className={styles.bankDetailLabel}>Loại giao dịch:</span>
+                    <span className={styles.bankDetailValue} style={{ color: bankOrder.payout_mode === "sol_swap" ? "#14F195" : "#38bdf8", fontWeight: 700 }}>
+                      {bankOrder.payout_mode === "sol_swap"
+                        ? `⚡ Đổi lấy ${bankOrder.sol_amount || calculateSolAmount(bankOrder.amount_vnd)} SOL Devnet`
+                        : "🎓 Nạp UniPoints (Hỏi bài AI)"}
+                    </span>
+                  </div>
+
+                  {bankOrder.target_wallet && (
+                    <div className={styles.bankDetailRow}>
+                      <span className={styles.bankDetailLabel}>Ví Phantom nhận SOL:</span>
+                      <span className={styles.bankDetailValue} style={{ fontFamily: "monospace", fontSize: "0.78rem" }}>
+                        {bankOrder.target_wallet.slice(0, 6)}...{bankOrder.target_wallet.slice(-6)}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className={styles.bankDetailRow}>
+                    <span className={styles.bankDetailLabel}>Ngân hàng thụ hưởng:</span>
+                    <span className={styles.bankDetailValue}>
+                      {bankOrder.bank_name} (ACB - Á Châu)
+                    </span>
+                  </div>
+
+                  <div className={styles.bankDetailRow}>
+                    <span className={styles.bankDetailLabel}>Số tài khoản:</span>
+                    <span className={styles.bankDetailValue}>
+                      {bankOrder.account_number}
+                      <button
+                        type="button"
+                        className={styles.copyButton}
+                        onClick={() => handleCopy(bankOrder.account_number, "acc")}
+                      >
+                        {copiedField === "acc" ? "✓ Đã chép" : "Sao chép"}
+                      </button>
+                    </span>
+                  </div>
+
+                  <div className={styles.bankDetailRow}>
+                    <span className={styles.bankDetailLabel}>Tên người thụ hưởng:</span>
+                    <span className={styles.bankDetailValue}>
+                      {bankOrder.account_name}
+                    </span>
+                  </div>
+
+                  <div className={styles.bankDetailRow}>
+                    <span className={styles.bankDetailLabel}>Số tiền chuyển:</span>
+                    <span className={styles.bankDetailValue} style={{ color: "#34d399" }}>
+                      {bankOrder.amount_vnd.toLocaleString("vi-VN")} VNĐ
+                      <button
+                        type="button"
+                        className={styles.copyButton}
+                        onClick={() => handleCopy(String(bankOrder.amount_vnd), "amt")}
+                      >
+                        {copiedField === "amt" ? "✓ Đã chép" : "Sao chép"}
+                      </button>
+                    </span>
+                  </div>
+
+                  <div className={styles.bankDetailRow} style={{ borderColor: "rgba(234, 179, 8, 0.4)", background: "rgba(234, 179, 8, 0.08)" }}>
+                    <span className={styles.bankDetailLabel} style={{ color: "#fde047" }}>
+                      Nội dung chuyển khoản (bắt buộc):
+                    </span>
+                    <span className={styles.bankDetailValue} style={{ color: "#fde047" }}>
+                      {bankOrder.order_code}
+                      <button
+                        type="button"
+                        className={styles.copyButton}
+                        style={{ background: "rgba(234, 179, 8, 0.25) !important", color: "#fde047 !important", borderColor: "rgba(234, 179, 8, 0.6) !important" }}
+                        onClick={() => handleCopy(bankOrder.order_code, "code")}
+                      >
+                        {copiedField === "code" ? "✓ Đã chép" : "Sao chép"}
+                      </button>
+                    </span>
+                  </div>
+
+                  {/* Action buttons & Real-time boxes */}
+                  <div style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    {bankOrder.status === "paid" && (
+                      <div className={styles.solanaTxSuccessCard}>
+                        <div style={{ color: "#14F195", fontWeight: 800, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                          <span>🎉</span> GIAO DỊCH HOÀN TẤT THÀNH CÔNG!
+                        </div>
+                        {bankOrder.payout_mode === "sol_swap" && (
+                          <>
+                            <p style={{ color: "#e2e8f0", fontSize: "0.82rem", margin: "0.4rem 0 0.6rem 0", lineHeight: 1.4 }}>
+                              Đã chuyển <strong>+{bankOrder.sol_amount || calculateSolAmount(bankOrder.amount_vnd)} SOL</strong> trực tiếp vào ví Phantom của bạn. Kiểm tra số dư trên ví hoặc xem bằng chứng on-chain:
+                            </p>
+                            {bankOrder.solana_signature && (
+                              <a
+                                href={bankOrder.solana_explorer_url || `https://explorer.solana.com/tx/${bankOrder.solana_signature}?cluster=devnet`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={styles.solanaExplorerBtn}
+                              >
+                                <span>🔗</span> Xem Giao Dịch Trên Solana Explorer (Devnet) ↗
+                              </a>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {bankOrder.status === "pending" && (
+                      <div className={styles.autoDetectBox}>
+                        <div className={styles.pulseRadar}>
+                          <span className={styles.pulseDot}></span>
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 700, color: "#38bdf8", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                            <span>⚡ Đang tự động đối soát ACB theo thời gian thực...</span>
+                          </div>
+                          <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: "0.25rem", lineHeight: 1.4 }}>
+                            {bankOrder.payout_mode === "sol_swap"
+                              ? `Hệ thống quét số dư ACB mỗi 3 giây. Ngay khi tiền về, Treasury sẽ ký lệnh Solana và chuyển ngay ${bankOrder.sol_amount || calculateSolAmount(bankOrder.amount_vnd)} SOL vào ví Phantom của bạn.`
+                              : "Hệ thống tự động quét số dư ACB mỗi 3 giây. Ngay khi bạn chuyển khoản thành công, UniPoints sẽ tự động nhảy số mà không cần bấm bất kỳ nút nào."
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {bankOrder.status === "expired" && (
+                      <div className={styles.expiredNoticeBox}>
+                        <span style={{ fontSize: "1.5rem" }}>⚠️</span>
+                        <div>
+                          <div style={{ fontWeight: 700, color: "#f87171", fontSize: "0.85rem" }}>
+                            Hết thời gian chờ thanh toán (10 phút)
+                          </div>
+                          <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: "0.25rem", lineHeight: 1.4 }}>
+                            Mã VietQR này đã hết thời gian chờ tối đa và đã được ngắt kết nối an toàn. Vui lòng bấm nút bên dưới để tạo mã mới.
+                          </div>
+                          <button
+                            type="button"
+                            className={styles.newQrBtn}
+                            onClick={handleCreateBankIntent}
+                          >
+                            🔄 Tạo mã VietQR mới
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setBankOrder(null)}
+                      style={{ background: "transparent", border: "1px solid rgba(148,163,184,0.3)", color: "#94a3b8", padding: "0.4rem 0.8rem", borderRadius: "8px", fontSize: "0.8rem", cursor: "pointer", marginTop: "0.25rem" }}
+                    >
+                      ← Tạo đơn giao dịch khác
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Bank Deposit History Table */}
+            <div style={{ marginTop: "2rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                <h3 style={{ fontSize: "0.95rem", color: "#a5f3fc", margin: 0 }}>
+                  Lịch sử nạp & On-Ramp ACB ({bankHistory.length})
+                </h3>
+                <button
+                  type="button"
+                  onClick={loadBankHistory}
+                  disabled={bankHistoryLoading}
+                  style={{ background: "transparent", border: "none", color: "#06b6d4", fontSize: "0.8rem", cursor: "pointer", padding: 0, marginTop: 0 }}
+                >
+                  {bankHistoryLoading ? "Đang tải…" : "🔄 Làm mới"}
+                </button>
+              </div>
+
+              {bankHistory.length === 0 ? (
+                <p style={{ color: "#64748b", fontSize: "0.85rem", fontStyle: "italic" }}>
+                  Chưa có giao dịch nạp tiền hoặc đổi SOL nào.
+                </p>
+              ) : (
+                <div className={styles.tableWrapper}>
+                  <table className={styles.ledgerTable}>
+                    <thead>
+                      <tr>
+                        <th>Mã Đơn</th>
+                        <th>Thời gian</th>
+                        <th>Số tiền (VNĐ)</th>
+                        <th>Quyền lợi nhận</th>
+                        <th>Trạng thái</th>
+                        <th>Solana Explorer</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bankHistory.map((item) => (
+                        <tr key={item.id}>
+                          <td style={{ fontFamily: "monospace", color: "#38bdf8", fontWeight: 700 }}>
+                            {item.order_code}
+                          </td>
+                          <td style={{ whiteSpace: "nowrap", fontSize: "0.78rem" }}>
+                            {new Date(item.created_at * 1000).toLocaleString("vi-VN", {
+                              month: "numeric",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </td>
+                          <td style={{ fontWeight: 600 }}>
+                            {item.amount_vnd.toLocaleString("vi-VN")} đ
+                          </td>
+                          <td className={styles.pointsPlus}>
+                            {item.payout_mode === "sol_swap" ? (
+                              <span className={styles.badgeSolanaSwap}>
+                                ⚡ +{item.sol_amount || calculateSolAmount(item.amount_vnd)} SOL
+                                <span style={{ fontSize: "0.7rem", opacity: 0.85, marginLeft: "4px" }}>(+{item.points} UP)</span>
+                              </span>
+                            ) : (
+                              <span>+{item.points.toLocaleString("vi-VN")} UP</span>
+                            )}
+                          </td>
+                          <td>
+                            {item.status === "paid" && (
+                              <span className={styles.badgeVerified}>✓ Đã hoàn tất</span>
+                            )}
+                            {item.status === "expired" && (
+                              <span className={styles.badgeExpired}>✕ Hết hạn</span>
+                            )}
+                            {item.status === "pending" && (
+                              <span className={styles.pulseStatus}>Đang chờ</span>
+                            )}
+                          </td>
+                          <td>
+                            {item.solana_signature ? (
+                              <a
+                                href={`https://explorer.solana.com/tx/${item.solana_signature}?cluster=devnet`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={styles.explorerLinkSmall}
+                                title={`Solana Tx: ${item.solana_signature}`}
+                              >
+                                <span>🔗</span> Devnet TX ↗
+                              </a>
+                            ) : item.status === "pending" ? (
+                              <span style={{ color: "#fbbf24", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                                <span className={styles.pulseDotSmall}></span> Đối soát ACB
+                              </span>
+                            ) : (
+                              <span style={{ color: "#64748b", fontSize: "0.75rem" }}>—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* TAB 1: NẠP UNIPOINTS (ĐỔI SOL DEVNET) */}
         {activeTab === "deposit" && (
@@ -860,6 +1633,66 @@ export default function WalletPage() {
                 {busy ? "Đang đối soát…" : walletAuthenticated ? "Đối soát giao dịch và cộng điểm" : "Xác thực ví trước khi đối soát"}
               </button>
             </div>
+
+            {/* Bank ACB Deposits in History */}
+            {bankHistory.length > 0 && (
+              <div style={{ marginTop: "1.5rem" }}>
+                <h3 style={{ fontSize: "0.95rem", color: "#a5f3fc", marginBottom: "0.5rem" }}>
+                  🏦 Lịch sử giao dịch nạp tiền ACB ({bankHistory.length})
+                </h3>
+                <div className={styles.tableWrapper}>
+                  <table className={styles.ledgerTable}>
+                    <thead>
+                      <tr>
+                        <th>Mã Đơn</th>
+                        <th>Thời gian</th>
+                        <th>Số tiền (VNĐ)</th>
+                        <th>UniPoints</th>
+                        <th>Trạng thái</th>
+                        <th>Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bankHistory.map((item) => (
+                        <tr key={item.id}>
+                          <td style={{ fontFamily: "monospace", color: "#38bdf8", fontWeight: 700 }}>
+                            {item.order_code}
+                          </td>
+                          <td style={{ whiteSpace: "nowrap", fontSize: "0.78rem" }}>
+                            {new Date(item.created_at * 1000).toLocaleString("vi-VN", {
+                              month: "numeric",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </td>
+                          <td style={{ fontWeight: 600 }}>
+                            {item.amount_vnd.toLocaleString("vi-VN")} đ
+                          </td>
+                          <td className={styles.pointsPlus}>
+                            +{item.points.toLocaleString("vi-VN")} UP
+                          </td>
+                          <td>
+                            <span className={item.status === "paid" ? styles.badgeVerified : styles.pulseStatus}>
+                              {item.status === "paid" ? "✓ Đã thanh toán" : "Đang chờ"}
+                            </span>
+                          </td>
+                          <td>
+                            {item.status === "pending" ? (
+                              <span style={{ color: "#fbbf24", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                                <span className={styles.pulseDotSmall}></span> Tự động đối soát
+                              </span>
+                            ) : (
+                              <span style={{ color: "#34d399", fontSize: "0.75rem", fontWeight: 600 }}>✓ Hoàn tất</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* Ledger Table */}
             <h3 style={{ fontSize: "0.95rem", color: "#a5f3fc", marginTop: "1.5rem", marginBottom: "0.5rem" }}>

@@ -399,6 +399,47 @@ def init_db():
         )
         """)
 
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bank_deposits (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id),
+            order_code TEXT UNIQUE NOT NULL,
+            amount_vnd INTEGER NOT NULL,
+            points INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            qr_url TEXT,
+            bank_name TEXT DEFAULT 'ACB',
+            account_number TEXT DEFAULT '38038627',
+            account_name TEXT DEFAULT 'TRAN VAN TINH',
+            created_at REAL NOT NULL,
+            credited_at REAL
+        )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_bank_deposits_user ON bank_deposits(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_bank_deposits_code ON bank_deposits(order_code)")
+
+        for col_def in [
+            "initial_balance REAL",
+            "final_balance REAL",
+            "payout_mode TEXT DEFAULT 'unipoints'",
+            "sol_amount REAL DEFAULT 0.0",
+            "target_wallet TEXT",
+            "solana_signature TEXT",
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE bank_deposits ADD COLUMN {col_def}")
+            except Exception:
+                pass
+
+        for tbl, col_def in [
+            ("documents", "solana_tx TEXT"),
+            ("tasks", "solana_tx TEXT"),
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN {col_def}")
+            except Exception:
+                pass
+
         # 8. Audit Events
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS audit_events (

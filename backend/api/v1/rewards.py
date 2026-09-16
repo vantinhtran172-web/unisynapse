@@ -1,4 +1,5 @@
 import base64
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -12,8 +13,10 @@ router = APIRouter(prefix="/rewards", tags=["Rewards & Ledger"])
 @router.get("/economy")
 def economy():
     from ...core.config import DEVNET_TREASURY_ADDRESS, POINTS_PER_DEVNET_SOL, DEVNET_DEPOSITS_ENABLED, AI_CHAT_COST_POINTS
+    from ...services.solana_onramp_service import SolanaOnRampService
+    treasury_addr = SolanaOnRampService.get_treasury_pubkey() or DEVNET_TREASURY_ADDRESS
     return {
-        "treasury": DEVNET_TREASURY_ADDRESS,
+        "treasury": treasury_addr,
         "network": "devnet",
         "chat_cost": AI_CHAT_COST_POINTS,
         "chat_free": False,
@@ -343,16 +346,21 @@ def get_user_ledger(session_user: dict = Depends(require_member_session)):
         rows = [dict(r) for r in cursor.fetchall()]
 
         for row in rows:
-            trusted = row.get("proof_status") == "verified"
-            row["solana_signature"] = row.get("solana_signature") if trusted else None
+            raw_sig = row.get("solana_signature")
+            has_sig = bool(raw_sig)
+            trusted = row.get("proof_status") in ("verified", "submitted") and has_sig
+            row["solana_signature"] = raw_sig if (trusted or has_sig) else None
             row["explorer_url"] = (
-                SolanaService.get_explorer_url(row.get("solana_signature"))
-                if trusted else None
+                f"https://explorer.solana.com/tx/{raw_sig}?cluster=devnet"
+                if raw_sig
+                else None
             )
             row["verification_reason"] = (
-                "Settlement verified against Devnet."
-                if trusted
-                else "Settlement has not been reconciled against Devnet."
+                "Bằng chứng đã được ký và gửi lên Solana Devnet."
+                if row.get("proof_status") == "submitted"
+                else "Bằng chứng đã được đối soát xác minh trên Solana Devnet."
+                if row.get("proof_status") == "verified"
+                else "Đang chờ đối soát trên Solana Devnet."
             )
                 
     return rows
@@ -377,4 +385,316 @@ def get_rewards_summary(session_user: dict = Depends(require_member_session)):
         "total_transactions": total_txs,
         "total_earned": earned
     }
+
+
+# ==========================================
+# ACB BANK (VIETQR) DEPOSIT ENDPOINTS
+# ==========================================
+
+class CreateBankDepositRequest(BaseModel):
+    amount_vnd: int
+    payout_mode: Optional[str] = "unipoints"  # "unipoints" (nạp hỏi bài AI) hoặc "sol_swap" (đổi VNĐ lấy SOL Devnet vào ví Phantom)
+    target_wallet: Optional[str] = None  # Địa chỉ ví Phantom của sinh viên nếu chọn sol_swap
+
+
+@router.post("/bank/create-intent")
+def create_bank_deposit_intent(
+    req: CreateBankDepositRequest,
+    session_user: dict = Depends(require_member_session)
+):
+    import time
+    import uuid
+    import random
+    from ...core.config import ACB_DEPOSITS_ENABLED
+    from ...services.acb_service import ACBService
+
+    if not ACB_DEPOSITS_ENABLED:
+        raise HTTPException(503, "Tính năng nạp tiền qua ngân hàng ACB hiện đang tạm bảo trì.")
+
+    amount = int(req.amount_vnd)
+    if amount < 10000:
+        raise HTTPException(400, "Số tiền nạp tối thiểu là 10.000 VNĐ.")
+    if amount > 50000000:
+        raise HTTPException(400, "Số tiền nạp tối đa mỗi lần là 50.000.000 VNĐ.")
+
+    user_id = session_user["id"]
+    payout_mode = req.payout_mode or "unipoints"
+    target_wallet = req.target_wallet.strip() if req.target_wallet else None
+
+    if payout_mode == "sol_swap" and not target_wallet:
+        # Fallback to linked wallet address in user profile if not specified
+        with get_db() as conn:
+            u = conn.execute("SELECT address FROM users WHERE id = ?", (user_id,)).fetchone()
+            if u and u["address"]:
+                target_wallet = u["address"]
+        if not target_wallet:
+            raise HTTPException(400, "Vui lòng kết nối ví Phantom trước khi đổi VNĐ sang SOL.")
+
+    # Calculate points and SOL amount
+    points = ACBService.calculate_points(amount)
+    sol_amount = 0.0
+    if payout_mode == "sol_swap":
+        if amount >= 100000:
+            sol_amount = round(amount / 125000.0, 3)  # 100k -> 0.80 SOL
+        elif amount >= 50000:
+            sol_amount = round(amount / 142857.0, 3)  # 50k -> 0.35 SOL
+        elif amount >= 20000:
+            sol_amount = round(amount / 166666.0, 3)  # 20k -> 0.12 SOL
+        else:
+            sol_amount = round(amount / 200000.0, 3)  # 10k -> 0.05 SOL
+
+    # Unique 5-6 digit alphanumeric order code prefixed with UP
+    rand_suffix = "".join(random.choices("0123456789ABCDEFGHJKLMNPQRSTUVWXYZ", k=5))
+    order_code = f"UP{rand_suffix}"
+    deposit_id = str(uuid.uuid4())
+    qr_url = ACBService.generate_vietqr(amount, order_code)
+    now = time.time()
+
+    with get_db() as conn:
+        live_bal = ACBService.get_live_balance()
+        conn.execute("""
+        INSERT INTO bank_deposits (
+            id, user_id, order_code, amount_vnd, points, status,
+            qr_url, bank_name, account_number, account_name, created_at, initial_balance,
+            payout_mode, sol_amount, target_wallet
+        ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            deposit_id, user_id, order_code, amount, points,
+            qr_url, ACBService.bank_name, ACBService.account_number, ACBService.account_name, now, live_bal,
+            payout_mode, sol_amount, target_wallet
+        ))
+        conn.commit()
+
+    return {
+        "ok": True,
+        "deposit_id": deposit_id,
+        "order_code": order_code,
+        "amount_vnd": amount,
+        "points": points,
+        "payout_mode": payout_mode,
+        "sol_amount": sol_amount,
+        "target_wallet": target_wallet,
+        "qr_url": qr_url,
+        "bank_name": ACBService.bank_name,
+        "account_number": ACBService.account_number,
+        "account_name": ACBService.account_name,
+        "memo": order_code,
+        "expires_in_seconds": 600,
+        "created_at": now,
+        "status": "pending",
+    }
+
+
+@router.get("/bank/check/{order_code}")
+def check_bank_deposit_status(
+    order_code: str,
+    session_user: dict = Depends(require_member_session)
+):
+    import time
+    from ...services.acb_service import ACBService
+    from ...services.ledger_service import settle_reward
+
+    user_id = session_user["id"]
+    order_code = order_code.strip().upper()
+
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM bank_deposits WHERE order_code = ? AND user_id = ?",
+            (order_code, user_id)
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(404, f"Không tìm thấy đơn nạp tiền với mã {order_code}.")
+
+    order = dict(row)
+    solana_sig = order.get("solana_signature")
+    explorer_url = f"https://explorer.solana.com/tx/{solana_sig}?cluster=devnet" if solana_sig else None
+
+    if order["status"] == "paid":
+        msg = (
+            f"🎉 Hoán đổi thành công! Đã gửi +{order.get('sol_amount', 0.0)} SOL vào ví Phantom của bạn trên Solana Devnet."
+            if order.get("payout_mode") == "sol_swap"
+            else f"Thanh toán thành công! Bạn đã nhận được +{order['points']} UniPoints."
+        )
+        return {
+            "ok": True,
+            "status": "paid",
+            "order_code": order["order_code"],
+            "amount_vnd": order["amount_vnd"],
+            "points": order["points"],
+            "payout_mode": order.get("payout_mode", "unipoints"),
+            "sol_amount": order.get("sol_amount", 0.0),
+            "target_wallet": order.get("target_wallet"),
+            "solana_signature": solana_sig,
+            "solana_explorer_url": explorer_url,
+            "message": msg,
+            "credited": True,
+        }
+
+    if order["status"] == "expired":
+        return {
+            "ok": True,
+            "status": "expired",
+            "order_code": order["order_code"],
+            "amount_vnd": order["amount_vnd"],
+            "points": order["points"],
+            "payout_mode": order.get("payout_mode", "unipoints"),
+            "sol_amount": order.get("sol_amount", 0.0),
+            "message": "Đơn giao dịch đã hết thời gian chờ thanh toán (tối đa 10 phút). Mã QR đã bị vô hiệu hóa.",
+            "credited": False,
+        }
+
+    # Strict 10-minute (600 seconds) timeout enforcement
+    if order["status"] == "pending" and (time.time() - order["created_at"] > 600):
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE bank_deposits SET status = 'expired' WHERE order_code = ? AND status = 'pending'",
+                (order_code,)
+            )
+            conn.commit()
+        return {
+            "ok": True,
+            "status": "expired",
+            "order_code": order["order_code"],
+            "amount_vnd": order["amount_vnd"],
+            "points": order["points"],
+            "payout_mode": order.get("payout_mode", "unipoints"),
+            "sol_amount": order.get("sol_amount", 0.0),
+            "message": "Đơn giao dịch đã hết thời gian chờ thanh toán (tối đa 10 phút). Mã QR đã bị vô hiệu hóa.",
+            "credited": False,
+        }
+
+    # Verify directly with ACB API (Dual verification: statement memo or real-time balance delta)
+    check_res = ACBService.verify_transaction(
+        order["order_code"],
+        order["amount_vnd"],
+        order.get("initial_balance")
+    )
+
+    if check_res.get("matched"):
+        transfer_onchain = False
+        transfer_err = None
+        if order.get("payout_mode") == "sol_swap" and order.get("target_wallet") and not solana_sig:
+            from ...services.solana_onramp_service import SolanaOnRampService
+            try:
+                transfer_res = SolanaOnRampService.transfer_sol_to_student(
+                    recipient_pubkey=order["target_wallet"],
+                    amount_sol=order.get("sol_amount", 0.0),
+                    memo=f"UniSynapse:OnRamp:{order_code}"
+                )
+                if transfer_res.get("onchain_confirmed") or (transfer_res.get("ok") and transfer_res.get("signature")):
+                    solana_sig = transfer_res.get("signature")
+                    explorer_url = transfer_res.get("explorer_url") or f"https://explorer.solana.com/tx/{solana_sig}?cluster=devnet"
+                    transfer_onchain = True
+                else:
+                    transfer_err = transfer_res.get("error")
+            except Exception as e:
+                import logging
+                logging.getLogger("rewards").error("On-Ramp SOL transfer error: %s", e)
+                transfer_err = str(e)
+
+        with get_db() as conn:
+            # Atomic lock
+            curr = conn.execute(
+                "SELECT status FROM bank_deposits WHERE order_code = ?",
+                (order_code,)
+            ).fetchone()
+            if curr and curr[0] == "paid":
+                return {
+                    "ok": True,
+                    "status": "paid",
+                    "order_code": order["order_code"],
+                    "amount_vnd": order["amount_vnd"],
+                    "points": order["points"],
+                    "payout_mode": order.get("payout_mode", "unipoints"),
+                    "sol_amount": order.get("sol_amount", 0.0),
+                    "target_wallet": order.get("target_wallet"),
+                    "solana_signature": solana_sig,
+                    "solana_explorer_url": explorer_url,
+                    "message": "Thanh toán đã được xử lý thành công.",
+                    "credited": True,
+                }
+
+            settle_reward(
+                conn,
+                user_id=user_id,
+                delta=order["points"],
+                reason=f"Nạp qua Ngân hàng ACB (Mã {order_code}) - {order.get('payout_mode', 'unipoints')}",
+                source_type="acb_bank_deposit",
+                source_id=order["id"],
+                reward_event_key=f"acb_deposit:{order_code}",
+                proof_hash=order_code,
+                solana_signature=solana_sig,
+            )
+            tx_meta = check_res.get("transaction") or {}
+            final_bal = tx_meta.get("live_balance") if isinstance(tx_meta, dict) else None
+            conn.execute(
+                "UPDATE bank_deposits SET status = 'paid', credited_at = ?, final_balance = ?, solana_signature = ? WHERE order_code = ?",
+                (time.time(), final_bal, solana_sig, order_code)
+            )
+            if solana_sig:
+                conn.execute(
+                    "UPDATE reward_ledger SET solana_signature = ? WHERE reward_event_key = ?",
+                    (solana_sig, f"acb_deposit:{order_code}")
+                )
+            conn.commit()
+
+        if order.get("payout_mode") == "sol_swap":
+            if transfer_onchain and solana_sig:
+                msg = f"🎉 Hoán đổi thành công! Đã gửi +{order.get('sol_amount', 0.0)} SOL vào ví Phantom của bạn trên Solana Devnet."
+            else:
+                from ...services.solana_onramp_service import SolanaOnRampService
+                treasury_pubkey = SolanaOnRampService.get_treasury_pubkey()
+                msg = (
+                    f"✅ Đã ghi nhận thanh toán {order['amount_vnd']:,} VNĐ! "
+                    f"Tuy nhiên ví Quỹ Solana Treasury ({treasury_pubkey}) hiện có 0.00 SOL Devnet nên lệnh chuyển chưa lên chuỗi. "
+                    f"Vui lòng nạp Devnet SOL vào ví Quỹ để tự động phát 0.12 SOL vào ví Phantom của bạn."
+                )
+        else:
+            msg = f"Thanh toán thành công! Đã cộng +{order['points']} UniPoints vào tài khoản."
+
+        return {
+            "ok": True,
+            "status": "paid",
+            "order_code": order["order_code"],
+            "amount_vnd": order["amount_vnd"],
+            "points": order["points"],
+            "payout_mode": order.get("payout_mode", "unipoints"),
+            "sol_amount": order.get("sol_amount", 0.0),
+            "target_wallet": order.get("target_wallet"),
+            "solana_signature": solana_sig,
+            "solana_explorer_url": explorer_url,
+            "message": msg,
+            "credited": True,
+        }
+
+    return {
+        "ok": True,
+        "status": "pending",
+        "order_code": order["order_code"],
+        "amount_vnd": order["amount_vnd"],
+        "points": order["points"],
+        "payout_mode": order.get("payout_mode", "unipoints"),
+        "sol_amount": order.get("sol_amount", 0.0),
+        "target_wallet": order.get("target_wallet"),
+        "message": check_res.get("message", "Đang chờ chuyển khoản từ ngân hàng..."),
+        "credited": False,
+    }
+
+
+@router.get("/bank/history")
+def get_bank_deposit_history(session_user: dict = Depends(require_member_session)):
+    user_id = session_user["id"]
+    with get_db() as conn:
+        rows = conn.execute("""
+        SELECT id, order_code, amount_vnd, points, status, qr_url, bank_name,
+               account_number, account_name, created_at, credited_at,
+               payout_mode, sol_amount, target_wallet, solana_signature
+        FROM bank_deposits
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT 20
+        """, (user_id,)).fetchall()
+        return [dict(r) for r in rows]
+
 

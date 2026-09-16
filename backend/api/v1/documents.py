@@ -165,16 +165,33 @@ async def upload_document(
     award_points = 50
     reputation_gain = 5
     proof_hash = SolanaService.create_proof_hash(f"document_upload:{doc_id}:{checksum}")
-    solana_signature = SolanaService.generate_devnet_signature(proof_hash)
+
+    # Fetch student wallet address if linked
+    owner_wallet = None
+    with get_db() as conn:
+        u = conn.execute("SELECT address FROM users WHERE id = ?", (owner_id,)).fetchone()
+        if u and u["address"]:
+            owner_wallet = u["address"]
+
+    from ...services.solana_onramp_service import SolanaOnRampService
+    onchain_proof = SolanaOnRampService.record_academic_proof_onchain(
+        doc_id=doc_id,
+        checksum=checksum,
+        title=original_name,
+        quality_score=quality_score,
+        owner_pubkey=owner_wallet,
+    )
+    solana_signature = onchain_proof.get("signature")
+    explorer_url = onchain_proof.get("explorer_url")
     reward_event_key = f"document_upload:{doc_id}"
 
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
         UPDATE documents
-        SET status = 'approved', chunk_count = ?, approved_at = ?, quality_check = ?
+        SET status = 'approved', chunk_count = ?, approved_at = ?, quality_check = ?, solana_tx = ?
         WHERE id = ?
-        """, (chunk_count, now, f"passed ({quality_score}/100)", doc_id))
+        """, (chunk_count, now, f"passed ({quality_score}/100)", solana_signature, doc_id))
 
         settle_reward(
             conn,
@@ -184,7 +201,7 @@ async def upload_document(
             source_type="document_upload",
             source_id=doc_id,
             reward_event_key=reward_event_key,
-            proof_status="unsubmitted",
+            proof_status="submitted",
             solana_signature=solana_signature,
             proof_hash=proof_hash,
             created_at=now,
@@ -201,7 +218,8 @@ async def upload_document(
         "reward_points": award_points,
         "reputation_gain": reputation_gain,
         "solana_signature": solana_signature,
-        "explorer_url": SolanaService.get_explorer_url(solana_signature),
+        "solana_tx": solana_signature,
+        "explorer_url": explorer_url,
         "steps": {
             "mime": "passed",
             "privacy": "passed",

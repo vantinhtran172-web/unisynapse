@@ -107,6 +107,7 @@ class ConsensusService:
             )
             user_rewarded = submission_settlement["created"]
 
+            consensus_sig = None
             if total_votes >= required_votes and confidence >= threshold:
                 update = cursor.execute(
                     """
@@ -119,6 +120,19 @@ class ConsensusService:
                 finalized = update.rowcount == 1
 
                 if finalized:
+                    from .solana_onramp_service import SolanaOnRampService
+                    consensus_proof = SolanaOnRampService.record_consensus_proof_onchain(
+                        task_id=task_id,
+                        winning_label=top_label,
+                        confidence=confidence,
+                        total_votes=total_votes,
+                    )
+                    consensus_sig = consensus_proof.get("signature")
+                    cursor.execute(
+                        "UPDATE tasks SET solana_tx = ? WHERE id = ?",
+                        (consensus_sig, task_id)
+                    )
+
                     for row in rows:
                         if row["label"] != top_label or not row["is_gold_correct"]:
                             continue
@@ -126,9 +140,6 @@ class ConsensusService:
                         consensus_event_key = f"task-consensus:{task_id}:user:{voter_id}"
                         consensus_proof_hash = SolanaService.create_proof_hash(
                             f"TASK_REWARD:{consensus_event_key}:{reward_points}"
-                        )
-                        consensus_sig = SolanaService.generate_devnet_signature(
-                            consensus_proof_hash
                         )
                         settle_reward(
                             conn,
@@ -138,13 +149,14 @@ class ConsensusService:
                             source_type="task",
                             source_id=task_id,
                             reward_event_key=consensus_event_key,
-                            proof_status="unsubmitted",
+                            proof_status="submitted",
                             solana_signature=consensus_sig,
                             proof_hash=consensus_proof_hash,
                             created_at=now,
                         )
 
             conn.commit()
+            active_sig = consensus_sig if (finalized and consensus_sig) else solana_signature
             return {
                 "success": True,
                 "task_id": task_id,
@@ -164,4 +176,6 @@ class ConsensusService:
                 "user_rewarded": True,
                 "reward_points": reward_points,
                 "is_gold_correct": bool(is_gold_correct),
+                "solana_signature": active_sig,
+                "explorer_url": f"https://explorer.solana.com/tx/{active_sig}?cluster=devnet" if active_sig else None,
             }

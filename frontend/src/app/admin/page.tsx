@@ -24,6 +24,7 @@ interface AdminDocument {
   status: string;
   quality_score?: number;
   proof_cid?: string;
+  solana_signature?: string;
   owner_name?: string;
   owner_wallet?: string;
   uploaded_at?: number;
@@ -84,8 +85,30 @@ interface AdminLedgerEntry {
   balance_after?: number;
   memo?: string;
   solana_signature?: string;
+  explorer_url?: string;
+  target_wallet?: string;
+  sol_amount?: number;
   timestamp?: number;
   created_at?: number;
+}
+
+interface AdminBankDeposit {
+  id: string;
+  order_code: string;
+  user_id: string;
+  username?: string;
+  wallet_address?: string;
+  target_wallet?: string;
+  amount_vnd: number;
+  unipoints_awarded: number;
+  sol_amount?: number;
+  payout_mode?: string;
+  status: string;
+  payment_method?: string;
+  solana_signature?: string;
+  explorer_url?: string;
+  created_at: number;
+  paid_at?: number;
 }
 
 interface AuditEvent {
@@ -113,7 +136,7 @@ export default function OnlineAdminPage() {
 
   // Dashboard Data State
   const [activeTab, setActiveTab] = useState<TabType>("overview");
-  const [ledgerSubTab, setLedgerSubTab] = useState<"ledger" | "audit">("ledger");
+  const [ledgerSubTab, setLedgerSubTab] = useState<"ledger" | "bank" | "audit">("ledger");
   const [loading, setLoading] = useState<boolean>(false);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [documents, setDocuments] = useState<AdminDocument[]>([]);
@@ -121,6 +144,7 @@ export default function OnlineAdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [chunks, setChunks] = useState<AdminChunk[]>([]);
   const [ledger, setLedger] = useState<AdminLedgerEntry[]>([]);
+  const [bankDeposits, setBankDeposits] = useState<AdminBankDeposit[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [docFilter, setDocFilter] = useState<string>("all");
   const [userSearch, setUserSearch] = useState<string>("");
@@ -299,14 +323,15 @@ export default function OnlineAdminPage() {
     if (!isAuthenticated || !securityKey) return;
     setLoading(true);
     try {
-      const [s, docs, t, u, c, l, a] = await Promise.all([
+      const [s, docs, t, u, c, l, a, b] = await Promise.all([
         adminRequest("/admin/stats").catch(() => null),
         adminRequest("/admin/documents").catch(() => []),
         adminRequest("/admin/tasks").catch(() => []),
         adminRequest("/admin/users").catch(() => []),
         adminRequest("/admin/chunks?limit=100").catch(() => ({ chunks: [] })),
         adminRequest("/admin/ledger").catch(() => []),
-        adminRequest("/admin/audit-events").catch(() => [])
+        adminRequest("/admin/audit-events").catch(() => []),
+        adminRequest("/admin/bank-deposits").catch(() => [])
       ]);
 
       setStats(s);
@@ -316,6 +341,7 @@ export default function OnlineAdminPage() {
       setChunks(c?.chunks || []);
       setLedger(l || []);
       setAuditEvents(a || []);
+      setBankDeposits(b || []);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Lỗi khi tải dữ liệu";
       showToast(msg, "error");
@@ -1555,27 +1581,51 @@ export default function OnlineAdminPage() {
         {/* 6. LEDGER & AUDIT PANEL */}
         {activeTab === "ledger" && (
           <div className="space-y-4">
-            <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
               <button
                 onClick={() => setLedgerSubTab("ledger")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  ledgerSubTab === "ledger" ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900" : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                  ledgerSubTab === "ledger" ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 Sổ cái Giao dịch Điểm ({ledger.length})
               </button>
               <button
+                onClick={() => setLedgerSubTab("bank")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  ledgerSubTab === "bank"
+                    ? "bg-purple-600 text-white shadow-sm shadow-purple-500/30"
+                    : "text-purple-600 dark:text-purple-400 hover:bg-purple-500/10"
+                }`}
+              >
+                <span>⚡ On-Ramp VietQR & Solana Devnet</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                  ledgerSubTab === "bank" ? "bg-purple-800 text-purple-100" : "bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300"
+                }`}>
+                  {bankDeposits.length}
+                </span>
+              </button>
+              <button
                 onClick={() => setLedgerSubTab("audit")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  ledgerSubTab === "audit" ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900" : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                  ledgerSubTab === "audit" ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 Nhật ký Kiểm toán An ninh ({auditEvents.length})
               </button>
             </div>
 
-            {ledgerSubTab === "ledger" ? (
+            {ledgerSubTab === "ledger" && (
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                <div className="p-3.5 bg-slate-50/70 dark:bg-slate-800/30 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                    <span>📖</span>
+                    <span>Toàn bộ biến động số dư UniPoints & Chữ ký giao dịch on-chain</span>
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-sans">
+                    Hiển thị {ledger.length} giao dịch gần nhất
+                  </span>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead>
@@ -1585,7 +1635,7 @@ export default function OnlineAdminPage() {
                         <th className="py-3.5 px-4">Loại GD</th>
                         <th className="py-3.5 px-4">Biến động</th>
                         <th className="py-3.5 px-4">Nội dung (Memo)</th>
-                        <th className="py-3.5 px-4">Solana Tx</th>
+                        <th className="py-3.5 px-4">Solana Devnet Tx</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
@@ -1610,21 +1660,26 @@ export default function OnlineAdminPage() {
                             <td className={`py-3 px-4 font-bold ${entry.amount > 0 ? "text-emerald-500" : "text-rose-500"}`}>
                               {entry.amount > 0 ? `+${entry.amount}` : entry.amount} UP
                             </td>
-                            <td className="py-3 px-4 font-sans text-slate-500 max-w-xs truncate">
+                            <td className="py-3 px-4 font-sans text-slate-500 max-w-xs truncate" title={entry.memo}>
                               {entry.memo || "--"}
                             </td>
                             <td className="py-3 px-4">
                               {entry.solana_signature ? (
                                 <a
-                                  href={`https://explorer.solana.com/tx/${entry.solana_signature}?cluster=devnet`}
+                                  href={entry.explorer_url || `https://explorer.solana.com/tx/${entry.solana_signature}?cluster=devnet`}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="text-blue-500 hover:underline"
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono font-bold bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/30 hover:bg-purple-500/25 hover:border-purple-500/60 transition-all shadow-sm group"
+                                  title={`Xem chi tiết giao dịch trên Solana Explorer Devnet: ${entry.solana_signature}`}
                                 >
-                                  {entry.solana_signature.substring(0, 8)}...
+                                  <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
+                                  <span className="group-hover:underline">⛓️ {entry.solana_signature.substring(0, 8)}...</span>
+                                  <span className="text-[10px] opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition-transform">↗</span>
                                 </a>
                               ) : (
-                                <span className="text-slate-400 font-sans">Internal</span>
+                                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-400 font-sans text-[10px]">
+                                  Internal
+                                </span>
                               )}
                             </td>
                           </tr>
@@ -1634,7 +1689,126 @@ export default function OnlineAdminPage() {
                   </table>
                 </div>
               </div>
-            ) : (
+            )}
+
+            {ledgerSubTab === "bank" && (
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70 dark:bg-slate-800/30">
+                  <div>
+                    <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm flex items-center gap-2">
+                      <span>⚡</span>
+                      <span>Lịch sử Nạp Tiền VietQR & Phân Phối Solana Devnet Tự Động</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Đối soát tự động chuyển tiền ngân hàng ACB VietQR sang SOL on-chain trực tiếp vào ví người dùng.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs font-medium font-sans">
+                    <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-bold">
+                      ✓ Đã chuyển SOL: {bankDeposits.filter(b => b.status === "paid").length}
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-bold">
+                      ⏳ Chờ quét QR: {bankDeposits.filter(b => b.status === "pending").length}
+                    </span>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-500 font-bold uppercase tracking-wider">
+                        <th className="py-3.5 px-4">Mã Đơn QR</th>
+                        <th className="py-3.5 px-4">Thành viên</th>
+                        <th className="py-3.5 px-4">Số tiền VNĐ</th>
+                        <th className="py-3.5 px-4">Quyền lợi nhận</th>
+                        <th className="py-3.5 px-4">Ví nhận SOL</th>
+                        <th className="py-3.5 px-4">Trạng thái</th>
+                        <th className="py-3.5 px-4">Solana Devnet Tx</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
+                      {bankDeposits.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-slate-400 font-sans">
+                            Chưa có đơn nạp VietQR nào được ghi nhận.
+                          </td>
+                        </tr>
+                      ) : (
+                        bankDeposits.map((dep) => (
+                          <tr key={dep.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                            <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-200">
+                              <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold">
+                                {dep.order_code}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 font-sans font-medium text-slate-800 dark:text-slate-200">
+                              {dep.username || dep.user_id.substring(0, 8)}
+                            </td>
+                            <td className="py-3 px-4 font-bold text-slate-700 dark:text-slate-300 font-sans">
+                              {dep.amount_vnd ? dep.amount_vnd.toLocaleString("vi-VN") : "--"} đ
+                            </td>
+                            <td className="py-3 px-4 font-sans">
+                              <div className="flex flex-col">
+                                <span className="font-bold text-emerald-600 dark:text-emerald-400">+{dep.unipoints_awarded} UP</span>
+                                {dep.sol_amount ? (
+                                  <span className="text-[11px] text-purple-600 dark:text-purple-400 font-bold font-mono">+{dep.sol_amount} SOL</span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-slate-500 max-w-[140px] truncate" title={dep.target_wallet || dep.wallet_address || ""}>
+                              {(dep.target_wallet || dep.wallet_address) ? (
+                                <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400">
+                                  {(dep.target_wallet || dep.wallet_address)!.substring(0, 6)}...{(dep.target_wallet || dep.wallet_address)!.slice(-4)}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 italic font-sans text-[11px]">Ví hệ thống</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 font-sans">
+                              {dep.status === "paid" ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                  <span>✓</span>
+                                  <span>Đã chuyển SOL</span>
+                                </span>
+                              ) : dep.status === "pending" ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                  <span>⏳</span>
+                                  <span>Chờ quét QR</span>
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/10 text-slate-500 border border-slate-500/20">
+                                  {dep.status}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              {dep.solana_signature ? (
+                                <a
+                                  href={dep.explorer_url || `https://explorer.solana.com/tx/${dep.solana_signature}?cluster=devnet`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono font-bold bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/30 hover:bg-purple-500/25 hover:border-purple-500/60 transition-all shadow-sm group"
+                                  title={`Xem chi tiết trên Solana Explorer: ${dep.solana_signature}`}
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
+                                  <span className="group-hover:underline">⛓️ {dep.solana_signature.substring(0, 8)}...</span>
+                                  <span className="text-[10px] opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition-transform">↗</span>
+                                </a>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-400 font-sans text-[10px]">
+                                  {dep.status === "paid" ? "Internal / Chờ tx" : "Chưa xác nhận"}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {ledgerSubTab === "audit" && (
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">

@@ -713,21 +713,78 @@ def delete_chunk_by_admin(chunk_id: str):
 def get_system_ledger():
     with get_db() as conn:
         cursor = conn.cursor()
+
+        # Tự động đồng bộ solana_signature từ bank_deposits nếu trong ledger chưa có
         cursor.execute("""
-        SELECT rl.*, u.username, u.address as wallet_address
+        UPDATE reward_ledger
+        SET solana_signature = (
+            SELECT bd.solana_signature
+            FROM bank_deposits bd
+            WHERE (bd.id = reward_ledger.source_id OR reward_ledger.reward_event_key = ('acb_deposit:' || bd.order_code))
+              AND bd.solana_signature IS NOT NULL AND bd.solana_signature != ''
+            LIMIT 1
+        )
+        WHERE (solana_signature IS NULL OR solana_signature = '')
+          AND source_type = 'acb_bank_deposit'
+        """)
+
+        # Tự động đồng bộ solana_signature từ documents nếu là đóng góp học liệu
+        cursor.execute("""
+        UPDATE reward_ledger
+        SET solana_signature = (
+            SELECT d.solana_tx
+            FROM documents d
+            WHERE d.id = reward_ledger.source_id
+              AND d.solana_tx IS NOT NULL AND d.solana_tx != ''
+            LIMIT 1
+        )
+        WHERE (solana_signature IS NULL OR solana_signature = '')
+          AND source_type = 'document_upload'
+        """)
+        conn.commit()
+
+        cursor.execute("""
+        SELECT rl.*, u.username, u.address as wallet_address,
+               bd.solana_signature as bank_solana_signature,
+               bd.target_wallet, bd.sol_amount, bd.payout_mode
         FROM reward_ledger rl
         LEFT JOIN users u ON rl.user_id = u.id
+        LEFT JOIN bank_deposits bd ON (rl.source_id = bd.id OR rl.reward_event_key = ('acb_deposit:' || bd.order_code))
         ORDER BY rl.created_at DESC
-        LIMIT 100
+        LIMIT 150
         """)
         rows = [dict(r) for r in cursor.fetchall()]
         for r in rows:
+            sig = r.get("solana_signature") or r.get("bank_solana_signature")
+            r["solana_signature"] = sig
             r["amount"] = r.get("delta", 0)
             r["tx_type"] = r.get("reason", r.get("source_type", "TRANSACTION"))
             r["memo"] = r.get("reason", "")
             r["timestamp"] = r.get("created_at", 0)
-            if r.get("solana_signature"):
-                r["explorer_url"] = SolanaService.get_explorer_url(r["solana_signature"])
+            if sig:
+                r["explorer_url"] = SolanaService.get_explorer_url(sig) or f"https://explorer.solana.com/tx/{sig}?cluster=devnet"
+            else:
+                r["explorer_url"] = None
+        return rows
+
+@router.get("/bank-deposits")
+def get_all_bank_deposits():
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT bd.*, u.username, u.address as wallet_address
+        FROM bank_deposits bd
+        LEFT JOIN users u ON bd.user_id = u.id
+        ORDER BY bd.created_at DESC
+        LIMIT 100
+        """)
+        rows = [dict(r) for r in cursor.fetchall()]
+        for r in rows:
+            sig = r.get("solana_signature")
+            if sig:
+                r["explorer_url"] = f"https://explorer.solana.com/tx/{sig}?cluster=devnet"
+            else:
+                r["explorer_url"] = None
         return rows
 
 @router.get("/audit-events")

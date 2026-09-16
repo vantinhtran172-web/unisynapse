@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import uuid
@@ -19,6 +20,7 @@ from .api.v1.documents import router as documents_router
 from .api.v1.tutor import router as tutor_router
 from .api.v1.rewards import router as rewards_router
 from .api.v1.admin import router as admin_router
+from .services.bank_watcher import bank_deposit_watcher_loop, stop_bank_watcher
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,8 +36,19 @@ async def lifespan(app: FastAPI):
         except Exception as err:
             import logging
             logging.getLogger("uvicorn.error").warning("Demo seed skipped or failed: %s", err)
+
+    # Start background auto-settle daemon for ACB bank deposits
+    watcher_task = asyncio.create_task(bank_deposit_watcher_loop(interval_seconds=4.0))
+
     yield
+
     # Shutdown
+    stop_bank_watcher()
+    watcher_task.cancel()
+    try:
+        await watcher_task
+    except asyncio.CancelledError:
+        pass
 
 app = FastAPI(
     title="UniSynapse Backend API",

@@ -127,31 +127,33 @@ export default function ProofExplorer() {
                     {entry.delta > 0 ? "+" : ""}{entry.delta} Pts
                   </span>
                   <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded border ${
-                    entry.proof_status === "verified"
+                    entry.proof_status === "verified" || entry.solana_signature
                       ? "text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/20"
                       : entry.proof_status === "failed"
                       ? "text-rose-700 dark:text-rose-300 bg-rose-500/10 border-rose-500/20"
                       : "text-amber-700 dark:text-amber-200 bg-amber-500/10 border-amber-500/20"
                   }`}>
-                    {entry.proof_status === "verified" ? "Đã xác minh" : entry.proof_status}
+                    {entry.solana_signature ? "Đã ký On-chain" : entry.proof_status === "verified" ? "Đã xác minh" : entry.proof_status}
                   </span>
                 </div>
               </div>
 
               <div className="pt-1.5 border-t border-slate-100 dark:border-white/5 flex items-center justify-between text-[10px] font-mono text-slate-500 dark:text-slate-400">
-                <span className="truncate max-w-[200px]" title={entry.proof_hash}>
-                  Hash: {entry.proof_hash.slice(0, 14)}...{entry.proof_hash.slice(-8)}
+                <span className="truncate max-w-[200px]" title={entry.solana_signature || entry.proof_hash}>
+                  {entry.solana_signature ? `Tx: ${entry.solana_signature.slice(0, 10)}...${entry.solana_signature.slice(-6)}` : `Hash: ${entry.proof_hash.slice(0, 14)}...`}
                 </span>
-                {entry.proof_status === "verified" && entry.explorer_url && (
+                {(entry.explorer_url || entry.solana_signature) ? (
                   <a
-                    href={entry.explorer_url}
+                    href={entry.explorer_url || `https://explorer.solana.com/tx/${entry.solana_signature}?cluster=devnet`}
                     target="_blank"
                     rel="noreferrer"
                     aria-label={`Mở bằng chứng Solana cho ${entry.reason}`}
-                    className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                    className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-semibold"
                   >
-                    Solana Explorer ↗
+                    <span>🔗</span> Solana Explorer ↗
                   </a>
+                ) : (
+                  <span className="text-slate-400 italic">Đang chờ ký</span>
                 )}
               </div>
             </div>

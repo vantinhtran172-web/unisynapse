@@ -192,10 +192,27 @@ export default function DataLabeling() {
               </div>
             </div>
 
-            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono space-y-0.5">
+            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono space-y-1 pt-1.5 border-t border-slate-200 dark:border-white/5">
               <p><span className="text-slate-400 dark:text-slate-500">Mã nhiệm vụ:</span> #{result.task_id}</p>
               <p><span className="text-slate-400 dark:text-slate-500">Người đóng góp:</span> {publicKey ? publicKey.toBase58().slice(0, 10) + "..." : user?.id}</p>
-              <p><span className="text-slate-400 dark:text-slate-500">Bằng chứng:</span> Đã ghi nhận vào Sổ cái bất biến</p>
+              {(result.explorer_url || result.solana_signature) ? (
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1">
+                    <span>⛓️</span> Neo bằng chứng Solana:
+                  </span>
+                  <a
+                    href={result.explorer_url || `https://explorer.solana.com/tx/${result.solana_signature}?cluster=devnet`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 dark:text-blue-400 hover:underline font-semibold flex items-center gap-0.5"
+                  >
+                    <span>Explorer ({result.solana_signature?.slice(0, 8)}...)</span>
+                    <span>↗</span>
+                  </a>
+                </div>
+              ) : (
+                <p><span className="text-slate-400 dark:text-slate-500">Bằng chứng:</span> Đã ghi nhận vào Sổ cái bất biến</p>
+              )}
             </div>
           </div>
 

@@ -33,3 +33,12 @@ scratch*.sql
 *.zip
 temp_recordings/
 record_demo.js
+
+# Local temp and databases
+*.db
+*.sqlite*
+acb_token.txt
+scratch/
+File gốc tai về/
+treasury_keypair.json
+data/treasury_keypair.json

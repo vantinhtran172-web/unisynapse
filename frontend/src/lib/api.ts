@@ -98,6 +98,8 @@ export interface TaskSubmissionResult {
   user_rewarded: boolean;
   reward_points: number;
   is_gold_correct: boolean;
+  solana_signature?: string;
+  explorer_url?: string;
 }
 
 
@@ -112,6 +114,8 @@ export interface DocumentItem {
   quality_check?: string;
   rejection_reason?: string;
   chunk_count: number;
+  solana_tx?: string;
+  explorer_url?: string;
   created_at: number;
   approved_at?: number;
 }
@@ -123,6 +127,8 @@ export interface Citation {
   chunk_index: number;
   score: number;
   excerpt: string;
+  solana_tx?: string;
+  explorer_url?: string;
 }
 
 export interface TutorResponse {
@@ -134,6 +140,19 @@ export interface TutorResponse {
   points_debited?: boolean;
   source_type?: string;
   source_label?: string;
+}
+
+export interface NineRouterChatResponse {
+  success: boolean;
+  content: string;
+  model: string;
+  provider: string;
+  elapsed_sec?: number;
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+  citations?: { document_name: string; page?: string }[];
+  points_cost?: number;
+  points_debited?: boolean;
+  usage_id?: string;
 }
 
 export interface LedgerEntry {
@@ -195,12 +214,72 @@ export interface RewardsSummary {
   total_earned: number;
 }
 
+export interface BankDepositIntent {
+  ok: boolean;
+  order_code: string;
+  amount_vnd: number;
+  points: number;
+  payout_mode?: "unipoints" | "sol_swap";
+  sol_amount?: number;
+  target_wallet?: string | null;
+  solana_signature?: string | null;
+  solana_explorer_url?: string | null;
+  qr_url: string;
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+  status: string;
+  created_at: number;
+}
+
+export interface BankDepositCheckResponse {
+  ok: boolean;
+  order_code: string;
+  status: "pending" | "paid" | "expired";
+  amount_vnd: number;
+  points: number;
+  payout_mode?: "unipoints" | "sol_swap";
+  sol_amount?: number;
+  target_wallet?: string | null;
+  solana_signature?: string | null;
+  solana_explorer_url?: string | null;
+  credited_at?: number | null;
+  message?: string;
+}
+
+export interface BankDepositRecord {
+  id: string;
+  order_code: string;
+  amount_vnd: number;
+  points: number;
+  payout_mode?: "unipoints" | "sol_swap";
+  sol_amount?: number;
+  target_wallet?: string | null;
+  solana_signature?: string | null;
+  status: "pending" | "paid" | "expired";
+  qr_url: string;
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+  created_at: number;
+  credited_at?: number | null;
+}
+
 export const api = {
   economy: () => request<{treasury:string;network:string;chat_cost:number;points_per_sol:number;deposits_enabled:boolean}>("/rewards/economy"),
   createDeposit: () => request<{intent_id:string;memo:string;treasury:string}>("/rewards/deposit-intent", {method:"POST"}),
   verifyDeposit: (intent_id:string, signature:string) => request<{credited:number}>("/rewards/deposit-verify", {method:"POST",body:JSON.stringify({intent_id,signature})}),
   recoverDeposit: (signature:string) => request<{credited:number}>("/rewards/deposit-recover", {method:"POST",body:JSON.stringify({signature})}),
   syncDeposits: () => request<{credited:number;count:number;transactions:Array<{signature:string;points:number;lamports:number}>}>("/rewards/deposit-sync", {method:"POST"}),
+  createBankDeposit: (amount_vnd: number, payout_mode?: "unipoints" | "sol_swap", target_wallet?: string) =>
+    request<BankDepositIntent>("/rewards/bank/create-intent", {
+      method: "POST",
+      body: JSON.stringify({ amount_vnd, payout_mode, target_wallet }),
+    }),
+  checkBankDeposit: (order_code: string) =>
+    request<BankDepositCheckResponse>(`/rewards/bank/check/${order_code}`),
+  getBankDepositHistory: () =>
+    request<BankDepositRecord[]>("/rewards/bank/history"),
   register: (username: string, password: string) =>
     request<{ authenticated: boolean; id: string; username: string; role: string }>("/auth/register", {
       method: "POST",
@@ -329,7 +408,7 @@ export const api = {
     return payload as DocumentItem[];
   },
 
-  async askTutor(question: string, model?: string): Promise<TutorResponse> {
+  async askTutor(question: string, model: string = "cx/gpt-5.6-luna"): Promise<TutorResponse> {
     const res = await fetch(`${API_BASE}/tutor/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...csrfHeaders() },
@@ -341,6 +420,34 @@ export const api = {
       const detail = payload && typeof payload === "object" && "detail" in payload
         ? String(payload.detail)
         : text || `Lỗi khi gọi AI Tutor (${res.status})`;
+      throw new ApiError(res.status, detail);
+    }
+    return res.json();
+  },
+
+  async askNineRouter(
+    prompt: string,
+    mode: "coding" | "academic" | "general" = "coding",
+    model = "cx/gpt-5.6-luna",
+    includeContext = false,
+  ): Promise<NineRouterChatResponse> {
+    const res = await fetch(`${API_BASE}/tutor/ninerouter/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
+      credentials: "include",
+      body: JSON.stringify({
+        prompt,
+        mode,
+        model,
+        include_context: includeContext,
+        request_id: crypto.randomUUID(),
+      }),
+    });
+    if (!res.ok) {
+      const { payload, text } = await parseErrorResponse(res);
+      const detail = payload && typeof payload === "object" && "detail" in payload
+        ? String((payload as { detail: unknown }).detail)
+        : text || `Lỗi khi gọi 9Router AI (${res.status})`;
       throw new ApiError(res.status, detail);
     }
     return res.json();

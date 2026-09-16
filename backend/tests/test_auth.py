@@ -10,6 +10,8 @@ from backend.main import app
 
 @pytest.fixture()
 def member_client():
+    from backend.core.rate_limit import LOGIN_LIMITER
+    LOGIN_LIMITER.reset()
     init_db()
     member_id = f"member_test_{uuid.uuid4().hex[:10]}"
     username = f"member_{uuid.uuid4().hex[:10]}"
