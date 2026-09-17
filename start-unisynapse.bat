@@ -1,18 +1,19 @@
 @echo off
 setlocal EnableExtensions
 chcp 65001 >nul
-title UniSynapse — Student-Powered Knowledge Network (1-Click Start)
+title UniSynapse - Khoi Chay Toan Bo He Thong (1-Click)
 color 0B
 cd /d "%~dp0"
 
 echo =========================================================================
-echo       UNISYNAPSE — STUDENT-POWERED ACADEMIC KNOWLEDGE NETWORK
-echo             KHỞI CHẠY TOÀN BỘ DỰ ÁN VỚI 1 CLICK DUY NHẤT
+echo       UNISYNAPSE - STUDENT-POWERED ACADEMIC KNOWLEDGE NETWORK
+echo             KHOI CHAY TOAN BO DU AN VOI 1 CLICK DUY NHAT
 echo           (FastAPI + Next.js + SQLite RAG + Solana Devnet)
 echo =========================================================================
 echo.
 
-:: 1. Kiểm tra Python
+REM 1. Kiem tra Python
+set "PY_CMD="
 where py >nul 2>&1
 if %errorlevel% equ 0 (
     set "PY_CMD=py"
@@ -20,103 +21,105 @@ if %errorlevel% equ 0 (
     where python >nul 2>&1
     if %errorlevel% equ 0 (
         set "PY_CMD=python"
-    ) else (
-        echo [LỖI] Không tìm thấy Python. Vui lòng cài đặt Python 3.10+ từ https://python.org/
-        echo (Nhớ tích chọn "Add python.exe to PATH" khi cài đặt)
-        pause
-        exit /b 1
     )
 )
 
-:: 2. Kiểm tra Node.js & npm
+if "%PY_CMD%"=="" (
+    echo [LOI] Khong tim thay Python. Vui long cai dat Python 3.10+ tu https://python.org/
+    echo ^(Nho tich chon "Add python.exe to PATH" khi cai dat^)
+    pause
+    exit /b 1
+)
+
+REM 2. Kiem tra Node.js & npm
 where node >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [LỖI] Không tìm thấy Node.js. Vui lòng cài đặt Node.js 18+ từ https://nodejs.org/
+    echo [LOI] Khong tim thay Node.js. Vui long cai dat Node.js 18+ tu https://nodejs.org/
     pause
     exit /b 1
 )
 
 where npm >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [LỖI] Không tìm thấy npm. Vui lòng cài đặt lại Node.js.
+    echo [LOI] Khong tim thay npm. Vui long cai dat lai Node.js.
     pause
     exit /b 1
 )
 
-echo [1/4] Kiểm tra môi trường Python (.venv)...
+echo [1/4] Kiem tra moi truong Python (.venv)...
 if not exist ".venv\Scripts\python.exe" (
-    echo       Chưa có môi trường .venv. Đang tự động tạo .venv và cài đặt dependencies...
+    echo       Chua co moi truong .venv. Dang tu dong tao .venv va cai dat dependencies...
     %PY_CMD% -m venv .venv
-    if %errorlevel% neq 0 (
-        echo [LỖI] Không thể tạo môi trường ảo Python.
+    if errorlevel 1 (
+        echo [LOI] Khong the tao moi truong ao Python.
         pause
         exit /b 1
     )
     call ".venv\Scripts\python.exe" -m pip install --upgrade pip
     call ".venv\Scripts\python.exe" -m pip install -r "backend\requirements.txt"
-    if %errorlevel% neq 0 (
-        echo [LỖI] Cài đặt dependencies Python thất bại.
+    if errorlevel 1 (
+        echo [LOI] Cai dat dependencies Python that bai.
         pause
         exit /b 1
     )
-    echo       [OK] Đã tạo .venv và cài đặt thư viện Backend thành công!
+    echo       [OK] Da tao .venv va cai dat thu vien Backend thanh cong!
 ) else (
-    echo       [OK] Môi trường Python (.venv) đã sẵn sàng.
+    echo       [OK] Moi truong Python .venv da san sang.
 )
 
 echo.
-echo [2/4] Kiểm tra thư viện Frontend (node_modules)...
+echo [2/4] Kiem tra thu vien Frontend (node_modules)...
 if not exist "frontend\node_modules" (
-    echo       Chưa có node_modules. Đang tự động chạy npm install...
+    echo       Chua co node_modules. Dang tu dong chay npm install...
     cd /d "%~dp0frontend"
     call npm install
-    if %errorlevel% neq 0 (
-        echo [LỖI] Cài đặt dependencies Frontend thất bại.
+    if errorlevel 1 (
+        echo [LOI] Cai dat dependencies Frontend that bai.
         pause
         exit /b 1
     )
     cd /d "%~dp0"
-    echo       [OK] Đã cài đặt thư viện Frontend thành công!
+    echo       [OK] Da cai dat thu vien Frontend thanh cong!
 ) else (
-    echo       [OK] Thư viện Frontend (node_modules) đã sẵn sàng.
+    echo       [OK] Thu vien Frontend node_modules da san sang.
 )
 
 echo.
-echo [3/4] Kiểm tra cấu hình môi trường (.env)...
+echo [3/4] Kiem tra cau hinh moi truong (.env)...
 if not exist ".env" (
     if exist ".env.example" (
         copy /y ".env.example" ".env" >nul
-        echo       [OK] Đã tạo file .env từ .env.example
+        echo       [OK] Da tao file .env tu .env.example
     )
 ) else (
-    echo       [OK] File cấu hình .env đã sẵn sàng.
+    echo       [OK] File cau hinh .env da san sang.
 )
 
 echo.
-echo [4/4] Đang khởi động đồng thời Backend và Frontend...
+echo [4/4] Dang khoi dong dong thoi Backend va Frontend...
 echo.
-echo       - Đang bật Backend FastAPI tại http://127.0.0.1:8000 ...
-start "UniSynapse Backend (FastAPI)" cmd /k "cd /d "%~dp0" && .venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"
+echo       - Dang bat Backend FastAPI tai http://127.0.0.1:8000 ...
+start "UniSynapse Backend (FastAPI)" cmd /k "cd /d "%~dp0" ^&^& .venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"
 
-timeout /t 2 /nobreak >nul
+ping 127.0.0.1 -n 3 >nul
 
-echo       - Đang bật Frontend Next.js tại http://localhost:3000 ...
-start "UniSynapse Frontend (Next.js)" cmd /k "cd /d "%~dp0frontend" && npm run dev"
+echo       - Dang bat Frontend Next.js tai http://localhost:3000 ...
+start "UniSynapse Frontend (Next.js)" cmd /k "cd /d "%~dp0frontend" ^&^& npm run dev"
 
 echo.
 echo =========================================================================
-echo  HỆ THỐNG UNISYNAPSE ĐÃ ĐƯỢC KHỞI CHẠY THÀNH CÔNG!
+echo  HE THONG UNISYNAPSE DA DUOC KHOI CHAY THANH CONG!
 echo.
-echo  🌐 Giao diện Người Dùng : http://localhost:3000
-echo  🔑 Trang Quản Trị Admin : http://localhost:3000/admin
-echo  📚 Tài Liệu API Swagger : http://localhost:8000/docs
-echo  ⚡ Mạng Blockchain     : Solana Devnet
+echo  Ä‘Å¸Å’Â Giao dien Nguoi Dung : http://localhost:3000
+echo  Ä‘Å¸â€â€˜ Trang Quan Tri Admin : http://localhost:3000/admin
+echo  Ä‘Å¸â€œÂ Tai Lieu API Swagger : http://localhost:8000/docs
+echo  Ă¢ÂÂ¡ Mang Blockchain     : Solana Devnet
 echo.
-echo  Đang tự động mở trình duyệt web...
-echo  (Để dừng hệ thống: Đóng 2 cửa sổ terminal Backend và Frontend)
+echo  Dang tu dong mo trinh duyet web...
+echo  (De dung he thong: Dong 2 cua so terminal Backend va Frontend)
 echo =========================================================================
 echo.
 
-timeout /t 3 /nobreak >nul
+ping 127.0.0.1 -n 5 >nul
 start "" http://localhost:3000
 exit /b 0

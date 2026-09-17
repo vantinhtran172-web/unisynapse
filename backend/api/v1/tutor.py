@@ -10,6 +10,7 @@ router = APIRouter(prefix="/tutor", tags=["AI Tutor & RAG"])
 class AskQuestionRequest(BaseModel):
     question: str
     model: Optional[str] = "cx/gpt-5.6-luna"
+    university: Optional[str] = None
     subject_code: Optional[str] = None
     request_id: Optional[str] = None
 
@@ -51,7 +52,7 @@ def ask_tutor(payload: AskQuestionRequest,
 
     user = session_user["id"]
     usage = hashlib.sha256(f"{user}:{request_id}".encode()).hexdigest()
-    fingerprint = hashlib.sha256(json.dumps([question, payload.model, payload.subject_code]).encode()).hexdigest()
+    fingerprint = hashlib.sha256(json.dumps([question, payload.model, payload.subject_code, payload.university]).encode()).hexdigest()
 
     def lock(conn):
         if DATABASE_URL.startswith("postgresql"):
@@ -126,6 +127,7 @@ def ask_tutor(payload: AskQuestionRequest,
             question=question,
             model=payload.model or "cx/gpt-5.6-luna",
             subject_code=payload.subject_code,
+            university=payload.university,
         )
     except Exception:
         failed = True
@@ -174,7 +176,9 @@ def ask_tutor(payload: AskQuestionRequest,
         points_debited=(cost > 0),
         is_free_tier=is_free_tier,
         free_questions_left=free_left,
-        usage_id=usage
+        usage_id=usage,
+        university=payload.university,
+        subject_code=payload.subject_code,
     )
 
     with get_db() as conn:

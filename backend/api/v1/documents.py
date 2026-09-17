@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from ...core.config import UPLOADS_DIR
 from ...core.database import get_db
-from ...core.security import require_member_session
+from ...core.security import require_member_session, get_optional_member_session
 from ...services.verification_service import VerificationService
 from ...services.rag_service import RAGService
 from ...services.solana_service import SolanaService
@@ -245,7 +245,7 @@ async def upload_document(
 @router.get("/{document_id}/content")
 def get_document_content(
     document_id: str,
-    session_user: dict = Depends(require_member_session),
+    session_user: Optional[dict] = Depends(get_optional_member_session),
 ):
     with get_db() as conn:
         cursor = conn.cursor()
@@ -266,8 +266,17 @@ def get_document_content(
         file_path = UPLOADS_DIR / doc_dict["filename"]
         if file_path.exists():
             try:
-                pages = RAGService.extract_text_from_file(file_path, doc_dict.get("file_type", ""))
-                full_text = "\n\n".join(p["text"] for p in pages)
+                if file_path.suffix.lower() in [".txt", ".md", ".json", ".csv", ".py", ".cpp", ".java", ".sql"]:
+                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                        full_text = f.read()
+                elif file_path.suffix.lower() == ".pdf":
+                    import pypdf
+                    reader = pypdf.PdfReader(str(file_path))
+                    p_texts = [p.extract_text() or "" for p in reader.pages]
+                    full_text = "\n\n--- [Trang Kế Tiếp] ---\n\n".join(t.strip() for t in p_texts if t.strip())
+                else:
+                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                        full_text = f.read()
             except Exception:
                 pass
 
@@ -288,6 +297,30 @@ def get_document_content(
             "content": full_text,
             "chunks": chunks,
         }
+
+@router.get("/{document_id}/download")
+def download_document_source(
+    document_id: str,
+):
+    from fastapi.responses import FileResponse
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM documents WHERE id = ?", (document_id,))
+        doc = cursor.fetchone()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
+        doc_dict = dict(doc)
+        file_path = UPLOADS_DIR / doc_dict["filename"]
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="File nguồn không tồn tại trên hệ thống lưu trữ.")
+        
+        original_name = doc_dict.get("original_name") or doc_dict["filename"]
+        media_type = "text/plain; charset=utf-8" if file_path.suffix.lower() == ".txt" else "application/octet-stream"
+        return FileResponse(
+            path=str(file_path),
+            filename=original_name,
+            media_type=media_type
+        )
 
 @router.get("/{document_id}")
 def get_document_details(

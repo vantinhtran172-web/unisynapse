@@ -2,8 +2,8 @@
 
 import { useState, useRef } from "react";
 import { useAppState } from "../context/AppStateContext";
-
 import { DocumentUploadResponse } from "../lib/api";
+import { VHU_UNIVERSITY_NAME, VHU_IT_COURSES } from "../lib/vhuCurriculum";
 
 type VerificationStep = 'idle' | 'upload' | 'privacy' | 'duplicate' | 'copyright' | 'quality' | 'approved';
 
@@ -15,10 +15,10 @@ export default function DocumentUpload() {
   const [successInfo, setSuccessInfo] = useState<DocumentUploadResponse | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // University and Subject classification
-  const [university, setUniversity] = useState("ĐH Khoa học Tự nhiên (HCMUS)");
+  // University and Subject classification (Default: VHU)
+  const [university, setUniversity] = useState(VHU_UNIVERSITY_NAME);
   const [customUniversity, setCustomUniversity] = useState("");
-  const [subjectOption, setSubjectOption] = useState("CS101");
+  const [subjectOption, setSubjectOption] = useState("VHU_IT101");
   const [customSubjectCode, setCustomSubjectCode] = useState("");
   const [customSubjectName, setCustomSubjectName] = useState("");
 
@@ -32,6 +32,11 @@ export default function DocumentUpload() {
     "POL101": { code: "POL101", name: "Triết học Mác-Lênin" },
     "SE201": { code: "SE201", name: "Kỹ thuật Phần mềm" },
   };
+
+  // Add all VHU courses to subject presets
+  VHU_IT_COURSES.forEach(course => {
+    subjectPresets[course.code] = { code: course.code, name: course.name };
+  });
 
   const { uploadDocument, refreshState } = useAppState();
 
@@ -113,10 +118,21 @@ export default function DocumentUpload() {
           </label>
           <select
             value={university}
-            onChange={(e) => setUniversity(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setUniversity(val);
+              if (val === VHU_UNIVERSITY_NAME) {
+                setSubjectOption("VHU_IT101");
+              } else if (subjectOption.startsWith("VHU_")) {
+                setSubjectOption("CS101");
+              }
+            }}
             disabled={step !== 'idle'}
-            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
           >
+            <option value={VHU_UNIVERSITY_NAME} className="font-bold text-blue-600">
+              🏛️ Đại học Văn Hiến (VHU) - Chuyên ngành CNTT
+            </option>
             <option value="ĐH Khoa học Tự nhiên (HCMUS)">ĐH Khoa học Tự nhiên (HCMUS)</option>
             <option value="ĐH Bách Khoa (HCMUT)">ĐH Bách Khoa (HCMUT)</option>
             <option value="ĐH Công nghệ Thông tin (UIT)">ĐH Công nghệ Thông tin (UIT)</option>
@@ -149,15 +165,52 @@ export default function DocumentUpload() {
             disabled={step !== 'idle'}
             className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            <option value="CS101">CS101 - Nhập môn Lập trình</option>
-            <option value="CS102">CS102 - Lập trình Hướng đối tượng</option>
-            <option value="CS201">CS201 - Kiến trúc Máy tính & HĐH</option>
-            <option value="CS202">CS202 - Cấu trúc Dữ liệu & Giải thuật</option>
-            <option value="AI201">AI201 - Trí tuệ Nhân tạo & ML</option>
-            <option value="CRYPTO201">CRYPTO201 - Mật mã học & Blockchain</option>
-            <option value="POL101">POL101 - Triết học Mác-Lênin</option>
-            <option value="SE201">SE201 - Kỹ thuật Phần mềm</option>
-            <option value="CUSTOM">Môn học khác...</option>
+            {university === VHU_UNIVERSITY_NAME ? (
+              <>
+                <optgroup label="── 1. Cơ sở ngành CNTT ──">
+                  <option value="VHU_IT101">💻 VHU_IT101 - Nhập môn CNTT</option>
+                  <option value="VHU_DSA">🌳 VHU_DSA - Cấu trúc Dữ liệu & Giải thuật</option>
+                  <option value="VHU_OOP">🧩 VHU_OOP - Lập trình Hướng đối tượng (OOP)</option>
+                  <option value="VHU_CPP">⚡ VHU_CPP - Lập trình C++</option>
+                  <option value="VHU_JAVA">☕ VHU_JAVA - Lập trình Java</option>
+                  <option value="VHU_PY">🐍 VHU_PY - Lập trình Python</option>
+                  <option value="VHU_DB">🗄️ VHU_DB - Cơ sở Dữ liệu</option>
+                  <option value="VHU_OS">🖥️ VHU_OS - Hệ điều hành</option>
+                  <option value="VHU_ARC">⚙️ VHU_ARC - Kiến trúc Máy tính</option>
+                  <option value="VHU_NET">🔌 VHU_NET - Mạng Máy tính</option>
+                </optgroup>
+                <optgroup label="── 2. Chuyên ngành CNTT ──">
+                  <option value="VHU_WEB">🌐 VHU_WEB - Lập trình Web</option>
+                  <option value="VHU_DIST">☁️ VHU_DIST - Lập trình Phân tán</option>
+                  <option value="VHU_SAD">📐 VHU_SAD - Phân tích & Thiết kế Hệ thống</option>
+                  <option value="VHU_ALGO">🧠 VHU_ALGO - Phân tích & Thiết kế Thuật toán</option>
+                </optgroup>
+                <optgroup label="── 3. Chuyên sâu & AI ──">
+                  <option value="VHU_SEC">🛡️ VHU_SEC - An toàn Mạng & Thông tin</option>
+                  <option value="VHU_AI">🤖 VHU_AI - Trí tuệ Nhân tạo (AI)</option>
+                </optgroup>
+                <optgroup label="── 4. Đồ án & Kỹ năng ──">
+                  <option value="VHU_PROJ">🎓 VHU_PROJ - Đồ án Chuyên ngành & Tốt nghiệp</option>
+                  <option value="VHU_SOFT">🤝 VHU_SOFT - Kỹ năng mềm sinh viên CNTT</option>
+                </optgroup>
+                <optgroup label="── 5. Khối Đại cương ──">
+                  <option value="VHU_GEN">📕 VHU_GEN - Môn Đại cương VHU</option>
+                </optgroup>
+                <option value="CUSTOM">Môn học khác...</option>
+              </>
+            ) : (
+              <>
+                <option value="CS101">CS101 - Nhập môn Lập trình</option>
+                <option value="CS102">CS102 - Lập trình Hướng đối tượng</option>
+                <option value="CS201">CS201 - Kiến trúc Máy tính & HĐH</option>
+                <option value="CS202">CS202 - Cấu trúc Dữ liệu & Giải thuật</option>
+                <option value="AI201">AI201 - Trí tuệ Nhân tạo & ML</option>
+                <option value="CRYPTO201">CRYPTO201 - Mật mã học & Blockchain</option>
+                <option value="POL101">POL101 - Triết học Mác-Lênin</option>
+                <option value="SE201">SE201 - Kỹ thuật Phần mềm</option>
+                <option value="CUSTOM">Môn học khác...</option>
+              </>
+            )}
           </select>
           {subjectOption === "CUSTOM" && (
             <div className="mt-1.5 flex gap-2">

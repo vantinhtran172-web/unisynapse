@@ -141,6 +141,7 @@ export interface DocumentChunkContent {
 }
 
 export interface DocumentContentResponse {
+  id?: string;
   document_id: string;
   filename: string;
   original_name: string;
@@ -459,7 +460,12 @@ export const api = {
     return request<TutorTierResponse>("/tutor/tier");
   },
 
-  async askTutor(question: string, model: string = "cx/gpt-5.6-luna", subject_code?: string): Promise<TutorResponse> {
+  async askTutor(
+    question: string,
+    model: string = "cx/gpt-5.6-luna",
+    subject_code?: string,
+    university?: string
+  ): Promise<TutorResponse> {
     const res = await fetch(`${API_BASE}/tutor/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...csrfHeaders() },
@@ -468,6 +474,7 @@ export const api = {
         question, 
         model, 
         subject_code: subject_code && subject_code !== "ALL" ? subject_code : undefined,
+        university: university && university !== "ALL" ? university : undefined,
         request_id: crypto.randomUUID() 
       }),
     });

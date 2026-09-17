@@ -2,6 +2,11 @@
 
 import { useState, useRef, useEffect } from "react";
 import { api, Citation, DocumentContentResponse, TutorTierResponse } from "../lib/api";
+import {
+  VHU_UNIVERSITY_NAME,
+  VHU_IT_COURSES,
+  VHU_SAMPLE_QUESTIONS
+} from "../lib/vhuCurriculum";
 
 type Message = {
   id: string;
@@ -19,7 +24,7 @@ export default function AITutorChat() {
     { 
       id: '1', 
       role: 'ai', 
-      content: "Chào bạn! Tôi là UniSynapse AI Tutor vận hành bởi mô hình GPT-5.6 Luna kết hợp kho học liệu kiểm định. Bạn có thể chọn môn học cụ thể hoặc hỏi chung (3 lượt đầu hoàn toàn miễn phí không trừ điểm).",
+      content: "Chào bạn! Tôi là UniSynapse AI Tutor (GPT-5.6 Luna). Hệ thống đã tích hợp sẵn kho học liệu chuẩn 19 môn chuyên ngành Công nghệ Thông tin - Đại học Văn Hiến (VHU). Bạn có thể chọn môn học cụ thể trên thanh công cụ hoặc đặt câu hỏi bất kỳ (3 lượt đầu hoàn toàn miễn phí)!",
       grounded: false
     }
   ]);
@@ -28,7 +33,8 @@ export default function AITutorChat() {
   const [ragStatus, setRagStatus] = useState<string | null>(null);
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
 
-  // Free tier & subject context filter
+  // University & subject context filter (Default: Đại học Văn Hiến - VHU IT)
+  const [selectedUniversity, setSelectedUniversity] = useState<string>("VHU");
   const [tierInfo, setTierInfo] = useState<TutorTierResponse | null>(null);
   const [selectedSubject, setSelectedSubject] = useState<string>("ALL");
 
@@ -49,6 +55,7 @@ export default function AITutorChat() {
   // AI model selection (default: GPT-5.6 Luna)
   const [geminiModel, setGeminiModel] = useState<string>("cx/gpt-5.6-luna");
   const [showConfigModal, setShowConfigModal] = useState<boolean>(false);
+  const [copiedDoc, setCopiedDoc] = useState<boolean>(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageIdRef = useRef(0);
@@ -108,11 +115,13 @@ export default function AITutorChat() {
     setIsTyping(true);
 
     // Realistic RAG pipeline status feedback
+    const targetUni = selectedUniversity === "VHU" ? VHU_UNIVERSITY_NAME : undefined;
+    const uniLabel = selectedUniversity === "VHU" ? "ĐH Văn Hiến (VHU) " : "";
     const subjectPrefix = selectedSubject !== "ALL" ? `[${selectedSubject}] ` : "";
-    setRagStatus(`Đang truy vấn kho học liệu ${subjectPrefix}và đối chiếu câu trả lời…`);
+    setRagStatus(`Đang truy vấn kho học liệu ${uniLabel}${subjectPrefix}và đối chiếu câu trả lời…`);
 
     try {
-      const res = await api.askTutor(q, geminiModel, selectedSubject);
+      const res = await api.askTutor(q, geminiModel, selectedSubject, targetUni);
       const aiMsg: Message = {
         id: `ai-${++messageIdRef.current}`,
         role: 'ai',
@@ -144,26 +153,35 @@ export default function AITutorChat() {
     }
   };
 
-  const sampleQuestions = [
-    "Bản chất của con trỏ (pointers) trong C là gì?",
-    "Hàm malloc() và free() hoạt động ra sao và tại sao cần giải phóng bộ nhớ?",
-    "Điều kiện tối thiểu để qua môn CS101 là gì?",
-    "Tàu Apollo 11 bay lên mặt trăng năm nào? (Câu hỏi thử nghiệm từ chối)"
-  ];
+  const sampleQuestions = selectedUniversity === "VHU"
+    ? (VHU_SAMPLE_QUESTIONS[selectedSubject] || VHU_SAMPLE_QUESTIONS.ALL)
+    : [
+        "Bản chất của con trỏ (pointers) trong C là gì?",
+        "Hàm malloc() và free() hoạt động ra sao và tại sao cần giải phóng bộ nhớ?",
+        "Điều kiện tối thiểu để qua môn CS101 là gì?",
+        "Tàu Apollo 11 bay lên mặt trăng năm nào? (Câu hỏi thử nghiệm từ chối)"
+      ];
+
+  const activeVhuCourse = VHU_IT_COURSES.find(c => c.code === selectedSubject);
 
   return (
     <div className="glass-panel flex flex-col h-[660px] overflow-hidden relative">
       {/* Header */}
-      <div className="p-4 border-b border-slate-200 dark:border-white/10 bg-slate-100/90 dark:bg-slate-800/60 flex justify-between items-center transition-colors">
+      <div className="p-3.5 sm:p-4 border-b border-slate-200 dark:border-white/10 bg-slate-100/90 dark:bg-slate-800/60 flex flex-wrap justify-between items-center gap-3 transition-colors">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-600 to-indigo-600 p-[1px] shadow-sm flex-shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-600 to-cyan-500 p-[1px] shadow-sm flex-shrink-0">
             <div className="w-full h-full bg-slate-900 rounded-xl flex items-center justify-center font-black text-cyan-400 text-[10px]">
-              WIT
+              VHU
             </div>
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="font-bold text-slate-900 dark:text-white text-sm">UniSynapse AI Tutor (GPT-5.6 Luna)</h2>
+              {selectedUniversity === "VHU" && (
+                <span className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-bold border border-blue-300 dark:border-blue-700/50">
+                  🏛️ VHU CNTT
+                </span>
+              )}
             </div>
             <p className="text-xs text-cyan-600 dark:text-cyan-400 flex items-center gap-1 font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 dark:bg-cyan-400 inline-block animate-pulse"></span>
@@ -172,38 +190,97 @@ export default function AITutorChat() {
           </div>
         </div>
 
-        {/* Server-managed AI engine settings & Subject Context Filter & Cost badge */}
+        {/* Filters & Actions */}
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* University Selector: Dedicated VHU Option */}
+          <div className="flex items-center gap-1 bg-blue-50/90 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-500/40 rounded-lg px-2 py-1 shadow-xs">
+            <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300">Trường:</span>
+            <select
+              id="tutor-university-select"
+              value={selectedUniversity}
+              onChange={(e) => {
+                setSelectedUniversity(e.target.value);
+                setSelectedSubject("ALL");
+              }}
+              className="text-xs bg-transparent border-none text-blue-900 dark:text-blue-200 font-bold focus:outline-none cursor-pointer"
+            >
+              <option value="VHU" className="dark:bg-slate-900 text-blue-600 font-bold">
+                🏛️ ĐH Văn Hiến (VHU) - CNTT
+              </option>
+              <option value="ALL" className="dark:bg-slate-900 font-normal">
+                🌐 Tất cả các trường
+              </option>
+            </select>
+          </div>
+
           {/* Subject Context Selector */}
-          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 shadow-xs">
+          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 shadow-xs max-w-[210px] sm:max-w-[230px]">
             <span className="text-[11px] text-slate-500 dark:text-slate-400">Môn:</span>
             <select
+              id="tutor-subject-select"
               value={selectedSubject}
               onChange={(e) => setSelectedSubject(e.target.value)}
-              className="text-xs bg-transparent border-none text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer"
+              className="text-xs bg-transparent border-none text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer truncate"
             >
-              <option value="ALL" className="dark:bg-slate-900">🌐 Toàn trường (Tất cả)</option>
-              <option value="CS101" className="dark:bg-slate-900">💻 CS101 - Lập trình</option>
-              <option value="CS202" className="dark:bg-slate-900">🌳 CS202 - Cấu trúc dữ liệu</option>
-              <option value="POL101" className="dark:bg-slate-900">📖 POL101 - Triết học Mác</option>
-              <option value="CRYPTO201" className="dark:bg-slate-900">⛓️ CRYPTO201 - Solana Crypto</option>
+              {selectedUniversity === "VHU" ? (
+                <>
+                  <option value="ALL" className="dark:bg-slate-900 font-bold">📚 Tất cả 19 môn CNTT VHU</option>
+                  <optgroup label="── 1. Cơ sở ngành ──">
+                    <option value="VHU_IT101" className="dark:bg-slate-900">💻 Nhập môn CNTT (VHU_IT101)</option>
+                    <option value="VHU_DSA" className="dark:bg-slate-900">🌳 Cấu trúc Dữ liệu & GT (VHU_DSA)</option>
+                    <option value="VHU_OOP" className="dark:bg-slate-900">🧩 Hướng đối tượng OOP (VHU_OOP)</option>
+                    <option value="VHU_CPP" className="dark:bg-slate-900">⚡ Lập trình C++ (VHU_CPP)</option>
+                    <option value="VHU_JAVA" className="dark:bg-slate-900">☕ Lập trình Java (VHU_JAVA)</option>
+                    <option value="VHU_PY" className="dark:bg-slate-900">🐍 Lập trình Python (VHU_PY)</option>
+                    <option value="VHU_DB" className="dark:bg-slate-900">🗄️ Cơ sở Dữ liệu (VHU_DB)</option>
+                    <option value="VHU_OS" className="dark:bg-slate-900">🖥️ Hệ điều hành (VHU_OS)</option>
+                    <option value="VHU_ARC" className="dark:bg-slate-900">⚙️ Kiến trúc Máy tính (VHU_ARC)</option>
+                    <option value="VHU_NET" className="dark:bg-slate-900">🔌 Mạng Máy tính (VHU_NET)</option>
+                  </optgroup>
+                  <optgroup label="── 2. Chuyên ngành CNTT ──">
+                    <option value="VHU_WEB" className="dark:bg-slate-900">🌐 Lập trình Web (VHU_WEB)</option>
+                    <option value="VHU_DIST" className="dark:bg-slate-900">☁️ Lập trình Phân tán (VHU_DIST)</option>
+                    <option value="VHU_SAD" className="dark:bg-slate-900">📐 Phân tích TK Hệ thống (VHU_SAD)</option>
+                    <option value="VHU_ALGO" className="dark:bg-slate-900">🧠 Phân tích Thuật toán (VHU_ALGO)</option>
+                  </optgroup>
+                  <optgroup label="── 3. Chuyên sâu & AI ──">
+                    <option value="VHU_SEC" className="dark:bg-slate-900">🛡️ An toàn Mạng & TT (VHU_SEC)</option>
+                    <option value="VHU_AI" className="dark:bg-slate-900">🤖 Trí tuệ Nhân tạo (VHU_AI)</option>
+                  </optgroup>
+                  <optgroup label="── 4. Đồ án & Kỹ năng ──">
+                    <option value="VHU_PROJ" className="dark:bg-slate-900">🎓 Đồ án & Tốt nghiệp (VHU_PROJ)</option>
+                    <option value="VHU_SOFT" className="dark:bg-slate-900">🤝 Kỹ năng mềm CNTT (VHU_SOFT)</option>
+                  </optgroup>
+                  <optgroup label="── 5. Khối Đại cương ──">
+                    <option value="VHU_GEN" className="dark:bg-slate-900">📕 Triết học / Văn hóa (VHU_GEN)</option>
+                  </optgroup>
+                </>
+              ) : (
+                <>
+                  <option value="ALL" className="dark:bg-slate-900">🌐 Toàn trường (Tất cả)</option>
+                  <option value="CS101" className="dark:bg-slate-900">💻 CS101 - Lập trình</option>
+                  <option value="CS202" className="dark:bg-slate-900">🌳 CS202 - Cấu trúc dữ liệu</option>
+                  <option value="POL101" className="dark:bg-slate-900">📖 POL101 - Triết học Mác</option>
+                  <option value="CRYPTO201" className="dark:bg-slate-900">⛓️ CRYPTO201 - Solana Crypto</option>
+                </>
+              )}
             </select>
           </div>
 
           {/* Free Tier / Cost Badge */}
           {tierInfo && tierInfo.is_free_tier ? (
-            <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-1 shadow-sm" title="Mỗi sinh viên mới được 3 lượt truy vấn AI hoàn toàn miễn phí không trừ UniPoints">
+            <span className="text-xs px-2 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-1 shadow-sm" title="Mỗi sinh viên mới được 3 lượt truy vấn AI hoàn toàn miễn phí không trừ UniPoints">
               🎁 Miễn phí: Còn {tierInfo.free_queries_remaining}/3 câu
             </span>
           ) : (
-            <span className="text-xs px-2.5 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-blue-300 font-semibold flex items-center gap-1 shadow-sm">
+            <span className="text-xs px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-blue-300 font-semibold flex items-center gap-1 shadow-sm">
               🪙 80 UniPoints/lượt
             </span>
           )}
 
           <button
             onClick={() => setShowConfigModal(true)}
-            className="text-xs px-3 py-1.5 rounded-full border flex items-center gap-1.5 transition-all shadow-sm bg-cyan-50 dark:bg-cyan-950/60 hover:bg-cyan-100 dark:hover:bg-cyan-900/60 text-cyan-700 dark:text-cyan-200 border-cyan-200 dark:border-cyan-500/40"
+            className="text-xs px-2.5 py-1 rounded-full border flex items-center gap-1.5 transition-all shadow-sm bg-cyan-50 dark:bg-cyan-950/60 hover:bg-cyan-100 dark:hover:bg-cyan-900/60 text-cyan-700 dark:text-cyan-200 border-cyan-200 dark:border-cyan-500/40"
             title="Cấu hình mô hình AI"
           >
             <span className="w-2 h-2 rounded-full bg-cyan-500 dark:bg-cyan-400 animate-pulse"></span>
@@ -211,6 +288,29 @@ export default function AITutorChat() {
           </button>
         </div>
       </div>
+
+      {/* VHU Course Context Sub-Banner */}
+      {selectedUniversity === "VHU" && (
+        <div className="px-4 py-1.5 bg-blue-50/90 dark:bg-blue-950/40 border-b border-blue-100 dark:border-blue-900/40 flex items-center justify-between text-xs transition-all">
+          <div className="flex items-center gap-2 text-blue-900 dark:text-blue-200 truncate">
+            <span className="px-1.5 py-0.5 rounded bg-blue-600 text-white text-[10px] font-bold flex-shrink-0">
+              VHU IT
+            </span>
+            <span className="truncate">
+              {activeVhuCourse ? (
+                <>
+                  <strong>{activeVhuCourse.icon} {activeVhuCourse.name} ({activeVhuCourse.code}):</strong> {activeVhuCourse.description}
+                </>
+              ) : (
+                "Đang đối chiếu kho học liệu 19 môn Công nghệ Thông tin - Trường Đại học Văn Hiến (VHU) trích xuất từ Google Drive"
+              )}
+            </span>
+          </div>
+          <span className="text-[11px] text-blue-600/80 dark:text-blue-400/80 hidden md:inline-flex items-center gap-1 flex-shrink-0 font-medium">
+            📂 Thư mục: TÀI LIỆU CHUYÊN NGÀNH IT
+          </span>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-grow p-5 overflow-y-auto space-y-4">
@@ -355,6 +455,14 @@ export default function AITutorChat() {
               >
                 📖 Xem toàn văn tài liệu
               </button>
+              <a
+                href={`http://127.0.0.1:8000/api/v1/documents/${activeCitation.document_id}/download`}
+                download
+                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[11px] inline-flex items-center gap-1.5 shadow-sm transition-colors"
+                title="Tải nguyên bản file nguồn giáo trình (.txt)"
+              >
+                📥 Tải file nguồn
+              </a>
             </div>
           </div>
           <button 
@@ -386,7 +494,11 @@ export default function AITutorChat() {
             type="text" 
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Hỏi AI Tutor (GPT-5.6 Luna) về bài giảng, thuật toán, câu hỏi ôn tập..."
+            placeholder={
+              selectedUniversity === "VHU"
+                ? `Hỏi AI Tutor về giáo trình CNTT Đại học Văn Hiến (${selectedSubject === "ALL" ? "Toàn bộ 19 môn" : selectedSubject})...`
+                : "Hỏi AI Tutor (GPT-5.6 Luna) về bài giảng, thuật toán, câu hỏi ôn tập..."
+            }
             className="w-full bg-white dark:bg-slate-900/70 border border-slate-300 dark:border-slate-700 rounded-full py-2.5 pl-4 pr-12 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 shadow-sm transition-colors"
           />
           <button 
@@ -538,13 +650,40 @@ export default function AITutorChat() {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-white/10 flex justify-end">
-              <button
-                onClick={() => setDocReader(prev => ({ ...prev, isOpen: false }))}
-                className="px-4 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-xs font-semibold text-slate-800 dark:text-white transition-colors"
-              >
-                Đóng
-              </button>
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-white/10 flex items-center justify-between flex-wrap gap-2">
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                {docReader.doc?.content ? `📄 ${docReader.doc.content.length.toLocaleString()} ký tự • Giáo trình chuẩn Khoa CNTT VHU` : ""}
+              </div>
+              <div className="flex items-center gap-2">
+                {(docReader.doc?.document_id || docReader.doc?.id) && (
+                  <a
+                    href={`http://127.0.0.1:8000/api/v1/documents/${docReader.doc.document_id || docReader.doc.id}/download`}
+                    download
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition-colors flex items-center gap-1.5 shadow-sm"
+                    title="Tải nguyên bản file giáo trình toàn văn (.txt)"
+                  >
+                    <span>📥</span> Tải toàn văn file nguồn (.txt)
+                  </a>
+                )}
+                <button
+                  onClick={() => {
+                    if (docReader.doc?.content) {
+                      navigator.clipboard.writeText(docReader.doc.content);
+                      setCopiedDoc(true);
+                      setTimeout(() => setCopiedDoc(false), 2000);
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-white/10 transition-colors flex items-center gap-1"
+                >
+                  {copiedDoc ? "✓ Đã sao chép" : "📋 Sao chép"}
+                </button>
+                <button
+                  onClick={() => setDocReader(prev => ({ ...prev, isOpen: false }))}
+                  className="px-4 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-xs font-semibold text-slate-800 dark:text-white transition-colors"
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
           </div>
         </div>
