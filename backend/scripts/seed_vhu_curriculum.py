@@ -380,9 +380,12 @@ def seed_vhu_curriculum():
             now = time.time()
             
             # Ensure owner exists
-            cursor.execute("SELECT id FROM users WHERE id = 'usr_demo'")
+            cursor.execute("SELECT id FROM users WHERE id = 'demo_student_unisynapse'")
             if not cursor.fetchone():
-                cursor.execute("INSERT INTO users (id, username, email, role, reputation, created_at) VALUES ('usr_demo', 'Giáo Trình VHU', 'giaotrinh@vhu.edu.vn', 'student', 100, ?)", (now,))
+                cursor.execute("""
+                    INSERT INTO users (id, address, username, role, unipoints, reputation, created_at)
+                    VALUES ('demo_student_unisynapse', 'demo-wallet-unisynapse', 'demo_student', 'student', 100, 100, ?)
+                """, (now,))
 
             # Check or insert document record
             cursor.execute("SELECT id FROM documents WHERE id = ?", (doc_id,))
@@ -400,7 +403,7 @@ def seed_vhu_curriculum():
                         id, owner_id, filename, original_name, file_type, size_bytes,
                         checksum, status, university, subject_code, subject_name,
                         chunk_count, created_at, approved_at
-                    ) VALUES (?, 'usr_demo', ?, ?, 'text/plain', ?, ?, 'approved', 'Đại học Văn Hiến (VHU)', ?, ?, 0, ?, ?)
+                    ) VALUES (?, 'demo_student_unisynapse', ?, ?, 'text/plain', ?, ?, 'approved', 'Đại học Văn Hiến (VHU)', ?, ?, 0, ?, ?)
                 """, (doc_id, filename, original_name, size_bytes, checksum, code, name, now, now))
             
             conn.commit()
