@@ -1175,7 +1175,7 @@ def seed_full_vhu_sources():
         if not cursor.fetchone():
             now = time.time()
             cursor.execute("""
-                INSERT OR IGNORE INTO users (id, username, email, role, reputation, created_at)
+                INSERT INTO users (id, username, email, role, reputation, created_at)
                 VALUES ('usr_demo', 'Giáo Trình ĐH Văn Hiến', 'giaotrinh@vhu.edu.vn', 'student', 100, ?)
             """, (now,))
             conn.commit()

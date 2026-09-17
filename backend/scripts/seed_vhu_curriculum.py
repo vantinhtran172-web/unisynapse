@@ -382,7 +382,7 @@ def seed_vhu_curriculum():
             # Ensure owner exists
             cursor.execute("SELECT id FROM users WHERE id = 'usr_demo'")
             if not cursor.fetchone():
-                cursor.execute("INSERT OR IGNORE INTO users (id, username, email, role, reputation, created_at) VALUES ('usr_demo', 'Giáo Trình VHU', 'giaotrinh@vhu.edu.vn', 'student', 100, ?)", (now,))
+                cursor.execute("INSERT INTO users (id, username, email, role, reputation, created_at) VALUES ('usr_demo', 'Giáo Trình VHU', 'giaotrinh@vhu.edu.vn', 'student', 100, ?)", (now,))
 
             # Check or insert document record
             cursor.execute("SELECT id FROM documents WHERE id = ?", (doc_id,))

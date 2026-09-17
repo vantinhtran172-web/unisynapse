@@ -26,10 +26,14 @@ def get_tutor_tier(session_user: dict = Depends(require_member_session)):
         ).fetchone()[0]
         free_left = max(0, 3 - completed_count)
         return {
+            "free_queries_remaining": free_left,
             "free_questions_left": free_left,
+            "free_queries_limit": 3,
+            "free_queries_used": completed_count,
             "is_free_tier": free_left > 0,
             "chat_cost_points": 0 if free_left > 0 else AI_CHAT_COST_POINTS,
             "standard_cost": AI_CHAT_COST_POINTS,
+            "message": f"Còn {free_left}/3 lượt miễn phí" if free_left > 0 else "Hết lượt miễn phí",
         }
 
 

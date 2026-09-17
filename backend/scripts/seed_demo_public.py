@@ -151,6 +151,12 @@ def main() -> None:
     owner_id = ensure_demo_user()
     task_count = seed_tasks()
     document_count = seed_documents(owner_id)
+    try:
+        from backend.scripts.seed_vhu_curriculum import seed_vhu_curriculum
+        seed_vhu_curriculum()
+    except Exception as err:
+        import logging
+        logging.getLogger("uvicorn.error").warning("VHU curriculum seed failed: %s", err)
     print(f"Seed complete: {task_count} tasks inserted, {document_count} documents inserted.")
 
 

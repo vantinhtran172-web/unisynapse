@@ -191,10 +191,10 @@ export default function AITutorChat() {
         </div>
 
         {/* Filters & Actions */}
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap justify-end ml-auto">
           {/* University Selector: Dedicated VHU Option */}
-          <div className="flex items-center gap-1 bg-blue-50/90 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-500/40 rounded-lg px-2 py-1 shadow-xs">
-            <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300">Trường:</span>
+          <div className="flex items-center gap-1.5 bg-blue-50/90 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-500/40 rounded-lg px-2.5 py-1 shadow-xs flex-shrink-0">
+            <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300 flex-shrink-0">Trường:</span>
             <select
               id="tutor-university-select"
               value={selectedUniversity}
@@ -214,13 +214,13 @@ export default function AITutorChat() {
           </div>
 
           {/* Subject Context Selector */}
-          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 shadow-xs max-w-[210px] sm:max-w-[230px]">
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">Môn:</span>
+          <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 shadow-xs min-w-[150px] max-w-[200px] sm:max-w-[240px] overflow-hidden flex-shrink-0">
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium flex-shrink-0">Môn:</span>
             <select
               id="tutor-subject-select"
               value={selectedSubject}
               onChange={(e) => setSelectedSubject(e.target.value)}
-              className="text-xs bg-transparent border-none text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer truncate"
+              className="text-xs bg-transparent border-none text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer w-full min-w-0 truncate"
             >
               {selectedUniversity === "VHU" ? (
                 <>
@@ -269,18 +269,18 @@ export default function AITutorChat() {
 
           {/* Free Tier / Cost Badge */}
           {tierInfo && tierInfo.is_free_tier ? (
-            <span className="text-xs px-2 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-1 shadow-sm" title="Mỗi sinh viên mới được 3 lượt truy vấn AI hoàn toàn miễn phí không trừ UniPoints">
-              🎁 Miễn phí: Còn {tierInfo.free_queries_remaining}/3 câu
+            <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-1 shadow-sm flex-shrink-0 whitespace-nowrap" title="Mỗi sinh viên mới được 3 lượt truy vấn AI hoàn toàn miễn phí không trừ UniPoints">
+              🎁 Miễn phí: Còn {tierInfo.free_queries_remaining ?? (tierInfo as unknown as { free_questions_left?: number }).free_questions_left ?? 3}/3 câu
             </span>
           ) : (
-            <span className="text-xs px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-blue-300 font-semibold flex items-center gap-1 shadow-sm">
+            <span className="text-xs px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-blue-300 font-semibold flex items-center gap-1 shadow-sm flex-shrink-0 whitespace-nowrap">
               🪙 80 UniPoints/lượt
             </span>
           )}
 
           <button
             onClick={() => setShowConfigModal(true)}
-            className="text-xs px-2.5 py-1 rounded-full border flex items-center gap-1.5 transition-all shadow-sm bg-cyan-50 dark:bg-cyan-950/60 hover:bg-cyan-100 dark:hover:bg-cyan-900/60 text-cyan-700 dark:text-cyan-200 border-cyan-200 dark:border-cyan-500/40"
+            className="text-xs px-2.5 py-1 rounded-full border flex items-center gap-1.5 transition-all shadow-sm bg-cyan-50 dark:bg-cyan-950/60 hover:bg-cyan-100 dark:hover:bg-cyan-900/60 text-cyan-700 dark:text-cyan-200 border-cyan-200 dark:border-cyan-500/40 flex-shrink-0 whitespace-nowrap"
             title="Cấu hình mô hình AI"
           >
             <span className="w-2 h-2 rounded-full bg-cyan-500 dark:bg-cyan-400 animate-pulse"></span>
