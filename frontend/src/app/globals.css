@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
+@variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 
 @theme {
   --color-cyber-black: #030712;
@@ -246,7 +246,7 @@ html.dark .cyber-badge-cyan {
   position: relative;
   isolation: isolate;
   background: var(--paper-gradient);
-  padding-top: 80px; /* clearance for fixed navbar */
+  padding-top: 88px; /* clearance for fixed navbar */
   width: 100%;
   max-width: 100%;
   overflow-x: clip;
@@ -254,7 +254,7 @@ html.dark .cyber-badge-cyan {
 
 @media (max-width: 1023px) {
   .client-shell {
-    padding-top: 125px; /* clearance when mobile sub-nav row is visible */
+    padding-top: 130px; /* clearance when mobile sub-nav row is visible */
   }
 }
 
@@ -485,6 +485,107 @@ html.dark .cyber-badge-cyan {
 
 .primary-action span, .secondary-action span {
   margin-left: 8px;
+}
+
+.hero-copy input {
+  width: 100%;
+  max-width: 440px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.95);
+  color: #0f172a;
+  font-size: 14px;
+  margin-top: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.hero-copy input:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #22d3ee;
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.35);
+}
+
+[data-theme="dark"] .hero-copy input,
+html.dark .hero-copy input {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #f8fafc;
+}
+
+.hero-copy label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #e0f2ec;
+  letter-spacing: 0.02em;
+}
+
+/* ==========================================================================
+   GUEST ACCESS BANNER
+   ========================================================================== */
+.guest-access-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 28px;
+  margin-bottom: 28px;
+  border-radius: 18px;
+  background: var(--surface-card);
+  border: 1px solid var(--line);
+  box-shadow: var(--card-shadow);
+  color: var(--ink);
+  transition: all 0.25s ease;
+}
+
+.guest-access-banner h2 {
+  margin: 6px 0 4px;
+  font-family: var(--font-geist-sans), Inter, sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.guest-access-banner p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  max-width: 520px;
+}
+
+.guest-access-banner .hero-actions {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+.guest-access-banner .primary-action {
+  background: var(--teal-deep);
+  color: #ffffff;
+}
+
+.guest-access-banner .secondary-action {
+  background: var(--surface-secondary);
+  color: var(--ink-secondary);
+  border-color: var(--line-strong);
+}
+
+.guest-access-banner .secondary-action:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+@media (max-width: 768px) {
+  .guest-access-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 18px;
+  }
+  .guest-access-banner .hero-actions {
+    width: 100%;
+    margin-top: 14px;
+  }
 }
 
 .hero-trust {

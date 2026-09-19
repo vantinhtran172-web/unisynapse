@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { useAppState } from "../context/AppStateContext";
 import { DocumentUploadResponse } from "../lib/api";
 import { VHU_UNIVERSITY_NAME, VHU_IT_COURSES } from "../lib/vhuCurriculum";
+import OracleLiveAttestation from "./OracleLiveAttestation";
 
 type VerificationStep = 'idle' | 'upload' | 'privacy' | 'duplicate' | 'copyright' | 'quality' | 'approved';
 
@@ -83,6 +84,7 @@ export default function DocumentUpload() {
       setErrorMessage(err instanceof Error ? err.message : "Lỗi khi kiểm định tài liệu");
     }
   };
+
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -249,16 +251,18 @@ export default function DocumentUpload() {
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
         </svg>
         <p className="text-slate-800 dark:text-slate-200 font-medium text-xs text-center">Kéo & thả tập tin hoặc bấm để chọn</p>
-        <p className="text-slate-500 dark:text-slate-400 text-[11px] mt-1">Hỗ trợ .PDF, .TXT (Tối đa 15MB)</p>
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            fileInputRef.current?.click();
-          }} 
-          className="btn-cyber-secondary py-1.5 px-3 text-xs mt-3 shadow-sm"
-        >
-          Chọn Tập Tin
-        </button>
+        <div className="mt-3">
+          <button 
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              fileInputRef.current?.click();
+            }} 
+            className="btn-cyber-secondary py-1.5 px-3 text-xs shadow-sm"
+          >
+            Chọn Tập Tin
+          </button>
+        </div>
         <input 
           type="file" 
           className="hidden" 
@@ -368,6 +372,18 @@ export default function DocumentUpload() {
                     Xem bằng chứng Solana Devnet: {successInfo.solana_signature?.slice(0, 16)}...
                   </a>
                 )}
+
+                {/* Autonomous On-Chain Oracle Live Attestation */}
+                <div className="pt-2">
+                  <OracleLiveAttestation
+                    documentId={successInfo.document_id}
+                    documentTitle={fileName}
+                    checksumSha256={successInfo.checksum}
+                    chunkCount={successInfo.chunk_count}
+                    autoTrigger={true}
+                  />
+                </div>
+
                 <button
                   onClick={() => {
                     setStep('idle');

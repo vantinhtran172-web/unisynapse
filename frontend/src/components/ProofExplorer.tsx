@@ -4,12 +4,19 @@ import { useState, useEffect } from "react";
 import { useAppState } from "../context/AppStateContext";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { api, OracleRegistryInfo } from "../lib/api";
 
 export default function ProofExplorer() {
   const { ledger, unipoints, refreshState, refreshing, error } = useAppState();
   const { connection } = useConnection();
   const { publicKey, connected } = useWallet();
   const [solBalance, setSolBalance] = useState<number | null>(null);
+  const [oracleRegistry, setOracleRegistry] = useState<OracleRegistryInfo | null>(null);
+
+  useEffect(() => {
+    api.getOracleRegistry().then(setOracleRegistry).catch(() => {});
+  }, []);
+
 
   useEffect(() => {
     let active = true;
@@ -102,6 +109,23 @@ export default function ProofExplorer() {
             Faucet Devnet ↗
           </a>
         </div>
+
+        {oracleRegistry && (
+          <div className="flex items-center justify-between text-[11px] pt-2 border-t border-purple-200 dark:border-purple-500/20 text-slate-600 dark:text-slate-300 font-mono">
+            <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              Oracle Registry:
+            </span>
+            <a
+              href={oracleRegistry.explorer_url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-violet-700 dark:text-violet-400 hover:underline font-bold truncate max-w-[220px]"
+            >
+              {oracleRegistry.oracle_registry_pda.slice(0, 8)}...{oracleRegistry.oracle_registry_pda.slice(-6)} ↗
+            </a>
+          </div>
+        )}
 
       </div>
 

@@ -13,6 +13,10 @@ const nextConfig: NextConfig = {
     root: path.resolve(__dirname),
   },
   allowedDevOrigins: [
+    "127.0.0.1",
+    "127.0.0.1:3000",
+    "localhost",
+    "localhost:3000",
     "*.trycloudflare.com",
     "reflects-self-relation-tigers.trycloudflare.com",
     "*.loca.lt"

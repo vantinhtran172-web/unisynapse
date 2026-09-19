@@ -46,7 +46,9 @@ CORS_ORIGINS = [
 ]
 
 SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.devnet.solana.com")
+SOLANA_FALLBACK_RPC_URL = os.getenv("SOLANA_FALLBACK_RPC_URL", "https://devnet.helius-rpc.com/?api-key=default").strip()
 SOLANA_NETWORK = os.getenv("SOLANA_NETWORK", "devnet").strip().lower()
+SOLANA_PROGRAM_ID = os.getenv("SOLANA_PROGRAM_ID", "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS").strip()
 SOLANA_SUBMISSION_ENABLED = os.getenv("SOLANA_SUBMISSION_ENABLED", "0") == "1"
 SOLANA_AUTHORITY_SECRET_REF = os.getenv("SOLANA_AUTHORITY_SECRET_REF", "").strip()
 SOLANA_COMMITMENT = os.getenv("SOLANA_COMMITMENT", "confirmed").strip().lower()

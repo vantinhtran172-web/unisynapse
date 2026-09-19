@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAppState } from "@/context/AppStateContext";
+import ThemeToggle from "@/components/ThemeToggle";
 
 function translateError(cause: unknown): string {
   const raw = cause instanceof Error ? cause.message : String(cause || "");
@@ -60,7 +61,10 @@ export default function LoginPage() {
       <div className="client-container">
         <section className="client-hero">
           <div className="hero-copy">
-            <Link href="/">← Trang chủ</Link>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+              <Link href="/" style={{ color: "#d7f4df", textDecoration: "none", fontWeight: 700, fontSize: "0.875rem" }}>← Trang chủ</Link>
+              <ThemeToggle compact />
+            </div>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", margin: "1rem 0 0.5rem 0" }}>
               <div style={{
                 width: "32px",

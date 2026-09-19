@@ -24,7 +24,7 @@ pub mod unisynapse {
         Ok(())
     }
 
-    /// 2. Ghi nhận bằng chứng học liệu học thuật đã qua 6 cổng kiểm định lên Solana Devnet
+    /// 2. Ghi nhận bằng chứng học liệu học thuật đã qua 6 cổng kiểm định lên Solana Devnet (Legacy)
     pub fn record_academic_proof(
         ctx: Context<RecordAcademicProof>,
         doc_id: String,
@@ -62,7 +62,150 @@ pub mod unisynapse {
         Ok(())
     }
 
-    /// 3. Ghi nhận kết quả đồng thuận gán nhãn dữ liệu (Data Labeling Consensus)
+    /// 3. Khởi tạo Oracle Registry cho mạng lưới Autonomous Oracle
+    pub fn initialize_oracle_registry(
+        ctx: Context<InitializeOracleRegistry>,
+        min_score: u8,
+    ) -> Result<()> {
+        require!(min_score <= 100, UniSynapseError::InvalidQualityScore);
+
+        let registry = &mut ctx.accounts.oracle_registry;
+        registry.admin = ctx.accounts.admin.key();
+        registry.oracle_authority = ctx.accounts.oracle_authority.key();
+        registry.min_score = min_score;
+        registry.is_paused = false;
+        registry.total_attestations = 0;
+        registry.bump = ctx.bumps.oracle_registry;
+
+        emit!(OracleRegistryInitialized {
+            admin: registry.admin,
+            oracle_authority: registry.oracle_authority,
+            min_score,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+
+        Ok(())
+    }
+
+    /// 4. Luân chuyển / Cập nhật khóa Oracle Authority (Admin only)
+    pub fn rotate_oracle_authority(
+        ctx: Context<ManageOracleRegistry>,
+        new_oracle_authority: Pubkey,
+    ) -> Result<()> {
+        let registry = &mut ctx.accounts.oracle_registry;
+        let old_authority = registry.oracle_authority;
+        registry.oracle_authority = new_oracle_authority;
+
+        emit!(OracleAuthorityRotated {
+            admin: registry.admin,
+            old_authority,
+            new_authority: new_oracle_authority,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+
+        Ok(())
+    }
+
+    /// 5. Tạm dừng hoặc kích hoạt lại Oracle Registry (Admin only)
+    pub fn set_oracle_paused(
+        ctx: Context<ManageOracleRegistry>,
+        paused: bool,
+    ) -> Result<()> {
+        let registry = &mut ctx.accounts.oracle_registry;
+        registry.is_paused = paused;
+
+        emit!(OraclePausedStateChanged {
+            admin: registry.admin,
+            is_paused: paused,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+
+        Ok(())
+    }
+
+    /// 6. Ghi nhận chứng thực Autonomous On-Chain Oracle Attestation (P0 Core)
+    pub fn record_oracle_attestation(
+        ctx: Context<RecordOracleAttestation>,
+        doc_id: String,
+        doc_hash_hex: String,
+        quality_score: u8,
+        chunk_count: u16,
+        nonce: u64,
+        expires_at: i64,
+    ) -> Result<()> {
+        let registry = &mut ctx.accounts.oracle_registry;
+
+        // 1. Kiểm tra trạng thái tạm dừng
+        require!(!registry.is_paused, UniSynapseError::OraclePaused);
+
+        // 2. Kiểm tra quyền ký của Oracle Agent
+        require_keys_eq!(
+            ctx.accounts.oracle_authority.key(),
+            registry.oracle_authority,
+            UniSynapseError::UnauthorizedOracle
+        );
+
+        // 3. Kiểm tra định dạng đầu vào
+        require!(!doc_id.is_empty() && doc_id.len() <= 64, UniSynapseError::InvalidDocId);
+        require!(doc_hash_hex.len() == 64, UniSynapseError::InvalidHashLength);
+
+        // 4. Kiểm tra điểm chất lượng và ngưỡng tối thiểu
+        require!(quality_score <= 100, UniSynapseError::InvalidQualityScore);
+        require!(quality_score >= registry.min_score, UniSynapseError::QualityBelowThreshold);
+
+        // 5. Kiểm tra thời hạn hiệu lực của chứng thực (Nonce + Expiry)
+        let clock = Clock::get()?;
+        require!(clock.unix_timestamp <= expires_at, UniSynapseError::AttestationExpired);
+
+        // 6. Ghi dữ liệu vào ReplayRecord để chống replay attack
+        let replay = &mut ctx.accounts.replay_record;
+        replay.oracle_authority = ctx.accounts.oracle_authority.key();
+        replay.nonce = nonce;
+        replay.timestamp = clock.unix_timestamp;
+        replay.bump = ctx.bumps.replay_record;
+
+        // 7. Ghi dữ liệu vào OracleAttestation PDA
+        let attestation = &mut ctx.accounts.oracle_attestation;
+        attestation.doc_id = doc_id.clone();
+        attestation.doc_hash_hex = doc_hash_hex.clone();
+        attestation.quality_score = quality_score;
+        attestation.chunk_count = chunk_count;
+        attestation.nonce = nonce;
+        attestation.verified_at = clock.unix_timestamp;
+        attestation.expires_at = expires_at;
+        attestation.oracle_authority = ctx.accounts.oracle_authority.key();
+        attestation.student = ctx.accounts.student.key();
+        attestation.bump = ctx.bumps.oracle_attestation;
+
+        // 8. Tăng tổng số chứng thực thành công
+        registry.total_attestations = registry
+            .total_attestations
+            .checked_add(1)
+            .ok_or(UniSynapseError::ArithmeticOverflow)?;
+
+        // 9. Cập nhật hồ sơ sinh viên (nếu có tài khoản)
+        if let Some(student_acc) = &mut ctx.accounts.student_account {
+            student_acc.total_documents = student_acc
+                .total_documents
+                .checked_add(1)
+                .ok_or(UniSynapseError::ArithmeticOverflow)?;
+            // Khuyến nghị đã duyệt P0: Agent ghi eligibility/proposal, không trực tiếp phát thưởng SOL/tokens tại đây
+        }
+
+        emit!(OracleAttestationRecorded {
+            doc_id,
+            doc_hash: doc_hash_hex,
+            quality_score,
+            chunk_count,
+            oracle: ctx.accounts.oracle_authority.key(),
+            student: ctx.accounts.student.key(),
+            timestamp: clock.unix_timestamp,
+        });
+
+        Ok(())
+    }
+
+    /// 7. Ghi nhận kết quả đồng thuận gán nhãn dữ liệu (Data Labeling Consensus)
     pub fn record_labeling_consensus(
         ctx: Context<RecordLabelingConsensus>,
         task_id: String,
@@ -94,7 +237,7 @@ pub mod unisynapse {
         Ok(())
     }
 
-    /// 4. Ghi nhận quyết toán cổng On-Ramp VietQR ACB sang SOL Devnet
+    /// 8. Ghi nhận quyết toán cổng On-Ramp VietQR ACB sang SOL Devnet
     pub fn record_fiat_onramp_settlement(
         ctx: Context<RecordFiatOnRamp>,
         order_code: String,
@@ -141,6 +284,86 @@ pub struct InitializeStudent<'info> {
     pub student_account: Account<'info, StudentAccount>,
     #[account(mut)]
     pub signer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct InitializeOracleRegistry<'info> {
+    #[account(
+        init,
+        payer = admin,
+        space = 8 + 32 + 32 + 1 + 1 + 8 + 1 + 32,
+        seeds = [b"oracle_registry"],
+        bump
+    )]
+    pub oracle_registry: Account<'info, OracleRegistry>,
+
+    /// CHECK: The authority used by the Oracle worker agent to sign attestations
+    pub oracle_authority: UncheckedAccount<'info>,
+
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ManageOracleRegistry<'info> {
+    #[account(
+        mut,
+        seeds = [b"oracle_registry"],
+        bump = oracle_registry.bump,
+        has_one = admin @ UniSynapseError::Unauthorized
+    )]
+    pub oracle_registry: Account<'info, OracleRegistry>,
+
+    pub admin: Signer<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(doc_id: String, doc_hash_hex: String, quality_score: u8, chunk_count: u16, nonce: u64)]
+pub struct RecordOracleAttestation<'info> {
+    #[account(
+        mut,
+        seeds = [b"oracle_registry"],
+        bump = oracle_registry.bump
+    )]
+    pub oracle_registry: Account<'info, OracleRegistry>,
+
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + (4 + 64) + (4 + 64) + 1 + 2 + 8 + 8 + 8 + 32 + 32 + 1,
+        seeds = [b"oracle_attestation", doc_id.as_bytes()],
+        bump
+    )]
+    pub oracle_attestation: Account<'info, OracleAttestation>,
+
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + 32 + 8 + 8 + 1,
+        seeds = [b"oracle_replay", oracle_authority.key().as_ref(), nonce.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub replay_record: Account<'info, ReplayRecord>,
+
+    #[account(
+        mut,
+        seeds = [b"student", student.key().as_ref()],
+        bump = student_account.bump
+    )]
+    pub student_account: Option<Account<'info, StudentAccount>>,
+
+    /// CHECK: The student associated with this document
+    pub student: UncheckedAccount<'info>,
+
+    /// Autonomous Oracle Agent signing authority
+    pub oracle_authority: Signer<'info>,
+
+    /// Account paying for rent exemption (Oracle Agent or Admin treasury)
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
     pub system_program: Program<'info, System>,
 }
 
@@ -207,6 +430,39 @@ pub struct RecordFiatOnRamp<'info> {
 // -----------------------------------------------------------------------------
 
 #[account]
+pub struct OracleRegistry {
+    pub admin: Pubkey,
+    pub oracle_authority: Pubkey,
+    pub min_score: u8,
+    pub is_paused: bool,
+    pub total_attestations: u64,
+    pub bump: u8,
+    pub _reserved: [u8; 32],
+}
+
+#[account]
+pub struct OracleAttestation {
+    pub doc_id: String,
+    pub doc_hash_hex: String,
+    pub quality_score: u8,
+    pub chunk_count: u16,
+    pub nonce: u64,
+    pub verified_at: i64,
+    pub expires_at: i64,
+    pub oracle_authority: Pubkey,
+    pub student: Pubkey,
+    pub bump: u8,
+}
+
+#[account]
+pub struct ReplayRecord {
+    pub oracle_authority: Pubkey,
+    pub nonce: u64,
+    pub timestamp: i64,
+    pub bump: u8,
+}
+
+#[account]
 pub struct StudentAccount {
     pub owner: Pubkey,
     pub unipoints: u64,
@@ -255,6 +511,40 @@ pub struct FiatOnRampAccount {
 // -----------------------------------------------------------------------------
 
 #[event]
+pub struct OracleRegistryInitialized {
+    pub admin: Pubkey,
+    pub oracle_authority: Pubkey,
+    pub min_score: u8,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct OracleAuthorityRotated {
+    pub admin: Pubkey,
+    pub old_authority: Pubkey,
+    pub new_authority: Pubkey,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct OraclePausedStateChanged {
+    pub admin: Pubkey,
+    pub is_paused: bool,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct OracleAttestationRecorded {
+    pub doc_id: String,
+    pub doc_hash: String,
+    pub quality_score: u8,
+    pub chunk_count: u16,
+    pub oracle: Pubkey,
+    pub student: Pubkey,
+    pub timestamp: i64,
+}
+
+#[event]
 pub struct StudentRegistered {
     pub student: Pubkey,
     pub timestamp: i64,
@@ -301,4 +591,16 @@ pub enum UniSynapseError {
     ArithmeticOverflow,
     #[msg("Không có quyền thực hiện thao tác này.")]
     Unauthorized,
+    #[msg("Hệ thống Oracle đang tạm dừng bảo trì.")]
+    OraclePaused,
+    #[msg("Chữ ký không khớp với Oracle Authority đã đăng ký.")]
+    UnauthorizedOracle,
+    #[msg("Điểm chất lượng chưa đạt ngưỡng tối thiểu của Oracle.")]
+    QualityBelowThreshold,
+    #[msg("Mã tài liệu không hợp lệ hoặc vượt quá độ dài cho phép (1-64 ký tự).")]
+    InvalidDocId,
+    #[msg("Độ dài mã băm SHA-256 không hợp lệ (yêu cầu đúng 64 ký tự hex).")]
+    InvalidHashLength,
+    #[msg("Chứng thực Oracle đã quá hạn hiệu lực.")]
+    AttestationExpired,
 }

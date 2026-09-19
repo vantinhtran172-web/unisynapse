@@ -16,9 +16,23 @@ describe("UniSynapse Solana Anchor Program - UniHackfest 2026", () => {
   const treasury = Keypair.generate();
   const recipient = Keypair.generate();
 
+  // Oracle specific keypairs
+  const oracleAdmin = Keypair.generate();
+  const oracleAuthority = Keypair.generate();
+  const newOracleAuthority = Keypair.generate();
+  const unauthorizedSigner = Keypair.generate();
+
   before(async () => {
     // Airdrop SOL to test keypairs for transaction fees
-    const airdropSigners = [student, authority, treasury];
+    const airdropSigners = [
+      student,
+      authority,
+      treasury,
+      oracleAdmin,
+      oracleAuthority,
+      newOracleAuthority,
+      unauthorizedSigner,
+    ];
     for (const signer of airdropSigners) {
       try {
         const sig = await provider.connection.requestAirdrop(
@@ -60,7 +74,7 @@ describe("UniSynapse Solana Anchor Program - UniHackfest 2026", () => {
     expect(account.bump).to.equal(bump);
   });
 
-  it("2. Records verified academic document proof on-chain", async () => {
+  it("2. Records verified academic document proof on-chain (Legacy)", async () => {
     const docId = "doc_test_uuid_42";
     const checksumSha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
     const qualityScore = 92;
@@ -110,7 +124,7 @@ describe("UniSynapse Solana Anchor Program - UniHackfest 2026", () => {
 
   it("3. Rejects academic proof with invalid quality score (> 100)", async () => {
     const docId = "doc_invalid_score";
-    const checksum = "abcd1234abcd1234abcd1234abcd1234";
+    const checksum = "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd";
 
     const [studentPda] = PublicKey.findProgramAddressSync(
       [Buffer.from("student"), student.publicKey.toBuffer()],
@@ -234,5 +248,393 @@ describe("UniSynapse Solana Anchor Program - UniHackfest 2026", () => {
     expect(onrampAccount.recipient.toBase58()).to.equal(recipient.publicKey.toBase58());
     expect(onrampAccount.treasury.toBase58()).to.equal(treasury.publicKey.toBase58());
     expect(onrampAccount.bump).to.equal(onrampBump);
+  });
+
+  // =========================================================================
+  // AUTONOMOUS ON-CHAIN ORACLE TEST SUITE (UniHackfest 2026)
+  // =========================================================================
+
+  const [oracleRegistryPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("oracle_registry")],
+    program.programId
+  );
+
+  it("7. Initializes Oracle Registry with admin, authority and min_score threshold", async () => {
+    const minScore = 70;
+
+    const tx = await program.methods
+      .initializeOracleRegistry(minScore)
+      .accounts({
+        oracleRegistry: oracleRegistryPda,
+        oracleAuthority: oracleAuthority.publicKey,
+        admin: oracleAdmin.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([oracleAdmin])
+      .rpc();
+
+    expect(tx).to.be.a("string");
+
+    const registry = await program.account.oracleRegistry.fetch(oracleRegistryPda);
+    expect(registry.admin.toBase58()).to.equal(oracleAdmin.publicKey.toBase58());
+    expect(registry.oracleAuthority.toBase58()).to.equal(oracleAuthority.publicKey.toBase58());
+    expect(registry.minScore).to.equal(70);
+    expect(registry.isPaused).to.be.false;
+    expect(registry.totalAttestations.toNumber()).to.equal(0);
+  });
+
+  it("8. Autonomous Oracle Agent records verified document attestation with nonce & expiry", async () => {
+    const docId = "oracle_doc_verified_01";
+    const docHashHex = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f01234";
+    const qualityScore = 88;
+    const chunkCount = 12;
+    const nonce = new anchor.BN(1001);
+    const expiresAt = new anchor.BN(Math.floor(Date.now() / 1000) + 3600); // 1 hour valid
+
+    const [oracleAttestationPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("oracle_attestation"), Buffer.from(docId)],
+      program.programId
+    );
+
+    const nonceBuffer = Buffer.alloc(8);
+    nonceBuffer.writeBigUInt64LE(BigInt(1001));
+    const [replayPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("oracle_replay"),
+        oracleAuthority.publicKey.toBuffer(),
+        nonceBuffer,
+      ],
+      program.programId
+    );
+
+    const [studentPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("student"), student.publicKey.toBuffer()],
+      program.programId
+    );
+
+    const tx = await program.methods
+      .recordOracleAttestation(
+        docId,
+        docHashHex,
+        qualityScore,
+        chunkCount,
+        nonce,
+        expiresAt
+      )
+      .accounts({
+        oracleRegistry: oracleRegistryPda,
+        oracleAttestation: oracleAttestationPda,
+        replayRecord: replayPda,
+        studentAccount: studentPda,
+        student: student.publicKey,
+        oracleAuthority: oracleAuthority.publicKey,
+        payer: oracleAuthority.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([oracleAuthority])
+      .rpc();
+
+    expect(tx).to.be.a("string");
+
+    // Verify Oracle Attestation PDA
+    const attestation = await program.account.oracleAttestation.fetch(oracleAttestationPda);
+    expect(attestation.docId).to.equal(docId);
+    expect(attestation.docHashHex).to.equal(docHashHex);
+    expect(attestation.qualityScore).to.equal(qualityScore);
+    expect(attestation.chunkCount).to.equal(chunkCount);
+    expect(attestation.nonce.toNumber()).to.equal(1001);
+    expect(attestation.oracleAuthority.toBase58()).to.equal(oracleAuthority.publicKey.toBase58());
+    expect(attestation.student.toBase58()).to.equal(student.publicKey.toBase58());
+
+    // Verify Replay Record PDA
+    const replay = await program.account.replayRecord.fetch(replayPda);
+    expect(replay.oracleAuthority.toBase58()).to.equal(oracleAuthority.publicKey.toBase58());
+    expect(replay.nonce.toNumber()).to.equal(1001);
+
+    // Verify Oracle Registry total_attestations counter incremented
+    const registry = await program.account.oracleRegistry.fetch(oracleRegistryPda);
+    expect(registry.totalAttestations.toNumber()).to.equal(1);
+  });
+
+  it("9. Replay Attack Prevention: Reusing the same nonce fails", async () => {
+    const docId = "oracle_doc_replay_attempt";
+    const docHashHex = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const qualityScore = 90;
+    const chunkCount = 5;
+    const reusedNonce = new anchor.BN(1001); // already used in test 8
+    const expiresAt = new anchor.BN(Math.floor(Date.now() / 1000) + 3600);
+
+    const [oracleAttestationPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("oracle_attestation"), Buffer.from(docId)],
+      program.programId
+    );
+
+    const nonceBuffer = Buffer.alloc(8);
+    nonceBuffer.writeBigUInt64LE(BigInt(1001));
+    const [replayPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("oracle_replay"),
+        oracleAuthority.publicKey.toBuffer(),
+        nonceBuffer,
+      ],
+      program.programId
+    );
+
+    try {
+      await program.methods
+        .recordOracleAttestation(
+          docId,
+          docHashHex,
+          qualityScore,
+          chunkCount,
+          reusedNonce,
+          expiresAt
+        )
+        .accounts({
+          oracleRegistry: oracleRegistryPda,
+          oracleAttestation: oracleAttestationPda,
+          replayRecord: replayPda,
+          studentAccount: null,
+          student: student.publicKey,
+          oracleAuthority: oracleAuthority.publicKey,
+          payer: oracleAuthority.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([oracleAuthority])
+        .rpc();
+
+      expect.fail("Should have failed due to duplicate replay PDA");
+    } catch (err: any) {
+      expect(err.message || err.toString()).to.match(/(already in use|0x0)/i);
+    }
+  });
+
+  it("10. Rejects attestation when quality score is below oracle min_score threshold (65 < 70)", async () => {
+    const docId = "oracle_doc_low_quality";
+    const docHashHex = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    const qualityScore = 65; // < 70
+    const chunkCount = 8;
+    const nonce = new anchor.BN(1002);
+    const expiresAt = new anchor.BN(Math.floor(Date.now() / 1000) + 3600);
+
+    const [oracleAttestationPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("oracle_attestation"), Buffer.from(docId)],
+      program.programId
+    );
+
+    const nonceBuffer = Buffer.alloc(8);
+    nonceBuffer.writeBigUInt64LE(BigInt(1002));
+    const [replayPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("oracle_replay"),
+        oracleAuthority.publicKey.toBuffer(),
+        nonceBuffer,
+      ],
+      program.programId
+    );
+
+    try {
+      await program.methods
+        .recordOracleAttestation(
+          docId,
+          docHashHex,
+          qualityScore,
+          chunkCount,
+          nonce,
+          expiresAt
+        )
+        .accounts({
+          oracleRegistry: oracleRegistryPda,
+          oracleAttestation: oracleAttestationPda,
+          replayRecord: replayPda,
+          studentAccount: null,
+          student: student.publicKey,
+          oracleAuthority: oracleAuthority.publicKey,
+          payer: oracleAuthority.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([oracleAuthority])
+        .rpc();
+
+      expect.fail("Should have failed with QualityBelowThreshold");
+    } catch (err: any) {
+      expect(err.error?.errorCode?.code || err.message).to.include("QualityBelowThreshold");
+    }
+  });
+
+  it("11. Rejects attestation signed by unauthorized authority", async () => {
+    const docId = "oracle_doc_unauthorized";
+    const docHashHex = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+    const qualityScore = 95;
+    const chunkCount = 10;
+    const nonce = new anchor.BN(1003);
+    const expiresAt = new anchor.BN(Math.floor(Date.now() / 1000) + 3600);
+
+    const [oracleAttestationPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("oracle_attestation"), Buffer.from(docId)],
+      program.programId
+    );
+
+    const nonceBuffer = Buffer.alloc(8);
+    nonceBuffer.writeBigUInt64LE(BigInt(1003));
+    const [replayPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("oracle_replay"),
+        unauthorizedSigner.publicKey.toBuffer(),
+        nonceBuffer,
+      ],
+      program.programId
+    );
+
+    try {
+      await program.methods
+        .recordOracleAttestation(
+          docId,
+          docHashHex,
+          qualityScore,
+          chunkCount,
+          nonce,
+          expiresAt
+        )
+        .accounts({
+          oracleRegistry: oracleRegistryPda,
+          oracleAttestation: oracleAttestationPda,
+          replayRecord: replayPda,
+          studentAccount: null,
+          student: student.publicKey,
+          oracleAuthority: unauthorizedSigner.publicKey,
+          payer: unauthorizedSigner.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([unauthorizedSigner])
+        .rpc();
+
+      expect.fail("Should have failed with UnauthorizedOracle");
+    } catch (err: any) {
+      expect(err.error?.errorCode?.code || err.message).to.include("UnauthorizedOracle");
+    }
+  });
+
+  it("12. Admin can pause and unpause Oracle; paused Oracle rejects attestations", async () => {
+    // 1. Admin pauses Oracle
+    await program.methods
+      .setOraclePaused(true)
+      .accounts({
+        oracleRegistry: oracleRegistryPda,
+        admin: oracleAdmin.publicKey,
+      })
+      .signers([oracleAdmin])
+      .rpc();
+
+    let registry = await program.account.oracleRegistry.fetch(oracleRegistryPda);
+    expect(registry.isPaused).to.be.true;
+
+    // 2. Attestation attempt during pause must fail
+    const docId = "oracle_doc_paused_attempt";
+    const docHashHex = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    const qualityScore = 90;
+    const chunkCount = 5;
+    const nonce = new anchor.BN(1004);
+    const expiresAt = new anchor.BN(Math.floor(Date.now() / 1000) + 3600);
+
+    const [oracleAttestationPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("oracle_attestation"), Buffer.from(docId)],
+      program.programId
+    );
+
+    const nonceBuffer = Buffer.alloc(8);
+    nonceBuffer.writeBigUInt64LE(BigInt(1004));
+    const [replayPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("oracle_replay"),
+        oracleAuthority.publicKey.toBuffer(),
+        nonceBuffer,
+      ],
+      program.programId
+    );
+
+    try {
+      await program.methods
+        .recordOracleAttestation(
+          docId,
+          docHashHex,
+          qualityScore,
+          chunkCount,
+          nonce,
+          expiresAt
+        )
+        .accounts({
+          oracleRegistry: oracleRegistryPda,
+          oracleAttestation: oracleAttestationPda,
+          replayRecord: replayPda,
+          studentAccount: null,
+          student: student.publicKey,
+          oracleAuthority: oracleAuthority.publicKey,
+          payer: oracleAuthority.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([oracleAuthority])
+        .rpc();
+
+      expect.fail("Should have failed with OraclePaused");
+    } catch (err: any) {
+      expect(err.error?.errorCode?.code || err.message).to.include("OraclePaused");
+    }
+
+    // 3. Admin unpauses Oracle
+    await program.methods
+      .setOraclePaused(false)
+      .accounts({
+        oracleRegistry: oracleRegistryPda,
+        admin: oracleAdmin.publicKey,
+      })
+      .signers([oracleAdmin])
+      .rpc();
+
+    registry = await program.account.oracleRegistry.fetch(oracleRegistryPda);
+    expect(registry.isPaused).to.be.false;
+  });
+
+  it("13. Admin can rotate Oracle Authority; non-admin rotation fails", async () => {
+    // 1. Unauthorized rotation fails
+    try {
+      await program.methods
+        .rotateOracleAuthority(newOracleAuthority.publicKey)
+        .accounts({
+          oracleRegistry: oracleRegistryPda,
+          admin: unauthorizedSigner.publicKey,
+        })
+        .signers([unauthorizedSigner])
+        .rpc();
+
+      expect.fail("Should have failed with Unauthorized");
+    } catch (err: any) {
+      expect(err.error?.errorCode?.code || err.message).to.match(/(Unauthorized|2001|A raw constraint was violated)/i);
+    }
+
+    // 2. Admin successfully rotates Oracle authority
+    const tx = await program.methods
+      .rotateOracleAuthority(newOracleAuthority.publicKey)
+      .accounts({
+        oracleRegistry: oracleRegistryPda,
+        admin: oracleAdmin.publicKey,
+      })
+      .signers([oracleAdmin])
+      .rpc();
+
+    expect(tx).to.be.a("string");
+
+    const registry = await program.account.oracleRegistry.fetch(oracleRegistryPda);
+    expect(registry.oracleAuthority.toBase58()).to.equal(newOracleAuthority.publicKey.toBase58());
+
+    // Rotate back to original authority for consistency
+    await program.methods
+      .rotateOracleAuthority(oracleAuthority.publicKey)
+      .accounts({
+        oracleRegistry: oracleRegistryPda,
+        admin: oracleAdmin.publicKey,
+      })
+      .signers([oracleAdmin])
+      .rpc();
   });
 });

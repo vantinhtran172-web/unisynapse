@@ -433,6 +433,7 @@ def init_db():
 
         for tbl, col_def in [
             ("documents", "solana_tx TEXT"),
+            ("documents", "attestation_pda TEXT"),
             ("documents", "university TEXT DEFAULT 'Đại học Bách Khoa TP.HCM'"),
             ("documents", "subject_code TEXT DEFAULT 'CS101'"),
             ("documents", "subject_name TEXT DEFAULT 'Lập trình C & Cấu trúc Dữ liệu'"),
@@ -442,6 +443,70 @@ def init_db():
                 cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN {col_def}")
             except Exception:
                 pass
+
+        # 7.5. Autonomous On-Chain Oracle Jobs
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS oracle_jobs (
+            id TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL,
+            owner_id TEXT NOT NULL,
+            checksum_sha256 TEXT NOT NULL,
+            quality_score INTEGER NOT NULL,
+            chunk_count INTEGER NOT NULL,
+            nonce INTEGER NOT NULL,
+            oracle_version TEXT NOT NULL DEFAULT 'v1',
+            idempotency_key TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'queued', -- queued, processed, confirmed, finalized, failed
+            tx_signature TEXT,
+            attestation_pda TEXT,
+            error_message TEXT,
+            fast_gate_latency_ms REAL,
+            submit_latency_ms REAL,
+            confirmed_latency_ms REAL,
+            finalized_latency_ms REAL,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL,
+            FOREIGN KEY (document_id) REFERENCES documents(id),
+            FOREIGN KEY (owner_id) REFERENCES users(id)
+        )
+        """)
+        # Compatibility upgrades for local databases created before idempotency hardening.
+        oracle_job_columns = {
+            row["name"] for row in cursor.execute("PRAGMA table_info(oracle_jobs)").fetchall()
+        }
+        if "oracle_version" not in oracle_job_columns:
+            cursor.execute("ALTER TABLE oracle_jobs ADD COLUMN oracle_version TEXT NOT NULL DEFAULT 'v1'")
+        if "idempotency_key" not in oracle_job_columns:
+            cursor.execute("ALTER TABLE oracle_jobs ADD COLUMN idempotency_key TEXT NOT NULL DEFAULT ''")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_oracle_jobs_doc ON oracle_jobs(document_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_oracle_jobs_status ON oracle_jobs(status)")
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_oracle_jobs_owner_idempotency "
+            "ON oracle_jobs(owner_id, idempotency_key) WHERE idempotency_key <> ''"
+        )
+        duplicate_nonce = cursor.execute(
+            """
+            SELECT 1
+            FROM oracle_jobs
+            GROUP BY oracle_version, nonce
+            HAVING COUNT(*) > 1
+            LIMIT 1
+            """
+        ).fetchone()
+        if duplicate_nonce is None:
+            cursor.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_oracle_jobs_oracle_nonce "
+                "ON oracle_jobs(oracle_version, nonce)"
+            )
+        else:
+            # Do not rewrite historical jobs automatically: a submitted job's nonce
+            # is part of its replay PDA. New jobs still allocate MAX(nonce)+1.
+            import logging
+            logging.getLogger("database").warning(
+                "Skipped oracle nonce unique index because legacy duplicate nonces exist; "
+                "historical jobs require an explicit maintenance migration"
+            )
+
 
         # 8. Audit Events
         cursor.execute("""

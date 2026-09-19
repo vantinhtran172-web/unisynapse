@@ -264,11 +264,11 @@ class RAGService:
         import os
         from ..core.config import GEMINI_API_KEY, ENVIRONMENT
 
-        has_grounded_context = bool(top_chunks) and top_chunks[0]["score"] >= 0.08
+        has_grounded_context = bool(top_chunks) and top_chunks[0]["score"] >= 0.15
         citations = []
         if has_grounded_context:
             for c in top_chunks:
-                if c["score"] >= 0.08:
+                if c["score"] >= 0.15:
                     sol_tx = c.get("solana_tx")
                     citations.append({
                         "document_id": c["document_id"],
@@ -322,40 +322,25 @@ class RAGService:
                 safe_msg = str(err).encode("ascii", "backslashreplace").decode("ascii")
                 logger.warning(f"[RAG] Gemini call notice: {safe_msg[:120]}. Using safe fallback.")
 
-        # Native grounded extractive synthesis engine
-        if top_chunks:
-            answer_text = cls.synthesize_academic_answer(question, top_chunks)
+        if not has_grounded_context:
             return {
-                "answer": answer_text,
-                "citations": citations if citations else [{
-                    "document_id": top_chunks[0]["document_id"],
-                    "document_name": top_chunks[0]["document_name"],
-                    "page": f"Trang {top_chunks[0]['page_number']}" if top_chunks[0].get('page_number') else f"Đoạn {top_chunks[0]['chunk_index'] + 1}",
-                    "chunk_index": top_chunks[0]["chunk_index"],
-                    "score": top_chunks[0]["score"],
-                    "excerpt": top_chunks[0]["content"][:180] + "...",
-                    "solana_tx": top_chunks[0].get("solana_tx"),
-                    "explorer_url": None,
-                }],
-                "grounded": True,
-                "engine": "extractive_rag",
-                "source_type": "approved_documents",
-                "source_label": "Tài liệu UniSynapse đã kiểm định (ĐH Văn Hiến)",
+                "answer": "Câu hỏi này nằm ngoài kho tài liệu UniSynapse và hiện Gemini chưa sẵn sàng trả lời. Vui lòng thử lại sau hoặc bổ sung tài liệu liên quan.",
+                "citations": [],
+                "grounded": False,
+                "engine": "unavailable",
+                "source_type": "unavailable",
+                "source_label": "Không có nguồn trả lời khả dụng",
             }
 
+        # Native grounded extractive synthesis engine
+        answer_text = cls.synthesize_academic_answer(question, top_chunks)
         return {
-            "answer": (
-                "### 🎓 UniSynapse AI Tutor — Hướng dẫn học tập\n\n"
-                f"Về câu hỏi: *\"{question}\"*\n\n"
-                "Hiện tại kho học liệu đang được mở rộng. Bạn có thể:\n"
-                "- Chọn môn học cụ thể trên thanh công cụ (ví dụ: **VHU_DSA - Cấu trúc Dữ liệu & Giải thuật**, **VHU_IT101**, v.v.) để AI đối soát chính xác.\n"
-                "- Tải lên file ghi chú, đề cương hoặc giáo trình tại mục **Đóng góp học liệu (6 Cổng)** để nhận ngay điểm thưởng UniPoints và kích hoạt AI phân tích trực tiếp!"
-            ),
-            "citations": [],
-            "grounded": False,
-            "engine": "unisynapse_guide",
-            "source_type": "guidance",
-            "source_label": "Hướng dẫn khai thác học liệu UniSynapse",
+            "answer": answer_text,
+            "citations": citations,
+            "grounded": True,
+            "engine": "extractive_rag",
+            "source_type": "approved_documents",
+            "source_label": "Tài liệu UniSynapse đã kiểm định (ĐH Văn Hiến)",
         }
 
     @classmethod

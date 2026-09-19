@@ -9,6 +9,7 @@ import bs58 from "bs58";
 import { Buffer } from "buffer";
 import { api, LedgerEntry, BankDepositIntent, BankDepositRecord } from "@/lib/api";
 import { useAppState } from "@/context/AppStateContext";
+import ThemeToggle from "@/components/ThemeToggle";
 import styles from "./wallet.module.css";
 
 const DEVNET = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
@@ -795,11 +796,17 @@ export default function WalletPage() {
       <section className={styles.card}>
         {/* Header navigation & status */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <div style={{ width: "28px", height: "28px", borderRadius: "6px", background: "#030712", border: "1px solid #06b6d4", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "#22d3ee", fontSize: "10px" }}>WIT</div>
-            <Link href="/" style={{ color: "#06b6d4", textDecoration: "none", fontWeight: 700, fontSize: "0.875rem" }}>← UniSynapse</Link>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+            <div style={{ width: "28px", height: "28px", borderRadius: "6px", background: "var(--surface, #030712)", border: "1px solid #06b6d4", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "#22d3ee", fontSize: "10px" }}>WIT</div>
+            <Link href="/" style={{ color: "var(--teal, #06b6d4)", textDecoration: "none", fontWeight: 700, fontSize: "0.875rem" }}>Trang chủ</Link>
+            <Link href="/?tab=labeling" style={{ color: "var(--muted, #94a3b8)", textDecoration: "none", fontSize: "0.8rem", padding: "0.2rem 0.6rem", borderRadius: "4px", background: "var(--surface-secondary, rgba(255,255,255,0.06))", border: "1px solid var(--line, rgba(255,255,255,0.1))" }}>◈ Gán nhãn</Link>
+            <Link href="/?tab=upload" style={{ color: "var(--muted, #94a3b8)", textDecoration: "none", fontSize: "0.8rem", padding: "0.2rem 0.6rem", borderRadius: "4px", background: "var(--surface-secondary, rgba(255,255,255,0.06))", border: "1px solid var(--line, rgba(255,255,255,0.1))" }}>⇪ Góp tài liệu</Link>
+            <Link href="/?tab=tutor" style={{ color: "var(--muted, #94a3b8)", textDecoration: "none", fontSize: "0.8rem", padding: "0.2rem 0.6rem", borderRadius: "4px", background: "var(--surface-secondary, rgba(255,255,255,0.06))", border: "1px solid var(--line, rgba(255,255,255,0.1))" }}>✦ AI Tutor</Link>
           </div>
-          <span className={styles.badge}>SOLANA DEVNET · THỬ NGHIỆM</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+            <ThemeToggle compact />
+            <span className={styles.badge}>SOLANA DEVNET · THỬ NGHIỆM</span>
+          </div>
         </div>
 
         {!user && (

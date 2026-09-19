@@ -20,7 +20,10 @@ from .api.v1.documents import router as documents_router
 from .api.v1.tutor import router as tutor_router
 from .api.v1.rewards import router as rewards_router
 from .api.v1.admin import router as admin_router
+from .api.v1.oracle import router as oracle_router
 from .services.bank_watcher import bank_deposit_watcher_loop, stop_bank_watcher
+from .services.oracle_service import OracleService
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,9 +43,13 @@ async def lifespan(app: FastAPI):
     # Start background auto-settle daemon for ACB bank deposits
     watcher_task = asyncio.create_task(bank_deposit_watcher_loop(interval_seconds=4.0))
 
+    # Start Autonomous On-Chain Oracle Pipeline worker & warm blockhash cache
+    OracleService.start_background_tasks()
+
     yield
 
     # Shutdown
+    OracleService.stop_background_tasks()
     stop_bank_watcher()
     watcher_task.cancel()
     try:
@@ -135,6 +142,7 @@ app.include_router(documents_router, prefix="/api/v1")
 app.include_router(tutor_router, prefix="/api/v1")
 app.include_router(rewards_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
+app.include_router(oracle_router, prefix="/api/v1")
 
 @app.get("/health")
 def health():

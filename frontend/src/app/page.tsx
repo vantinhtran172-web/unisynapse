@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import ProfileCard from "@/components/ProfileCard";
@@ -41,7 +41,7 @@ function Metric({ value, label, detail, tone }: { value: string; label: string; 
 }
 
 function ChallengeCard({ challenge, onSelect }: { challenge: Challenge; onSelect: () => void }) {
-  return <button className={`challenge-card challenge-${challenge.color}`} onClick={onSelect}><div className="challenge-top"><IconBubble tone={challenge.color}>{challenge.icon}</IconBubble><span className="challenge-phần thưởng">{challenge.reward}</span></div><div className="challenge-copy"><span>{challenge.domain}</span><h3>{challenge.title}</h3></div><div className="challenge-meta"><span>{challenge.difficulty}</span><span>{challenge.progress}% hoàn tất</span></div><div className="progress-track"><i style={{ width: `${challenge.progress}%` }} /></div><div className="challenge-cta">Xem nhiệm vụ <span>→</span></div></button>;
+  return <button className={`challenge-card challenge-${challenge.color}`} onClick={onSelect}><div className="challenge-top"><IconBubble tone={challenge.color}>{challenge.icon}</IconBubble><span className="challenge-reward">{challenge.reward}</span></div><div className="challenge-copy"><span>{challenge.domain}</span><h3>{challenge.title}</h3></div><div className="challenge-meta"><span>{challenge.difficulty}</span><span>{challenge.progress}% hoàn tất</span></div><div className="progress-track"><i style={{ width: `${challenge.progress}%` }} /></div><div className="challenge-cta">Xem nhiệm vụ <span>→</span></div></button>;
 }
 
 function TrackCard({ track }: { track: Track }) {
@@ -85,6 +85,23 @@ export default function Home() {
   const [selectedChallenge, setSelectedChallenge] = useState<Challenge | null>(null);
   const [showAllActivity, setShowAllActivity] = useState(false);
   const { activeTab, setActiveTab, user, tasks, documents, ledger, loading, error, authRequired } = useAppState();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncTabFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      const hashParam = window.location.hash.replace("#", "");
+      const target = tabParam || hashParam;
+      if (target && ["dashboard", "overview", "challenges", "learning", "tutor", "ledger", "upload", "labeling"].includes(target)) {
+        setActiveTab(target === "overview" ? "dashboard" : target);
+      }
+    };
+    syncTabFromUrl();
+    window.addEventListener("popstate", syncTabFromUrl);
+    return () => window.removeEventListener("popstate", syncTabFromUrl);
+  }, [setActiveTab]);
+
   const liveChallenges = useMemo<Challenge[]>(() => tasks.map((task, index) => ({
     title: task.title,
     domain: task.domain || task.category,
@@ -113,16 +130,110 @@ export default function Home() {
   const activeView = activeTab === "dashboard" ? "overview" : activeTab;
   const visibleActivities = useMemo(() => showAllActivity ? liveActivities : liveActivities.slice(0, 3), [showAllActivity, liveActivities]);
   const goToTab = (tab: PublicTab) => {
-    setActiveTab(tab === "overview" ? "dashboard" : tab);
-    window.scrollTo({ top: 0, behavior: "instant" });
+    const tabId = tab === "overview" ? "dashboard" : tab;
+    setActiveTab(tabId);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", tabId === "dashboard" ? "/" : `/?tab=${tabId}`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
   if (!mounted) return <main className="loading-screen"><div className="loading-mark">WIT</div><span>Đang chuẩn bị không gian tri thức…</span></main>;
   return <main className="client-shell"><div className="client-glow client-glow-one" /><div className="client-glow client-glow-two" /><Navbar /><div className="client-container">
     <section className="welcome-bar"><div><span className="live-dot" /> <span>TRẠNG THÁI MẠNG: ĐANG HOẠT ĐỘNG</span><span className="welcome-divider">/</span><span>SEPT 14, 2026</span></div><button className="command-button">⌘ K <span>Bảng lệnh</span></button></section>
-    {activeView === "overview" && <section className="client-hero"><div className="hero-copy"><div className="hero-kicker"><span className="kicker-line" /> LỚP TRI THỨC MỞ <span className="kicker-line" /></div><h1>Học tập cùng nhau.<br /><em>Xác minh mọi điều.</em></h1><p>UniSynapse turns focused student contribution into a living academic network. Label data, share knowledge, and build an AI tutor you can trust.</p><div className="hero-actions"><button className="primary-action" onClick={() => goToTab("challenges")}>Khám phá nhiệm vụ <span>↗</span></button><button className="secondary-action" onClick={() => goToTab("learning")}>Xem lộ trình học</button></div><div className="hero-trust"><span>Được cộng đồng ngày càng lớn tin dùng</span><div className="avatar-stack"><i>AL</i><i>MK</i><i>TN</i><i>+</i></div><b>Đóng góp và kiểm định tri thức</b></div></div><div className="hero-orbit"><div className="orbit-ring orbit-ring-a" /><div className="orbit-ring orbit-ring-b" /><div className="orbit-center"><span>WIT</span><small>LIVE<br />NETWORK</small></div><div className="orbit-node orbit-node-a">AI</div><div className="orbit-node orbit-node-b">◎</div><div className="orbit-node orbit-node-c">↗</div></div></section>}
-    {authRequired && <section className="guest-access-banner" role="status"><div><span className="eyebrow">KHÔNG GIAN CÁ NHÂN</span><h2>Đăng nhập để xem dữ liệu của bạn</h2><p>Nhiệm vụ, UniPoints, tài liệu và AI Tutor sẽ được tải theo đúng tài khoản của bạn.</p></div><div className="hero-actions"><Link className="primary-action" href="/dang-nhap">Đăng nhập <span>↗</span></Link><Link className="secondary-action" href="/dang-ky">Tạo tài khoản</Link></div></section>}
-    <section className="metrics-grid"><Metric label="Đóng góp của bạn" value={authRequired ? "—" : `${ledger.filter((entry) => entry.delta > 0).length}`} detail={loading ? "Đang tải dữ liệu thật…" : authRequired ? "Đăng nhập để xem" : error ? "Dữ liệu chưa tải được" : "Từ sổ cái thật"} tone="cyan" /><Metric label="Điểm tri thức" value={authRequired ? "—" : `${user?.reputation ?? 0}`} detail={authRequired ? "Đăng nhập để xem" : "Reputation từ database"} tone="violet" /><Metric label="Số dư UniPoints" value={authRequired ? "—" : `${user?.unipoints ?? 0}`} detail={authRequired ? "Đăng nhập để xem" : "Số dư hiện tại"} tone="amber" /><Metric label="Tài liệu đã nộp" value={authRequired ? "—" : `${documents.length}`} detail={authRequired ? "Đăng nhập để xem" : "Tài liệu từ API"} tone="emerald" /></section>
-    {activeView === "overview" && <><section className="content-section"><SectionHeader eyebrow="Nhiệm vụ mở" title="Chọn đóng góp tiếp theo" action="Xem tất cả" /><div className="challenge-grid">{challenges.map((challenge, index) => <ChallengeCard key={`${challenge.title}-${index}`} challenge={challenge} onSelect={() => setSelectedChallenge(challenge)} />)}</div></section><section className="split-section"><div className="learning-column"><SectionHeader eyebrow="Đề xuất cho bạn" title="Tiếp tục học" action="Tất cả lộ trình" /><div className="track-list">{tracks.map((track, index) => <TrackCard key={`${track.title}-${index}`} track={track} />)}</div></div><div className="activity-column"><SectionHeader eyebrow="Mạng lưới của bạn" title="Hoạt động gần đây" action={showAllActivity ? "Thu gọn" : "Xem tất cả"} /><div className="activity-list">{visibleActivities.map((item, index) => <ActivityRow key={item.id || `${item.title}-${index}`} item={item} />)}</div><button className="activity-more" onClick={() => setShowAllActivity(!showAllActivity)}>{showAllActivity ? "Thu gọn" : "Tải thêm hoạt động"} <span>↓</span></button></div></section><section className="bottom-cta"><div><span className="eyebrow">Do sinh viên xây dựng, dành cho mọi người</span><h2>Tri thức của bạn có thể thúc đẩy mạng lưới.</h2><p>Mỗi nhãn, nguồn và câu trả lời giúp trải nghiệm học tiếp theo đáng tin cậy hơn.</p></div><button className="primary-action" onClick={() => goToTab("tutor")}>Hỏi AI Tutor <span>↗</span></button></section></>}
+    {activeView === "overview" && (
+      <>
+        <section className="client-hero">
+          <div className="hero-copy">
+            <div className="hero-kicker">
+              <span className="kicker-line" /> LỚP TRI THỨC MỞ <span className="kicker-line" />
+            </div>
+            <h1>Học tập cùng nhau.<br /><em>Xác minh mọi điều.</em></h1>
+            <p>UniSynapse turns focused student contribution into a living academic network. Label data, share knowledge, and build an AI tutor you can trust.</p>
+            <div className="hero-actions">
+              <button className="primary-action" onClick={() => goToTab("challenges")}>Khám phá nhiệm vụ <span>↗</span></button>
+              <button className="secondary-action" onClick={() => goToTab("learning")}>Xem lộ trình học</button>
+            </div>
+            <div className="hero-trust">
+              <span>Được cộng đồng ngày càng lớn tin dùng</span>
+              <div className="avatar-stack"><i>AL</i><i>MK</i><i>TN</i><i>+</i></div>
+              <b>Đóng góp và kiểm định tri thức</b>
+            </div>
+          </div>
+          <div className="hero-orbit">
+            <div className="orbit-ring orbit-ring-a" />
+            <div className="orbit-ring orbit-ring-b" />
+            <div className="orbit-center">
+              <span>WIT</span>
+              <small>LIVE<br />NETWORK</small>
+            </div>
+            <div className="orbit-node orbit-node-a">AI</div>
+            <div className="orbit-node orbit-node-b">◎</div>
+            <div className="orbit-node orbit-node-c">↗</div>
+          </div>
+        </section>
+
+        {authRequired && (
+          <section className="guest-access-banner" role="status">
+            <div>
+              <span className="eyebrow">KHÔNG GIAN CÁ NHÂN</span>
+              <h2>Đăng nhập để xem dữ liệu của bạn</h2>
+              <p>Nhiệm vụ, UniPoints, tài liệu và AI Tutor sẽ được tải theo đúng tài khoản của bạn.</p>
+            </div>
+            <div className="hero-actions">
+              <Link className="primary-action" href="/dang-nhap">Đăng nhập <span>↗</span></Link>
+              <Link className="secondary-action" href="/dang-ky">Tạo tài khoản</Link>
+            </div>
+          </section>
+        )}
+
+        <section className="metrics-grid">
+          <Metric label="Đóng góp của bạn" value={authRequired ? "—" : `${ledger.filter((entry) => entry.delta > 0).length}`} detail={loading ? "Đang tải dữ liệu thật…" : authRequired ? "Đăng nhập để xem" : error ? "Dữ liệu chưa tải được" : "Từ sổ cái thật"} tone="cyan" />
+          <Metric label="Điểm tri thức" value={authRequired ? "—" : `${user?.reputation ?? 0}`} detail={authRequired ? "Đăng nhập để xem" : "Reputation từ database"} tone="violet" />
+          <Metric label="Số dư UniPoints" value={authRequired ? "—" : `${user?.unipoints ?? 0}`} detail={authRequired ? "Đăng nhập để xem" : "Số dư hiện tại"} tone="amber" />
+          <Metric label="Tài liệu đã nộp" value={authRequired ? "—" : `${documents.length}`} detail={authRequired ? "Đăng nhập để xem" : "Tài liệu từ API"} tone="emerald" />
+        </section>
+
+        <section className="content-section">
+          <SectionHeader eyebrow="Nhiệm vụ mở" title="Chọn đóng góp tiếp theo" action="Xem tất cả" />
+          <div className="challenge-grid">
+            {challenges.map((challenge, index) => (
+              <ChallengeCard key={`${challenge.title}-${index}`} challenge={challenge} onSelect={() => setSelectedChallenge(challenge)} />
+            ))}
+          </div>
+        </section>
+
+        <section className="split-section">
+          <div className="learning-column">
+            <SectionHeader eyebrow="Đề xuất cho bạn" title="Tiếp tục học" action="Tất cả lộ trình" />
+            <div className="track-list">
+              {tracks.map((track, index) => (
+                <TrackCard key={`${track.title}-${index}`} track={track} />
+              ))}
+            </div>
+          </div>
+          <div className="activity-column">
+            <SectionHeader eyebrow="Mạng lưới của bạn" title="Hoạt động gần đây" action={showAllActivity ? "Thu gọn" : "Xem tất cả"} />
+            <div className="activity-list">
+              {visibleActivities.map((item, index) => (
+                <ActivityRow key={item.id || `${item.title}-${index}`} item={item} />
+              ))}
+            </div>
+            <button className="activity-more" onClick={() => setShowAllActivity(!showAllActivity)}>
+              {showAllActivity ? "Thu gọn" : "Tải thêm hoạt động"} <span>↓</span>
+            </button>
+          </div>
+        </section>
+
+        <section className="bottom-cta">
+          <div>
+            <span className="eyebrow">Do sinh viên xây dựng, dành cho mọi người</span>
+            <h2>Tri thức của bạn có thể thúc đẩy mạng lưới.</h2>
+            <p>Mỗi nhãn, nguồn và câu trả lời giúp trải nghiệm học tiếp theo đáng tin cậy hơn.</p>
+          </div>
+          <button className="primary-action" onClick={() => goToTab("tutor")}>Hỏi AI Tutor <span>↗</span></button>
+        </section>
+      </>
+    )}
      {activeView === "challenges" && <section className="workspace-view"><SectionHeader eyebrow="Không gian nhiệm vụ" title="Chọn nhiệm vụ đóng góp" /><div className="challenge-grid">{liveChallenges.length ? liveChallenges.map((challenge, index) => <ChallengeCard key={`${challenge.title}-${index}`} challenge={challenge} onSelect={() => setSelectedChallenge(challenge)} />) : <div className="empty-state">Không có nhiệm vụ thật đang mở.</div>}</div></section>}
     {activeView === "labeling" && <section className="workspace-view"><SectionHeader eyebrow="Đóng góp dữ liệu" title="Gán nhãn dữ liệu" action="Nhiệm vụ đang mở" /><div className="workspace-tools workspace-tools-single"><ProfileCard /><DataLabeling /></div></section>}
     {activeView === "upload" && <section className="workspace-view"><SectionHeader eyebrow="Kho tri thức cộng đồng" title="Góp tài liệu" action="Tài liệu được kiểm định" /><div className="workspace-tools workspace-tools-single"><ProfileCard /><DocumentUpload /></div></section>}

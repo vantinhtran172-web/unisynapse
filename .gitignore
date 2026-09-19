@@ -42,3 +42,23 @@ scratch/
 File gốc tai về/
 treasury_keypair.json
 data/treasury_keypair.json
+
+# Rust and Solana build artifacts
+program/target/
+target/
+**/*.so
+program/cargo-build-bpf.sh
+
+# Media and large binary files
+*.mp4
+*.mkv
+*.avi
+*.mov
+
+# Security and secret files
+*.pem
+*.key
+*.pfx
+*keypair*.json
+id.json
+

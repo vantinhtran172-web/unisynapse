@@ -82,6 +82,8 @@ class UpdateUserRequest(BaseModel):
     reputation: Optional[int] = None
     unipoints: Optional[int] = None
     disabled: Optional[int] = None
+    wallet_address: Optional[str] = None
+    password: Optional[str] = None
 
 class AdjustPointsRequest(BaseModel):
     amount: int
@@ -311,7 +313,10 @@ def create_document_by_admin(req: CreateDocRequest):
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM users WHERE role = 'admin' LIMIT 1")
         row = cursor.fetchone()
-        owner_id = row["id"] if row else "admin_system"
+        if not row:
+            cursor.execute("SELECT id FROM users LIMIT 1")
+            row = cursor.fetchone()
+        owner_id = row["id"] if row else "usr_demo"
 
         cursor.execute("""
         INSERT INTO documents (
@@ -359,6 +364,8 @@ def update_document(doc_id: str, req: UpdateDocRequest):
         if fields:
             params.append(doc_id)
             cursor.execute(f"UPDATE documents SET {', '.join(fields)} WHERE id = ?", tuple(params))
+            if req.original_name:
+                cursor.execute("UPDATE document_chunks SET document_name = ? WHERE document_id = ?", (req.original_name, doc_id))
             log_audit(cursor, "document_updated", f"Admin updated document {doc_id}")
 
     return {"success": True, "message": "Đã cập nhật thông tin tài liệu thành công"}
@@ -373,11 +380,14 @@ def delete_document(doc_id: str):
         if not doc:
             raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu")
 
+        doc_name = doc["original_name"] or doc["filename"] or doc_id
+        # Clean up foreign-key references first
+        cursor.execute("DELETE FROM oracle_jobs WHERE document_id = ?", (doc_id,))
         cursor.execute("DELETE FROM document_chunks WHERE document_id = ?", (doc_id,))
         cursor.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
-        log_audit(cursor, "document_deleted", f"Admin deleted document: {doc['original_name']}")
+        log_audit(cursor, "document_deleted", f"Admin deleted document: {doc_name} ({doc_id})")
 
-    return {"success": True, "message": f"Đã xóa tài liệu '{doc['original_name']}' thành công"}
+    return {"success": True, "message": f"Đã xóa tài liệu '{doc_name}' thành công"}
 
 @router.get("/tasks")
 def get_all_tasks_for_admin():
@@ -561,9 +571,13 @@ def update_user_by_admin(user_id: str, req: UpdateUserRequest):
 
         fields = []
         params = []
-        if req.username is not None:
+        if req.username is not None and req.username.strip():
+            new_username = req.username.strip()
+            cursor.execute("SELECT id FROM users WHERE username = ? AND id != ?", (new_username, user_id))
+            if cursor.fetchone():
+                raise HTTPException(status_code=409, detail=f"Tên người dùng '{new_username}' đã tồn tại!")
             fields.append("username = ?")
-            params.append(req.username)
+            params.append(new_username)
         if req.role is not None:
             fields.append("role = ?")
             params.append(req.role)
@@ -576,6 +590,16 @@ def update_user_by_admin(user_id: str, req: UpdateUserRequest):
         if req.disabled is not None:
             fields.append("disabled = ?")
             params.append(req.disabled)
+        if req.wallet_address is not None:
+            clean_wallet = req.wallet_address.strip() or None
+            fields.append("address = ?")
+            params.append(clean_wallet)
+        if req.password is not None and req.password.strip():
+            new_pwd = req.password.strip()
+            if len(new_pwd) < 6:
+                raise HTTPException(status_code=400, detail="Mật khẩu phải có ít nhất 6 ký tự!")
+            fields.append("password_hash = ?")
+            params.append(hash_password(new_pwd))
 
         if fields:
             params.append(user_id)
@@ -634,10 +658,21 @@ def delete_user_by_admin(user_id: str):
         if user["role"] == "admin":
             raise HTTPException(status_code=403, detail="Không thể xóa tài khoản Quản trị viên tối cao!")
 
-        cursor.execute("DELETE FROM member_sessions WHERE user_id = ?", (user_id,))
+        # Cascade cleanup referenced child records safely
+        cursor.execute("DELETE FROM member_sessions WHERE member_id = ?", (user_id,))
         cursor.execute("DELETE FROM task_submissions WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM reward_ledger WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM ledger_entries WHERE account_id IN (SELECT id FROM ledger_accounts WHERE user_id = ?)", (user_id,))
+        cursor.execute("DELETE FROM ledger_accounts WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM ai_usage WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM solana_deposits WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM bank_deposits WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM oracle_jobs WHERE owner_id = ? OR document_id IN (SELECT id FROM documents WHERE owner_id = ?)", (user_id, user_id))
+        cursor.execute("DELETE FROM document_chunks WHERE document_id IN (SELECT id FROM documents WHERE owner_id = ?)", (user_id,))
+        cursor.execute("DELETE FROM documents WHERE owner_id = ?", (user_id,))
+        cursor.execute("DELETE FROM compute_jobs WHERE user_id = ?", (user_id,))
         cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
-        log_audit(cursor, "user_deleted", f"Admin deleted user: {user['username']}", user_id=user_id)
+        log_audit(cursor, "user_deleted", f"Admin deleted user: {user['username']} ({user_id})")
 
     return {"success": True, "message": f"Đã xóa thành viên '{user['username']}' thành công!"}
 
@@ -676,14 +711,21 @@ def create_chunk_by_admin(req: ChunkRequest):
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM documents WHERE id = ?", (doc_id,))
         if not cursor.fetchone():
+            cursor.execute("SELECT id FROM users WHERE role = 'admin' LIMIT 1")
+            admin_u = cursor.fetchone()
+            if not admin_u:
+                cursor.execute("SELECT id FROM users LIMIT 1")
+                admin_u = cursor.fetchone()
+            owner_id = admin_u["id"] if admin_u else "usr_demo"
+
             cursor.execute("""
             INSERT INTO documents (
                 id, owner_id, filename, original_name, file_type, size_bytes,
                 checksum, status, mime_check, pii_check, dedupe_check, copyright_check,
                 quality_check, chunk_count, created_at, approved_at
-            ) VALUES (?, 'admin', 'admin_knowledge.txt', 'Kho Tri Thức Trực Tiếp Admin', 'text/plain', 100,
+            ) VALUES (?, ?, 'admin_knowledge.txt', 'Kho Tri Thức Trực Tiếp Admin', 'text/plain', 100,
                       ?, 'approved', 'pass', 'pass', 'pass', 'pass', 'Direct Admin Knowledge', 1, ?, ?)
-            """, (doc_id, f"chksum_{chunk_id}", now, now))
+            """, (doc_id, owner_id, f"chksum_{chunk_id}", now, now))
 
         cursor.execute("""
         INSERT INTO document_chunks (

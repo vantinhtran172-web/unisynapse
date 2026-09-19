@@ -58,7 +58,7 @@
   box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.2);
 }
 
-.card button {
+.card button:not([role="group"] *):not([class*="tabBtn"]):not([class*="presetBtn"]):not([class*="solanaExplorerBtn"]) {
   margin-top: 1.2rem;
   padding: 0.85rem 1.2rem;
   border: 1px solid #22d3ee;
@@ -70,13 +70,13 @@
   transition: all 0.2s;
 }
 
-.card button:hover:not(:disabled) {
+.card button:not([role="group"] *):not([class*="tabBtn"]):not([class*="presetBtn"]):not([class*="solanaExplorerBtn"]):hover:not(:disabled) {
   background: #06b6d4;
   box-shadow: 0 4px 16px rgba(6, 182, 212, 0.35);
   transform: translateY(-1px);
 }
 
-.card button:disabled {
+.card button:not([role="group"] *):not([class*="tabBtn"]):not([class*="presetBtn"]):not([class*="solanaExplorerBtn"]):disabled {
   opacity: 0.45;
   cursor: not-allowed;
   transform: none;
@@ -1038,6 +1038,215 @@
 
 .explorerLinkSmall:hover {
   color: #67e8f9;
+}
+
+/* ==========================================================================
+   LIGHT MODE DESIGN OVERRIDES FOR /vi
+   ========================================================================== */
+:global(html.light) .shell,
+:global([data-theme="light"]) .shell {
+  background: radial-gradient(circle at 20% 10%, #e0f2fe, transparent 55%), #f8fafc;
+  color: #0f172a;
+}
+
+:global(html.light) .card,
+:global([data-theme="light"]) .card {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 16px 50px rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+}
+
+:global(html.light) .card h1,
+:global([data-theme="light"]) .card h1 {
+  color: #0f172a;
+}
+
+:global(html.light) .card em,
+:global([data-theme="light"]) .card em {
+  background: linear-gradient(135deg, #0284c7, #0d9488);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+:global(html.light) .card label,
+:global([data-theme="light"]) .card label {
+  color: #334155;
+}
+
+:global(html.light) .card input,
+:global([data-theme="light"]) .card input {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+
+:global(html.light) .card input:focus,
+:global([data-theme="light"]) .card input:focus {
+  border-color: #0284c7;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.2);
+}
+
+:global(html.light) .card button:not([role="group"] *):not([class*="tabBtn"]):not([class*="presetBtn"]):not([class*="solanaExplorerBtn"]),
+:global([data-theme="light"]) .card button:not([role="group"] *):not([class*="tabBtn"]):not([class*="presetBtn"]):not([class*="solanaExplorerBtn"]) {
+  background: #0284c7;
+  border-color: #0284c7;
+  color: #ffffff;
+}
+
+:global(html.light) .card button:not([role="group"] *):not([class*="tabBtn"]):not([class*="presetBtn"]):not([class*="solanaExplorerBtn"]):hover:not(:disabled),
+:global([data-theme="light"]) .card button:not([role="group"] *):not([class*="tabBtn"]):not([class*="presetBtn"]):not([class*="solanaExplorerBtn"]):hover:not(:disabled) {
+  background: #0369a1;
+  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.3);
+}
+
+:global(html.light) .statCard,
+:global([data-theme="light"]) .statCard {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+:global(html.light) .statLabel,
+:global([data-theme="light"]) .statLabel {
+  color: #64748b;
+}
+
+:global(html.light) .statValue,
+:global([data-theme="light"]) .statValue {
+  color: #0284c7;
+}
+
+:global(html.light) .statSub,
+:global([data-theme="light"]) .statSub {
+  color: #0369a1;
+}
+
+:global(html.light) .tabs,
+:global([data-theme="light"]) .tabs {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+}
+
+:global(html.light) .tabBtn,
+:global([data-theme="light"]) .tabBtn {
+  color: #64748b !important;
+}
+
+:global(html.light) .tabBtn:hover:not(.activeTab),
+:global([data-theme="light"]) .tabBtn:hover:not(.activeTab) {
+  color: #0f172a !important;
+  background: #e2e8f0 !important;
+}
+
+:global(html.light) .activeTab,
+:global([data-theme="light"]) .activeTab {
+  background: #ffffff !important;
+  color: #0284c7 !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08) !important;
+}
+
+:global(html.light) .presetBtn,
+:global([data-theme="light"]) .presetBtn {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #334155 !important;
+}
+
+:global(html.light) .presetBtn strong,
+:global([data-theme="light"]) .presetBtn strong {
+  color: #0284c7;
+}
+
+:global(html.light) .presetBtn:hover:not(.activePreset),
+:global([data-theme="light"]) .presetBtn:hover:not(.activePreset) {
+  border-color: #0284c7 !important;
+  background: #f0f9ff !important;
+}
+
+:global(html.light) .activePreset,
+:global([data-theme="light"]) .activePreset {
+  background: #f0f9ff !important;
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 12px rgba(2, 132, 199, 0.2) !important;
+}
+
+:global(html.light) .activePreset strong,
+:global([data-theme="light"]) .activePreset strong {
+  color: #0284c7;
+}
+
+:global(html.light) .summaryCard,
+:global([data-theme="light"]) .summaryCard {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+:global(html.light) .summaryRow,
+:global([data-theme="light"]) .summaryRow {
+  color: #334155;
+}
+
+:global(html.light) .summaryTotal,
+:global([data-theme="light"]) .summaryTotal {
+  border-top: 1px solid #e2e8f0;
+  color: #0284c7;
+}
+
+:global(html.light) .stepItem,
+:global([data-theme="light"]) .stepItem {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+}
+
+:global(html.light) .systemWallet,
+:global([data-theme="light"]) .systemWallet {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+:global(html.light) .systemWallet input,
+:global([data-theme="light"]) .systemWallet input {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+:global(html.light) .walletAuth,
+:global([data-theme="light"]) .walletAuth {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+:global(html.light) .walletAuth strong,
+:global([data-theme="light"]) .walletAuth strong {
+  color: #166534;
+}
+
+:global(html.light) .walletAuth p,
+:global([data-theme="light"]) .walletAuth p {
+  color: #15803d;
+}
+
+:global(html.light) .review,
+:global([data-theme="light"]) .review {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+:global(html.light) .note,
+:global([data-theme="light"]) .note {
+  color: #64748b;
+}
+
+:global(html.light) .solanaWalletBox,
+:global([data-theme="light"]) .solanaWalletBox {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
 }
 
 

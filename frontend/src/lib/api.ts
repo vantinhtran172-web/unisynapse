@@ -227,6 +227,7 @@ export interface DocumentUploadResponse {
   document_id: string;
   filename: string;
   status: string;
+  checksum?: string;
   chunk_count: number;
   reward_points: number;
   reputation_gain: number;
@@ -534,6 +535,66 @@ export const api = {
 
   async getRewardsSummary(): Promise<RewardsSummary> {
     return request<RewardsSummary>("/rewards/summary");
+  },
+
+  async getOracleRegistry(): Promise<OracleRegistryInfo> {
+    return request<OracleRegistryInfo>("/oracle/registry");
+  },
+
+  async submitOracleAttestation(documentId: string, idempotencyKey?: string): Promise<OracleAttestResponse> {
+    return request<OracleAttestResponse>("/oracle/attest", {
+      method: "POST",
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+      body: JSON.stringify({
+        document_id: documentId,
+      }),
+    });
+  },
+
+  async getOracleJob(jobId: string): Promise<{ ok: boolean; job: OracleJobStatus }> {
+    return request<{ ok: boolean; job: OracleJobStatus }>(`/oracle/jobs/${jobId}`);
   }
 };
+
+export interface OracleRegistryInfo {
+  ok: boolean;
+  program_id: string;
+  oracle_registry_pda: string;
+  oracle_registry_bump: number;
+  oracle_authority: string;
+  network: string;
+  explorer_url: string;
+}
+
+export interface OracleJobStatus {
+  id: string;
+  document_id: string;
+  owner_id: string;
+  checksum_sha256: string;
+  quality_score: number;
+  chunk_count: number;
+  nonce: number;
+  status: "queued" | "processed" | "confirmed" | "finalized" | "failed";
+  tx_signature?: string;
+  attestation_pda: string;
+  error_message?: string;
+  fast_gate_latency_ms?: number;
+  submit_latency_ms?: number;
+  confirmed_latency_ms?: number;
+  finalized_latency_ms?: number;
+  created_at: number;
+  updated_at: number;
+  explorer_url?: string;
+}
+
+export interface OracleAttestResponse {
+  ok: boolean;
+  job_id: string;
+  status: string;
+  document_id: string;
+  attestation_pda: string;
+  fast_gate_latency_ms: number;
+  explorer_url?: string;
+}
+
 

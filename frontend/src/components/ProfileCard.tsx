@@ -6,7 +6,6 @@ import { useUserProfile } from "../hooks/useUserProfile";
 import { useAppState } from "../context/AppStateContext";
 import { api } from "../lib/api";
 import { useState } from "react";
-import Link from "next/link";
 
 export default function ProfileCard() {
   const { publicKey, connected } = useWallet();

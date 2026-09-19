@@ -222,6 +222,7 @@ async def upload_document(
         "success": True,
         "document_id": doc_id,
         "filename": original_name,
+        "checksum": checksum,
         "university": university or "Đại học Bách Khoa TP.HCM",
         "subject_code": subject_code or "CS101",
         "subject_name": subject_name or "Lập trình C & Kỹ thuật Con trỏ",

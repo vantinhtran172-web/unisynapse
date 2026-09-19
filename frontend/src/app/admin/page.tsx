@@ -205,10 +205,23 @@ export default function OnlineAdminPage() {
   const [isCreatingUser, setIsCreatingUser] = useState(false);
 
   const [editUserModal, setEditUserModal] = useState<AdminUser | null>(null);
+  const [editUserUsername, setEditUserUsername] = useState("");
   const [editUserRole, setEditUserRole] = useState("student");
   const [editUserReputation, setEditUserReputation] = useState(100);
+  const [editUserPoints, setEditUserPoints] = useState(100);
+  const [editUserWallet, setEditUserWallet] = useState("");
+  const [editUserPassword, setEditUserPassword] = useState("");
   const [editUserDisabled, setEditUserDisabled] = useState<number>(0);
   const [isUpdatingUser, setIsUpdatingUser] = useState(false);
+
+  // In-App Universal Delete Confirmation Modal State
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: "user" | "document" | "task" | "chunk";
+    id: string;
+    name: string;
+    extraWarning?: string;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [adjustPointsUser, setAdjustPointsUser] = useState<AdminUser | null>(null);
   const [adjustPointsAmount, setAdjustPointsAmount] = useState<number>(50);
@@ -260,8 +273,13 @@ export default function OnlineAdminPage() {
     });
 
     if (res.status === 403) {
-      setIsAuthenticated(false);
-      throw new Error("403 Forbidden: Khóa bảo mật không chính xác hoặc hết hạn.");
+      const err = await res.json().catch(() => ({}));
+      const detail = err.detail || "";
+      if (!detail || detail.includes("Khoá bảo mật") || detail.includes("Security Key") || detail.includes("hết hạn")) {
+        setIsAuthenticated(false);
+        throw new Error(detail || "403 Forbidden: Khóa bảo mật không chính xác hoặc hết hạn.");
+      }
+      throw new Error(detail || "403 Forbidden: Bạn không có quyền thực hiện thao tác này.");
     }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -490,16 +508,14 @@ export default function OnlineAdminPage() {
     }
   };
 
-  const handleDeleteDoc = async (doc: AdminDocument) => {
+  const handleDeleteDoc = (doc: AdminDocument) => {
     const name = doc.original_name || doc.filename;
-    if (!confirm(`XÁC NHẬN XÓA TÀI LIỆU:\n\n"${name}"\n\nToàn bộ các đoạn vector chunks trong RAG AI Tutor của tài liệu này cũng sẽ bị xóa vĩnh viễn!`)) return;
-    try {
-      await adminRequest(`/admin/documents/${doc.id}`, { method: "DELETE" });
-      showToast(`Đã xóa tài liệu '${name}' thành công!`, "success");
-      loadAllData();
-    } catch (err: unknown) {
-      showToast("Lỗi khi xóa: " + (err instanceof Error ? err.message : "Lỗi"), "error");
-    }
+    setDeleteTarget({
+      type: "document",
+      id: doc.id,
+      name: name,
+      extraWarning: "Toàn bộ các đoạn vector chunks trong RAG AI Tutor của tài liệu này cũng sẽ bị xóa vĩnh viễn khỏi hệ thống."
+    });
   };
 
   // ==========================================
@@ -582,15 +598,13 @@ export default function OnlineAdminPage() {
     }
   };
 
-  const handleDeleteTask = async (task: AdminTask) => {
-    if (!confirm(`XÁC NHẬN XÓA:\n\nBài toán: "${task.title}"\n\nToàn bộ kết quả biểu quyết gán nhãn của sinh viên cho bài toán này sẽ bị xóa!`)) return;
-    try {
-      await adminRequest(`/admin/tasks/${task.id}`, { method: "DELETE" });
-      showToast(`Đã xóa bài toán '${task.title}' thành công!`, "success");
-      loadAllData();
-    } catch (err: unknown) {
-      showToast("Lỗi xóa bài toán: " + (err instanceof Error ? err.message : "Lỗi"), "error");
-    }
+  const handleDeleteTask = (task: AdminTask) => {
+    setDeleteTarget({
+      type: "task",
+      id: task.id,
+      name: task.title,
+      extraWarning: "Toàn bộ kết quả biểu quyết gán nhãn của sinh viên cho bài toán này sẽ bị xóa."
+    });
   };
 
   // ==========================================
@@ -629,8 +643,12 @@ export default function OnlineAdminPage() {
 
   const openEditUser = (user: AdminUser) => {
     setEditUserModal(user);
+    setEditUserUsername(user.username || "");
     setEditUserRole(user.role || "student");
     setEditUserReputation(user.reputation ?? 100);
+    setEditUserPoints(user.unipoints ?? 0);
+    setEditUserWallet(user.wallet_address || user.address || "");
+    setEditUserPassword("");
     setEditUserDisabled(user.disabled ? 1 : 0);
   };
 
@@ -639,15 +657,22 @@ export default function OnlineAdminPage() {
     if (!editUserModal) return;
     setIsUpdatingUser(true);
     try {
+      const payload: Record<string, string | number | null> = {
+        username: editUserUsername.trim(),
+        role: editUserRole,
+        reputation: editUserReputation,
+        unipoints: editUserPoints,
+        disabled: editUserDisabled,
+        wallet_address: editUserWallet.trim() || null
+      };
+      if (editUserPassword.trim()) {
+        payload.password = editUserPassword.trim();
+      }
       await adminRequest(`/admin/users/${editUserModal.id}`, {
         method: "PUT",
-        body: JSON.stringify({
-          role: editUserRole,
-          reputation: editUserReputation,
-          disabled: editUserDisabled
-        })
+        body: JSON.stringify(payload)
       });
-      showToast(`Đã cập nhật thông tin thành viên '${editUserModal.username}'!`, "success");
+      showToast(`Đã cập nhật thông tin thành viên '${editUserUsername.trim()}' thành công!`, "success");
       setEditUserModal(null);
       loadAllData();
     } catch (err: unknown) {
@@ -689,15 +714,13 @@ export default function OnlineAdminPage() {
     }
   };
 
-  const handleDeleteUser = async (user: AdminUser) => {
-    if (!confirm(`XÁC NHẬN XÓA THÀNH VIÊN:\n\nTài khoản: "${user.username}" (ID: ${user.id})\n\nHành động này không thể hoàn tác!`)) return;
-    try {
-      await adminRequest(`/admin/users/${user.id}`, { method: "DELETE" });
-      showToast(`Đã xóa thành viên '${user.username}'!`, "success");
-      loadAllData();
-    } catch (err: unknown) {
-      showToast("Lỗi xóa người dùng: " + (err instanceof Error ? err.message : "Lỗi"), "error");
-    }
+  const handleDeleteUser = (user: AdminUser) => {
+    setDeleteTarget({
+      type: "user",
+      id: user.id,
+      name: user.username,
+      extraWarning: "Toàn bộ phiên đăng nhập, lịch sử gán nhãn, số dư điểm và dữ liệu liên quan của thành viên này sẽ bị xóa vĩnh viễn."
+    });
   };
 
   // ==========================================
@@ -760,14 +783,38 @@ export default function OnlineAdminPage() {
     }
   };
 
-  const handleDeleteChunk = async (chunk: AdminChunk) => {
-    if (!confirm(`Xác nhận xóa đoạn tri thức [${chunk.id}] khỏi kho RAG AI?`)) return;
+  const handleDeleteChunk = (chunk: AdminChunk) => {
+    setDeleteTarget({
+      type: "chunk",
+      id: chunk.id,
+      name: `Đoạn tri thức [${chunk.id}] (${chunk.document_name})`,
+      extraWarning: "Đoạn dữ liệu này sẽ bị gỡ vĩnh viễn khỏi kho ngữ cảnh của AI Tutor."
+    });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
     try {
-      await adminRequest(`/admin/chunks/${chunk.id}`, { method: "DELETE" });
-      showToast("Đã xóa đoạn tri thức thành công!", "success");
+      if (deleteTarget.type === "user") {
+        await adminRequest(`/admin/users/${deleteTarget.id}`, { method: "DELETE" });
+        showToast(`Đã xóa thành viên '${deleteTarget.name}' thành công!`, "success");
+      } else if (deleteTarget.type === "document") {
+        await adminRequest(`/admin/documents/${deleteTarget.id}`, { method: "DELETE" });
+        showToast(`Đã xóa tài liệu '${deleteTarget.name}' thành công!`, "success");
+      } else if (deleteTarget.type === "task") {
+        await adminRequest(`/admin/tasks/${deleteTarget.id}`, { method: "DELETE" });
+        showToast(`Đã xóa bài toán '${deleteTarget.name}' thành công!`, "success");
+      } else if (deleteTarget.type === "chunk") {
+        await adminRequest(`/admin/chunks/${deleteTarget.id}`, { method: "DELETE" });
+        showToast(`Đã xóa đoạn tri thức thành công!`, "success");
+      }
+      setDeleteTarget(null);
       loadAllData();
     } catch (err: unknown) {
       showToast("Lỗi khi xóa: " + (err instanceof Error ? err.message : "Lỗi"), "error");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -2058,14 +2105,14 @@ export default function OnlineAdminPage() {
       {/* MODAL: EDIT DOCUMENT */}
       {/* ========================================== */}
       {editDocModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <span>✏️</span>
                 <span>Chỉnh Sửa Thông Tin Tài Liệu</span>
               </h3>
-              <button onClick={() => setEditDocModal(null)} className="text-slate-400 hover:text-slate-600 text-lg">
+              <button onClick={() => setEditDocModal(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg">
                 &times;
               </button>
             </div>
@@ -2076,7 +2123,7 @@ export default function OnlineAdminPage() {
                   type="text"
                   value={editDocTitle}
                   onChange={(e) => setEditDocTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   required
                 />
               </div>
@@ -2085,7 +2132,7 @@ export default function OnlineAdminPage() {
                 <select
                   value={editDocStatus}
                   onChange={(e) => setEditDocStatus(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="approved">Đã duyệt (approved)</option>
                   <option value="pending_review">Chờ duyệt (pending_review)</option>
@@ -2098,7 +2145,7 @@ export default function OnlineAdminPage() {
                   value={editDocReason}
                   onChange={(e) => setEditDocReason(e.target.value)}
                   rows={3}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
               <div className="flex justify-end gap-2 pt-3">
@@ -2250,14 +2297,14 @@ export default function OnlineAdminPage() {
       {/* MODAL: EDIT TASK */}
       {/* ========================================== */}
       {editTaskModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6">
-            <div className="flex items-center justify-between mb-4">
+        <div className="fixed inset-0 z-[100] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
               <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <span>✏️</span>
-                <span>Sửa Bài Toán Gán Nhãn</span>
+                <span>Sửa Bài Toán Gán Nhãn: <strong className="text-indigo-500 font-mono">{editTaskModal.title}</strong></span>
               </h3>
-              <button onClick={() => setEditTaskModal(null)} className="text-slate-400 hover:text-slate-600 text-lg">
+              <button onClick={() => setEditTaskModal(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg">
                 &times;
               </button>
             </div>
@@ -2269,7 +2316,7 @@ export default function OnlineAdminPage() {
                   type="text"
                   value={editTaskTitle}
                   onChange={(e) => setEditTaskTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   required
                 />
               </div>
@@ -2281,7 +2328,7 @@ export default function OnlineAdminPage() {
                     type="text"
                     value={editTaskDomain}
                     onChange={(e) => setEditTaskDomain(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
                 <div>
@@ -2289,7 +2336,7 @@ export default function OnlineAdminPage() {
                   <select
                     value={editTaskStatus}
                     onChange={(e) => setEditTaskStatus(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="open">Đang mở (open)</option>
                     <option value="completed">Đã hoàn thành (completed)</option>
@@ -2304,7 +2351,7 @@ export default function OnlineAdminPage() {
                   value={editTaskContext}
                   onChange={(e) => setEditTaskContext(e.target.value)}
                   rows={3}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
@@ -2314,7 +2361,7 @@ export default function OnlineAdminPage() {
                   type="text"
                   value={editTaskQuestion}
                   onChange={(e) => setEditTaskQuestion(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   required
                 />
               </div>
@@ -2325,7 +2372,7 @@ export default function OnlineAdminPage() {
                   type="text"
                   value={editTaskOptions}
                   onChange={(e) => setEditTaskOptions(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   required
                 />
               </div>
@@ -2337,7 +2384,7 @@ export default function OnlineAdminPage() {
                     type="text"
                     value={editTaskGold}
                     onChange={(e) => setEditTaskGold(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
                 <div>
@@ -2346,7 +2393,7 @@ export default function OnlineAdminPage() {
                     type="number"
                     value={editTaskPoints}
                     onChange={(e) => setEditTaskPoints(parseInt(e.target.value) || 15)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-emerald-600 dark:text-emerald-400 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
               </div>
@@ -2483,69 +2530,140 @@ export default function OnlineAdminPage() {
       {/* MODAL: EDIT USER */}
       {/* ========================================== */}
       {editUserModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <span>✏️</span>
-                <span>Sửa Thông Tin Thành Viên: {editUserModal.username}</span>
+        <div className="fixed inset-0 z-[100] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2 text-sm sm:text-base">
+                <span className="text-indigo-500 text-lg">✏️</span>
+                <span>Chỉnh Sửa Thành Viên: <strong className="text-indigo-500 font-mono">{editUserModal.username}</strong></span>
               </h3>
-              <button onClick={() => setEditUserModal(null)} className="text-slate-400 hover:text-slate-600 text-lg">
+              <button onClick={() => setEditUserModal(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xl leading-none p-1">
                 &times;
               </button>
             </div>
 
-            <form onSubmit={handleUpdateUser} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Vai trò:</label>
-                <select
-                  value={editUserRole}
-                  onChange={(e) => setEditUserRole(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
-                >
-                  <option value="student">student</option>
-                  <option value="validator">validator</option>
-                  <option value="faculty">faculty</option>
-                  <option value="admin">admin</option>
-                </select>
+            <form onSubmit={handleUpdateUser} className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Tên đăng nhập (Username):
+                  </label>
+                  <input
+                    type="text"
+                    value={editUserUsername}
+                    onChange={(e) => setEditUserUsername(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Vai trò hệ thống:
+                  </label>
+                  <select
+                    value={editUserRole}
+                    onChange={(e) => setEditUserRole(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="student">student (Sinh viên / Người dùng)</option>
+                    <option value="validator">validator (Kiểm định viên)</option>
+                    <option value="faculty">faculty (Giảng viên / Hội đồng)</option>
+                    <option value="admin">admin (Quản trị viên)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Số dư UniPoints (UP):
+                  </label>
+                  <input
+                    type="number"
+                    value={editUserPoints}
+                    onChange={(e) => setEditUserPoints(parseInt(e.target.value) || 0)}
+                    min={0}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-emerald-600 dark:text-emerald-400 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Điểm Uy Tín (Reputation):
+                  </label>
+                  <input
+                    type="number"
+                    value={editUserReputation}
+                    onChange={(e) => setEditUserReputation(parseInt(e.target.value) || 0)}
+                    min={0}
+                    max={1000}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-amber-500 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Điểm Uy Tín (Reputation):</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Địa chỉ ví Solana (Address):
+                </label>
                 <input
-                  type="number"
-                  value={editUserReputation}
-                  onChange={(e) => setEditUserReputation(parseInt(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                  type="text"
+                  value={editUserWallet}
+                  onChange={(e) => setEditUserWallet(e.target.value)}
+                  placeholder="VD: D5iZev...AUnZ hoặc 4dLCMK..."
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-[11px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Khóa / Mở khóa tài khoản:</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Đặt lại mật khẩu mới (Tùy chọn):
+                </label>
+                <input
+                  type="password"
+                  value={editUserPassword}
+                  onChange={(e) => setEditUserPassword(e.target.value)}
+                  placeholder="Để trống nếu không muốn đổi mật khẩu"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Trạng thái khóa tài khoản:
+                </label>
                 <select
                   value={editUserDisabled}
                   onChange={(e) => setEditUserDisabled(parseInt(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value={0}>Hoạt động bình thường (Mở khóa)</option>
-                  <option value={1}>Khóa tài khoản (Vô hiệu hóa đăng nhập)</option>
+                  <option value={0}>🟢 Hoạt động bình thường (Mở khóa)</option>
+                  <option value={1}>🔴 Khóa tài khoản (Vô hiệu hóa đăng nhập)</option>
                 </select>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3">
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setEditUserModal(null)}
-                  className="px-4 py-2 rounded-xl border text-xs font-bold text-slate-600 dark:text-slate-400"
+                  className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
-                  Hủy
+                  Hủy Bỏ
                 </button>
                 <button
                   type="submit"
                   disabled={isUpdatingUser}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs"
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/20 transition-all flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  {isUpdatingUser ? "Đang lưu..." : "Lưu Thay Đổi"}
+                  {isUpdatingUser ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                      <span>Đang lưu...</span>
+                    </>
+                  ) : (
+                    <span>Lưu Thay Đổi</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -2702,14 +2820,14 @@ export default function OnlineAdminPage() {
       {/* MODAL: EDIT CHUNK */}
       {/* ========================================== */}
       {editChunkModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <span>✏️</span>
-                <span>Sửa Đoạn Tri Thức: {editChunkModal.id}</span>
+                <span>Sửa Đoạn Tri Thức: <strong className="text-cyan-500 font-mono">{editChunkModal.id}</strong></span>
               </h3>
-              <button onClick={() => setEditChunkModal(null)} className="text-slate-400 hover:text-slate-600 text-lg">
+              <button onClick={() => setEditChunkModal(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg">
                 &times;
               </button>
             </div>
@@ -2722,7 +2840,7 @@ export default function OnlineAdminPage() {
                     type="text"
                     value={editChunkDocName}
                     onChange={(e) => setEditChunkDocName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-cyan-500"
                     required
                   />
                 </div>
@@ -2733,7 +2851,7 @@ export default function OnlineAdminPage() {
                     value={editChunkPage}
                     onChange={(e) => setEditChunkPage(parseInt(e.target.value) || 1)}
                     min={1}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono"
                   />
                 </div>
               </div>
@@ -2744,7 +2862,7 @@ export default function OnlineAdminPage() {
                   value={editChunkContent}
                   onChange={(e) => setEditChunkContent(e.target.value)}
                   rows={7}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px]"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-[11px] focus:outline-none focus:ring-2 focus:ring-cyan-500"
                   required
                 />
               </div>
@@ -2766,6 +2884,75 @@ export default function OnlineAdminPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* ========================================== */}
+      {/* MODAL: UNIVERSAL DELETE CONFIRMATION */}
+      {/* ========================================== */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-rose-500/30 dark:border-rose-500/30 rounded-2xl shadow-2xl p-6 relative overflow-hidden">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center text-2xl font-bold flex-shrink-0">
+                🗑️
+              </div>
+              <div>
+                <h3 className="font-black text-slate-900 dark:text-white text-base">
+                  Xác Nhận Xóa {deleteTarget.type === "user" ? "Thành Viên" : deleteTarget.type === "document" ? "Tài Liệu" : deleteTarget.type === "task" ? "Bài Toán" : "Đoạn Tri Thức"}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Hành động này là vĩnh viễn và không thể hoàn tác.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 mb-4 text-xs">
+              <div className="font-bold text-rose-600 dark:text-rose-400 mb-1 flex items-center gap-1.5">
+                <span>⚠️</span>
+                <span>Đối tượng bị xóa:</span>
+              </div>
+              <div className="font-mono text-slate-900 dark:text-white font-bold break-all">
+                {deleteTarget.name}
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
+                ID: {deleteTarget.id}
+              </div>
+              {deleteTarget.extraWarning && (
+                <div className="mt-2 pt-2 border-t border-rose-500/20 text-[11px] text-rose-600 dark:text-rose-400 leading-relaxed">
+                  {deleteTarget.extraWarning}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/20 transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                    <span>Đang xóa...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🗑️</span>
+                    <span>Xác Nhận Xóa Vĩnh Viễn</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

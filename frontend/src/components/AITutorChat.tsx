@@ -21,9 +21,9 @@ type Message = {
 
 export default function AITutorChat() {
   const [messages, setMessages] = useState<Message[]>([
-    { 
-      id: '1', 
-      role: 'ai', 
+    {
+      id: '1',
+      role: 'ai',
       content: "Chào bạn! Tôi là UniSynapse AI Tutor (GPT-5.6 Luna). Hệ thống đã tích hợp sẵn kho học liệu chuẩn 19 môn chuyên ngành Công nghệ Thông tin - Đại học Văn Hiến (VHU). Bạn có thể chọn môn học cụ thể trên thanh công cụ hoặc đặt câu hỏi bất kỳ (3 lượt đầu hoàn toàn miễn phí)!",
       grounded: false
     }
@@ -98,11 +98,13 @@ export default function AITutorChat() {
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    if (messages.length > 1 || isTyping) {
+      scrollToBottom();
+    }
   }, [messages, isTyping]);
 
   const handleSend = async (questionText?: string) => {
@@ -156,11 +158,11 @@ export default function AITutorChat() {
   const sampleQuestions = selectedUniversity === "VHU"
     ? (VHU_SAMPLE_QUESTIONS[selectedSubject] || VHU_SAMPLE_QUESTIONS.ALL)
     : [
-        "Bản chất của con trỏ (pointers) trong C là gì?",
-        "Hàm malloc() và free() hoạt động ra sao và tại sao cần giải phóng bộ nhớ?",
-        "Điều kiện tối thiểu để qua môn CS101 là gì?",
-        "Tàu Apollo 11 bay lên mặt trăng năm nào? (Câu hỏi thử nghiệm từ chối)"
-      ];
+      "Bản chất của con trỏ (pointers) trong C là gì?",
+      "Hàm malloc() và free() hoạt động ra sao và tại sao cần giải phóng bộ nhớ?",
+      "Điều kiện tối thiểu để qua môn CS101 là gì?",
+      "Tàu Apollo 11 bay lên mặt trăng năm nào? (Câu hỏi thử nghiệm từ chối)"
+    ];
 
   const activeVhuCourse = VHU_IT_COURSES.find(c => c.code === selectedSubject);
 
@@ -191,10 +193,10 @@ export default function AITutorChat() {
         </div>
 
         {/* Filters & Actions */}
-        <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap justify-end ml-auto">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           {/* University Selector: Dedicated VHU Option */}
-          <div className="flex items-center gap-1.5 bg-blue-50/90 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-500/40 rounded-lg px-2.5 py-1 shadow-xs flex-shrink-0">
-            <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300 flex-shrink-0">Trường:</span>
+          <div className="flex items-center gap-1 bg-blue-50/90 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-500/40 rounded-lg px-2 py-1 shadow-xs">
+            <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300">Trường:</span>
             <select
               id="tutor-university-select"
               value={selectedUniversity}
@@ -214,13 +216,13 @@ export default function AITutorChat() {
           </div>
 
           {/* Subject Context Selector */}
-          <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 shadow-xs min-w-[150px] max-w-[200px] sm:max-w-[240px] overflow-hidden flex-shrink-0">
-            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium flex-shrink-0">Môn:</span>
+          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 shadow-xs max-w-[210px] sm:max-w-[230px]">
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">Môn:</span>
             <select
               id="tutor-subject-select"
               value={selectedSubject}
               onChange={(e) => setSelectedSubject(e.target.value)}
-              className="text-xs bg-transparent border-none text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer w-full min-w-0 truncate"
+              className="text-xs bg-transparent border-none text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer truncate"
             >
               {selectedUniversity === "VHU" ? (
                 <>
@@ -269,18 +271,18 @@ export default function AITutorChat() {
 
           {/* Free Tier / Cost Badge */}
           {tierInfo && tierInfo.is_free_tier ? (
-            <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-1 shadow-sm flex-shrink-0 whitespace-nowrap" title="Mỗi sinh viên mới được 3 lượt truy vấn AI hoàn toàn miễn phí không trừ UniPoints">
-              🎁 Miễn phí: Còn {tierInfo.free_queries_remaining ?? (tierInfo as unknown as { free_questions_left?: number }).free_questions_left ?? 3}/3 câu
+            <span className="text-xs px-2 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-500/40 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-1 shadow-sm" title="Mỗi sinh viên mới được 3 lượt truy vấn AI hoàn toàn miễn phí không trừ UniPoints">
+              🎁 Miễn phí: Còn {tierInfo.free_queries_remaining}/3 câu
             </span>
           ) : (
-            <span className="text-xs px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-blue-300 font-semibold flex items-center gap-1 shadow-sm flex-shrink-0 whitespace-nowrap">
+            <span className="text-xs px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-blue-300 font-semibold flex items-center gap-1 shadow-sm">
               🪙 80 UniPoints/lượt
             </span>
           )}
 
           <button
             onClick={() => setShowConfigModal(true)}
-            className="text-xs px-2.5 py-1 rounded-full border flex items-center gap-1.5 transition-all shadow-sm bg-cyan-50 dark:bg-cyan-950/60 hover:bg-cyan-100 dark:hover:bg-cyan-900/60 text-cyan-700 dark:text-cyan-200 border-cyan-200 dark:border-cyan-500/40 flex-shrink-0 whitespace-nowrap"
+            className="text-xs px-2.5 py-1 rounded-full border flex items-center gap-1.5 transition-all shadow-sm bg-cyan-50 dark:bg-cyan-950/60 hover:bg-cyan-100 dark:hover:bg-cyan-900/60 text-cyan-700 dark:text-cyan-200 border-cyan-200 dark:border-cyan-500/40"
             title="Cấu hình mô hình AI"
           >
             <span className="w-2 h-2 rounded-full bg-cyan-500 dark:bg-cyan-400 animate-pulse"></span>
@@ -316,11 +318,10 @@ export default function AITutorChat() {
       <div className="flex-grow p-5 overflow-y-auto space-y-4">
         {messages.map((msg) => (
           <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-2xl p-4 shadow-sm ${
-              msg.role === 'user' 
-                ? 'bg-blue-600 text-white rounded-tr-sm shadow-md' 
+            <div className={`max-w-[85%] rounded-2xl p-4 shadow-sm ${msg.role === 'user'
+                ? 'bg-blue-600 text-white rounded-tr-sm shadow-md'
                 : 'bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-white/5 text-slate-800 dark:text-slate-200 rounded-tl-sm'
-            }`}>
+              }`}>
               <div className="text-sm leading-relaxed whitespace-pre-line">{msg.content}</div>
 
               {/* Source attribution */}
@@ -445,7 +446,7 @@ export default function AITutorChat() {
               )}
             </div>
             <p className="text-slate-700 dark:text-slate-300 mt-1 italic line-clamp-2">
-               &quot;{activeCitation.excerpt}&quot;
+              &quot;{activeCitation.excerpt}&quot;
             </p>
             <div className="mt-2 flex items-center gap-2">
               <button
@@ -465,7 +466,7 @@ export default function AITutorChat() {
               </a>
             </div>
           </div>
-          <button 
+          <button
             onClick={() => setActiveCitation(null)}
             className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white px-2 py-1 bg-slate-200 dark:bg-slate-800 rounded transition-colors"
           >
@@ -490,8 +491,8 @@ export default function AITutorChat() {
       {/* Input */}
       <div className="p-3.5 border-t border-slate-200 dark:border-white/10 bg-slate-50/90 dark:bg-slate-800/40">
         <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="relative flex items-center">
-          <input 
-            type="text" 
+          <input
+            type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={
@@ -501,8 +502,8 @@ export default function AITutorChat() {
             }
             className="w-full bg-white dark:bg-slate-900/70 border border-slate-300 dark:border-slate-700 rounded-full py-2.5 pl-4 pr-12 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 shadow-sm transition-colors"
           />
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={!input.trim() || isTyping}
             className="absolute right-1.5 bg-blue-600 hover:bg-blue-500 text-white w-8 h-8 rounded-full flex items-center justify-center transition-colors disabled:opacity-40 shadow-sm"
           >

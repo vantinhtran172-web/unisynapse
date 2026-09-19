@@ -4,13 +4,14 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAppState } from "../context/AppStateContext";
 import { api } from "../lib/api";
 import ThemeToggle from "./ThemeToggle";
 
 export default function Navbar() {
   const router = useRouter();
+  const pathname = usePathname();
   const { wallet, connect, disconnect, connected, publicKey } = useWallet();
   const { setVisible } = useWalletModal();
   const [mounted, setMounted] = useState(false);
@@ -26,6 +27,12 @@ export default function Navbar() {
   const handleSelectTab = (tabId: string) => {
     setActiveTab(tabId);
     setMobileMenuOpen(false);
+    if (pathname !== "/") {
+      router.push(`/?tab=${tabId}`);
+    } else if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", tabId === "dashboard" ? "/" : `/?tab=${tabId}`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const handleWalletClick = () => {
@@ -85,14 +92,14 @@ export default function Navbar() {
           </div>
           
           {/* Desktop Navigation Tabs (Spacious & centered) */}
-          <div className="hidden lg:flex items-center gap-1 bg-slate-100/90 dark:bg-[#0a1128]/80 p-1 rounded-xl border border-slate-200/80 dark:border-cyan-500/20 shadow-inner">
+          <div className="hidden lg:flex items-center gap-1 bg-slate-100/90 dark:bg-[#0a1128]/80 p-1 rounded-xl border border-slate-200/80 dark:border-cyan-500/20 shadow-inner flex-shrink-0">
             {navItems.map((item) => (
               <button
                 key={item.id}
                 onClick={() => handleSelectTab(item.id)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all flex items-center gap-1.5 ${
                   activeTab === item.id
-                    ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white dark:text-slate-950 font-bold shadow-sm dark:shadow-[0_0_14px_rgba(0,240,255,0.4)]"
+                    ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-bold shadow-sm dark:shadow-[0_0_14px_rgba(0,240,255,0.4)]"
                     : "text-slate-600 hover:text-slate-900 hover:bg-white/80 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800/60"
                 }`}
               >
@@ -104,9 +111,12 @@ export default function Navbar() {
 
           {/* Right Action Bar */}
           <div className="flex items-center gap-1.5 sm:gap-2.5">
-            {/* Theme Selector (Desktop / Tablet) */}
+            {/* Theme Selector (Desktop / Tablet / Mobile) */}
             <div className="hidden sm:block">
               <ThemeToggle />
+            </div>
+            <div className="sm:hidden">
+              <ThemeToggle compact />
             </div>
 
             {/* Points HUD - Always visible or compact on mobile */}
@@ -221,7 +231,7 @@ export default function Navbar() {
               onClick={() => handleSelectTab(item.id)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-all flex items-center gap-1 ${
                 activeTab === item.id
-                  ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white dark:text-slate-950 font-bold shadow-sm"
+                  ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-bold shadow-sm"
                   : "text-slate-600 hover:text-slate-900 bg-slate-100/90 dark:text-slate-300 dark:hover:text-white dark:bg-slate-900/80 border border-slate-200/60 dark:border-slate-800"
               }`}
             >
