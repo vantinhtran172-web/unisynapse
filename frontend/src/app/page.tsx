@@ -8,6 +8,7 @@ import DataLabeling from "@/components/DataLabeling";
 import DocumentUpload from "@/components/DocumentUpload";
 import AITutorChat from "@/components/AITutorChat";
 import ProofExplorer from "@/components/ProofExplorer";
+import VhuCourseCatalog from "@/components/VhuCourseCatalog";
 import { useAppState } from "@/context/AppStateContext";
 
 
@@ -32,8 +33,8 @@ function IconBubble({ children, tone = "cyan" }: { children: React.ReactNode; to
   return <span className={`icon-bubble icon-${tone}`}>{children}</span>;
 }
 
-function SectionHeader({ eyebrow, title, action }: { eyebrow: string; title: string; action?: string }) {
-  return <div className="section-header"><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2></div>{action && <button className="text-action">{action} <span>↗</span></button>}</div>;
+function SectionHeader({ eyebrow, title, action, onAction }: { eyebrow: string; title: string; action?: string; onAction?: () => void }) {
+  return <div className="section-header"><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2></div>{action && <button className="text-action" onClick={onAction}>{action} <span>↗</span></button>}</div>;
 }
 
 function Metric({ value, label, detail, tone }: { value: string; label: string; detail: string; tone: string }) {
@@ -44,7 +45,7 @@ function ChallengeCard({ challenge, onSelect }: { challenge: Challenge; onSelect
   return <button className={`challenge-card challenge-${challenge.color}`} onClick={onSelect}><div className="challenge-top"><IconBubble tone={challenge.color}>{challenge.icon}</IconBubble><span className="challenge-reward">{challenge.reward}</span></div><div className="challenge-copy"><span>{challenge.domain}</span><h3>{challenge.title}</h3></div><div className="challenge-meta"><span>{challenge.difficulty}</span><span>{challenge.progress}% hoàn tất</span></div><div className="progress-track"><i style={{ width: `${challenge.progress}%` }} /></div><div className="challenge-cta">Xem nhiệm vụ <span>→</span></div></button>;
 }
 
-function TrackCard({ track }: { track: Track }) {
+function TrackCard({ track, onAction }: { track: Track; onAction?: () => void }) {
   return (
     <article className={`track-card track-${track.accent}`}>
       <div className="track-icon"><span>{track.icon}</span></div>
@@ -69,7 +70,7 @@ function TrackCard({ track }: { track: Track }) {
           </div>
         )}
         <p>{track.description}</p>
-        <button className="track-button">Tiếp tục lộ trình <span>→</span></button>
+        <button className="track-button" onClick={onAction}>Tiếp tục lộ trình <span>→</span></button>
       </div>
     </article>
   );
@@ -116,17 +117,21 @@ export default function Home() {
     ...ledger.slice(0, 3).map((entry, idx) => ({ id: `led-${entry.id || idx}`, title: entry.reason, meta: entry.solana_signature ? `Solana Devnet (${entry.solana_signature.slice(0, 8)}...)` : `${entry.proof_status} · ${new Date(entry.created_at * 1000).toLocaleDateString("vi-VN")}`, amount: `${entry.delta > 0 ? "+" : ""}${entry.delta} UP`, tone: entry.delta >= 0 ? "cyan" : "amber", icon: "✓" })),
   ], [documents, ledger]);
   const challenges = liveChallenges;
-  const tracks: Track[] = documents.map(doc => ({
-    title: doc.original_name,
-    description: `${doc.size_bytes} bytes`,
-    lessons: doc.chunk_count,
-    level: doc.status,
-    accent: "cyan",
-    icon: "◉",
-    university: doc.university,
-    subject_code: doc.subject_code,
-    subject_name: doc.subject_name,
-  }));
+  const tracks: Track[] = useMemo(() => {
+    const vhuDocs = documents.filter(d => d.subject_code?.startsWith("VHU_") || d.id?.startsWith("doc_vhu"));
+    const otherDocs = documents.filter(d => !d.subject_code?.startsWith("VHU_") && !d.id?.startsWith("doc_vhu"));
+    return [...vhuDocs, ...otherDocs].map(doc => ({
+      title: doc.original_name,
+      description: `${doc.size_bytes} bytes`,
+      lessons: doc.chunk_count,
+      level: doc.status,
+      accent: doc.subject_code?.startsWith("VHU_") ? "cyan" : "violet",
+      icon: "◉",
+      university: doc.university,
+      subject_code: doc.subject_code,
+      subject_name: doc.subject_name,
+    }));
+  }, [documents]);
   const activeView = activeTab === "dashboard" ? "overview" : activeTab;
   const visibleActivities = useMemo(() => showAllActivity ? liveActivities : liveActivities.slice(0, 3), [showAllActivity, liveActivities]);
   const goToTab = (tab: PublicTab) => {
@@ -204,15 +209,35 @@ export default function Home() {
 
         <section className="split-section">
           <div className="learning-column">
-            <SectionHeader eyebrow="Đề xuất cho bạn" title="Tiếp tục học" action="Tất cả lộ trình" />
+            <SectionHeader
+              eyebrow="Kho học liệu chuẩn"
+              title="19 Môn Chuyên Ngành CNTT (VHU)"
+              action="Xem tất cả 19 môn"
+              onAction={() => goToTab("learning")}
+            />
             <div className="track-list">
-              {tracks.map((track, index) => (
-                <TrackCard key={`${track.title}-${index}`} track={track} />
+              {tracks.slice(0, 4).map((track, index) => (
+                <TrackCard
+                  key={`${track.title}-${index}`}
+                  track={track}
+                  onAction={() => goToTab("learning")}
+                />
               ))}
             </div>
+            <button
+              className="primary-action w-full mt-4 justify-center"
+              onClick={() => goToTab("learning")}
+            >
+              Xem toàn bộ 19 giáo trình CNTT VHU <span>↗</span>
+            </button>
           </div>
           <div className="activity-column">
-            <SectionHeader eyebrow="Mạng lưới của bạn" title="Hoạt động gần đây" action={showAllActivity ? "Thu gọn" : "Xem tất cả"} />
+            <SectionHeader
+              eyebrow="Mạng lưới của bạn"
+              title="Hoạt động gần đây"
+              action={showAllActivity ? "Thu gọn" : "Xem tất cả"}
+              onAction={() => setShowAllActivity(!showAllActivity)}
+            />
             <div className="activity-list">
               {visibleActivities.map((item, index) => (
                 <ActivityRow key={item.id || `${item.title}-${index}`} item={item} />
@@ -237,7 +262,29 @@ export default function Home() {
      {activeView === "challenges" && <section className="workspace-view"><SectionHeader eyebrow="Không gian nhiệm vụ" title="Chọn nhiệm vụ đóng góp" /><div className="challenge-grid">{liveChallenges.length ? liveChallenges.map((challenge, index) => <ChallengeCard key={`${challenge.title}-${index}`} challenge={challenge} onSelect={() => setSelectedChallenge(challenge)} />) : <div className="empty-state">Không có nhiệm vụ thật đang mở.</div>}</div></section>}
     {activeView === "labeling" && <section className="workspace-view"><SectionHeader eyebrow="Đóng góp dữ liệu" title="Gán nhãn dữ liệu" action="Nhiệm vụ đang mở" /><div className="workspace-tools workspace-tools-single"><ProfileCard /><DataLabeling /></div></section>}
     {activeView === "upload" && <section className="workspace-view"><SectionHeader eyebrow="Kho tri thức cộng đồng" title="Góp tài liệu" action="Tài liệu được kiểm định" /><div className="workspace-tools workspace-tools-single"><ProfileCard /><DocumentUpload /></div></section>}
-    {activeView === "learning" && <section className="workspace-view"><SectionHeader eyebrow="Trung tâm học tập" title="Xây dựng kỹ năng nghiên cứu bền vững" /><div className="track-list track-list-wide">{tracks.map((track, index) => <TrackCard key={`${track.title}-${index}`} track={track} />)}</div><div className="learning-callout"><IconBubble tone="violet">✦</IconBubble><div><h3>Tri thức tăng giá trị khi được chia sẻ.</h3><p>Hoàn thành lộ trình để mở khóa nhiệm vụ giá trị cao hơn và cải thiện ngữ cảnh cho AI Tutor.</p></div></div></section>}
+    {activeView === "learning" && (
+      <section className="workspace-view">
+        <SectionHeader
+          eyebrow="Trung tâm học tập"
+          title="Chương Trình Đào Tạo 19 Môn Chuyên Ngành CNTT - Đại học Văn Hiến"
+        />
+        <VhuCourseCatalog
+          documents={documents}
+          onSelectCourseForTutor={(subjectCode) => {
+            goToTab("tutor");
+          }}
+        />
+        <div className="learning-callout">
+          <IconBubble tone="violet">✦</IconBubble>
+          <div>
+            <h3>Tri thức học thuật mở, minh bạch và có thể kiểm chứng.</h3>
+            <p>
+              Toàn bộ 19 môn học chuyên ngành CNTT được chia nhỏ thành các đoạn tri thức chuẩn (RAG chunks), lưu trữ vĩnh viễn trên kho dữ liệu và bảo chứng tính toàn vẹn bằng chữ ký Solana Devnet.
+            </p>
+          </div>
+        </div>
+      </section>
+    )}
     {activeView === "tutor" && <section className="workspace-view tutor-view"><SectionHeader eyebrow="Câu trả lời đã kiểm chứng" title="Hỏi AI Tutor (GPT-5.6 Luna)" /><AITutorChat /></section>}
     {activeView === "ledger" && <section className="workspace-view"><SectionHeader eyebrow="Nguồn gốc công khai" title="Khám phá proof của bạn" /><div className="ledger-layout"><ProfileCard /><ProofExplorer /></div></section>}
     <footer className="client-footer"><div className="footer-brand"><span className="brand-badge">WIT</span><strong>UniSynapse</strong><span>Trí tuệ học thuật mở.</span></div><div className="footer-links"><button onClick={() => goToTab("overview")}>Trang chủ</button><button onClick={() => goToTab("learning")}>Học tập</button><button onClick={() => goToTab("tutor")}>AI Tutor</button><button onClick={() => goToTab("ledger")}>Proof</button></div><span className="footer-copy">© 2026 · Solana Devnet</span></footer>

@@ -96,9 +96,16 @@ def test_bank_deposit_strict_verification_flow(member_client):
             assert res3["status"] == "pending"
             assert res3["credited"] is False
 
-        # 6. Real match: Balance delta verification (+20,000 VND detected on ACB account)
-        with patch.object(ACBService, "get_transaction_history", return_value=None), \
-             patch.object(ACBService, "get_live_balance", return_value=30000.0):
+        # 6. Real match: Statement transaction matching order_code in description
+        valid_txs = [
+            {
+                "type": "IN",
+                "amount": 20000,
+                "description": f"CHUYEN KHOAN NAP DIEM {order_code}",
+                "transactionNumber": "ACB_TX_8888",
+            }
+        ]
+        with patch.object(ACBService, "get_transaction_history", return_value=valid_txs):
             chk4 = client.get(f"/api/v1/rewards/bank/check/{order_code}")
             assert chk4.status_code == 200
             res4 = chk4.json()
@@ -239,8 +246,16 @@ def test_bank_deposit_sol_swap_onramp(member_client):
             "recipient": student_wallet
         }
 
-        with patch.object(ACBService, "get_transaction_history", return_value=None), \
-             patch.object(ACBService, "get_live_balance", return_value=30000.0), \
+        valid_onramp_txs = [
+            {
+                "type": "IN",
+                "amount": 20000,
+                "description": f"VIETQR THANH TOAN {order_code}",
+                "transactionNumber": "ACB_TX_ONRAMP_1",
+            }
+        ]
+
+        with patch.object(ACBService, "get_transaction_history", return_value=valid_onramp_txs), \
              patch.object(SolanaOnRampService, "transfer_sol_to_student", return_value=mock_sol_transfer) as mock_transfer:
             chk = client.get(f"/api/v1/rewards/bank/check/{order_code}")
             assert chk.status_code == 200
@@ -269,5 +284,122 @@ def test_bank_deposit_sol_swap_onramp(member_client):
             conn.commit()
 
 
+def test_multiple_orders_same_amount_strict_memo_isolation(member_client):
+    """
+    User scenario:
+    User creates multiple deposit orders with the EXACT SAME amount (e.g. 50,000 VND).
+    When 1 payment is completed with transfer memo of Order 1, ONLY Order 1 is credited.
+    The other pending orders with the same amount MUST REMAIN PENDING.
+    """
+    from backend.services.bank_watcher import _check_and_settle_pending_bank_deposits
+
+    client, username, password, member_id = member_client
+
+    try:
+        login = client.post("/api/v1/auth/login", json={"username": username, "password": password})
+        assert login.status_code == 200
+        client.headers["X-CSRF-Token"] = client.cookies["unisynapse_csrf"]
+
+        # Create 3 orders of 50,000 VND
+        res1 = client.post("/api/v1/rewards/bank/create-intent", json={"amount_vnd": 50000}).json()
+        res2 = client.post("/api/v1/rewards/bank/create-intent", json={"amount_vnd": 50000}).json()
+        res3 = client.post("/api/v1/rewards/bank/create-intent", json={"amount_vnd": 50000}).json()
+
+        code1 = res1["order_code"]
+        code2 = res2["order_code"]
+        code3 = res3["order_code"]
+
+        assert len({code1, code2, code3}) == 3  # Distinct codes
+
+        # Simulate bank statement having ONLY 1 incoming transaction for code1
+        mock_txs = [
+            {
+                "type": "IN",
+                "amount": 50000,
+                "description": f"ND: NAP TIEN UNISYNAPSE {code1}",
+                "transactionNumber": "ACB_STMT_TX_001",
+            }
+        ]
+
+        with patch.object(ACBService, "get_transaction_history", return_value=mock_txs):
+            # Run background watcher pass
+            _check_and_settle_pending_bank_deposits()
+
+        with get_db() as conn:
+            s1 = conn.execute("SELECT status, bank_tx_ref FROM bank_deposits WHERE order_code = ?", (code1,)).fetchone()
+            s2 = conn.execute("SELECT status, bank_tx_ref FROM bank_deposits WHERE order_code = ?", (code2,)).fetchone()
+            s3 = conn.execute("SELECT status, bank_tx_ref FROM bank_deposits WHERE order_code = ?", (code3,)).fetchone()
+
+            # Order 1 MUST be paid
+            assert s1["status"] == "paid"
+            assert s1["bank_tx_ref"] == "ACB_STMT_TX_001"
+
+            # Order 2 and Order 3 MUST STILL BE PENDING!
+            assert s2["status"] == "pending"
+            assert s2["bank_tx_ref"] is None
+            assert s3["status"] == "pending"
+            assert s3["bank_tx_ref"] is None
+
+            # Verify reward points: exactly 6,000 UP for 1x 50k deposit (not 18,000 UP)
+            user_row = conn.execute("SELECT unipoints FROM users WHERE id = ?", (member_id,)).fetchone()
+            assert user_row["unipoints"] == 6000
+
+        # Now simulate Order 2 being paid with a distinct bank transaction
+        mock_txs_2 = [
+            {
+                "type": "IN",
+                "amount": 50000,
+                "description": f"ND: NAP TIEN UNISYNAPSE {code1}",
+                "transactionNumber": "ACB_STMT_TX_001",
+            },
+            {
+                "type": "IN",
+                "amount": 50000,
+                "description": f"ND: NAP TIEN UNISYNAPSE {code2}",
+                "transactionNumber": "ACB_STMT_TX_002",
+            }
+        ]
+
+        with patch.object(ACBService, "get_transaction_history", return_value=mock_txs_2):
+            _check_and_settle_pending_bank_deposits()
+
+        with get_db() as conn:
+            s2_after = conn.execute("SELECT status, bank_tx_ref FROM bank_deposits WHERE order_code = ?", (code2,)).fetchone()
+            s3_after = conn.execute("SELECT status, bank_tx_ref FROM bank_deposits WHERE order_code = ?", (code3,)).fetchone()
+
+            # Order 2 now paid with ACB_STMT_TX_002
+            assert s2_after["status"] == "paid"
+            assert s2_after["bank_tx_ref"] == "ACB_STMT_TX_002"
+
+            # Order 3 STILL PENDING
+            assert s3_after["status"] == "pending"
+            assert s3_after["bank_tx_ref"] is None
+
+            # User points now 12,000 UP (2x 6,000 UP)
+            user_row2 = conn.execute("SELECT unipoints FROM users WHERE id = ?", (member_id,)).fetchone()
+            assert user_row2["unipoints"] == 12000
+
+    finally:
+        with get_db() as conn:
+            conn.execute("DELETE FROM ledger_entries WHERE account_id = ?", (f"member:{member_id}",))
+            conn.execute("DELETE FROM ledger_transactions WHERE source_type = 'acb_bank_deposit'")
+            conn.execute("DELETE FROM ledger_accounts WHERE id = ?", (f"member:{member_id}",))
+            conn.execute("DELETE FROM reward_ledger WHERE user_id = ?", (member_id,))
+            conn.execute("DELETE FROM bank_deposits WHERE user_id = ?", (member_id,))
+            conn.commit()
 
 
+def test_public_tasks_and_documents_without_auth(member_client):
+    """Verify that unauthenticated visitors can view open tasks and approved documents."""
+    client, _, _, _ = member_client
+
+    # Without any login/cookies:
+    t_res = client.get("/api/v1/tasks/open")
+    assert t_res.status_code == 200
+    tasks_data = t_res.json()
+    assert isinstance(tasks_data, list)
+
+    d_res = client.get("/api/v1/documents")
+    assert d_res.status_code == 200
+    docs_data = d_res.json()
+    assert isinstance(docs_data, list)

@@ -594,14 +594,23 @@ def check_bank_deposit_status(
             "credited": False,
         }
 
-    # Verify directly with ACB API (Dual verification: statement memo or real-time balance delta)
+    # Query already credited bank transaction references to prevent duplicate matching
+    with get_db() as conn:
+        used_rows = conn.execute(
+            "SELECT bank_tx_ref FROM bank_deposits WHERE status = 'paid' AND bank_tx_ref IS NOT NULL AND bank_tx_ref != ''"
+        ).fetchall()
+        already_used_refs = {r[0] for r in used_rows}
+
+    # Verify directly with ACB API (Strict memo matching against bank statement)
     check_res = ACBService.verify_transaction(
         order["order_code"],
         order["amount_vnd"],
-        order.get("initial_balance")
+        order.get("initial_balance"),
+        already_used_refs=already_used_refs,
     )
 
     if check_res.get("matched"):
+        tx_ref = check_res.get("tx_ref")
         transfer_onchain = False
         transfer_err = None
         if order.get("payout_mode") == "sol_swap" and order.get("target_wallet") and not solana_sig:
@@ -645,6 +654,14 @@ def check_bank_deposit_status(
                     "credited": True,
                 }
 
+            if tx_ref:
+                dup = conn.execute(
+                    "SELECT id FROM bank_deposits WHERE bank_tx_ref = ? AND status = 'paid'",
+                    (tx_ref,)
+                ).fetchone()
+                if dup:
+                    raise HTTPException(400, f"Giao dịch chuyển khoản {tx_ref} đã được thanh toán cho một đơn khác.")
+
             settle_reward(
                 conn,
                 user_id=user_id,
@@ -659,8 +676,8 @@ def check_bank_deposit_status(
             tx_meta = check_res.get("transaction") or {}
             final_bal = tx_meta.get("live_balance") if isinstance(tx_meta, dict) else None
             conn.execute(
-                "UPDATE bank_deposits SET status = 'paid', credited_at = ?, final_balance = ?, solana_signature = ? WHERE order_code = ?",
-                (time.time(), final_bal, solana_sig, order_code)
+                "UPDATE bank_deposits SET status = 'paid', credited_at = ?, final_balance = ?, solana_signature = ?, bank_tx_ref = ? WHERE order_code = ?",
+                (time.time(), final_bal, solana_sig, tx_ref, order_code)
             )
             if solana_sig:
                 conn.execute(

@@ -22,7 +22,7 @@ class NineRouterService:
         model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: int = 4096,
-        timeout: int = 4,
+        timeout: int = 25,
     ) -> Dict[str, Any]:
         """Send chat messages to 9Router /chat/completions endpoint."""
         active_model = (model or NINEROUTER_DEFAULT_MODEL).strip()

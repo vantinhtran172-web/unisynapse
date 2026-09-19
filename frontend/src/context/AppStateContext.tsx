@@ -62,8 +62,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setUnipoints(0);
         setReputation(0);
-        setTasks([]);
-        setDocuments([]);
         setLedger([]);
         setLastUpdated(null);
       } else if (userResult.status === "fulfilled") {
@@ -71,8 +69,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         setUnipoints(userResult.value.unipoints);
         setReputation(userResult.value.reputation);
       }
-      if (tasksResult.status === "fulfilled" && !sessionExpired) setTasks(Array.isArray(tasksResult.value) ? tasksResult.value : []);
-      if (documentsResult.status === "fulfilled" && !sessionExpired) setDocuments(Array.isArray(documentsResult.value) ? documentsResult.value : []);
+      // Open labeling tasks and approved documents are public curriculum assets
+      if (tasksResult.status === "fulfilled") setTasks(Array.isArray(tasksResult.value) ? tasksResult.value : []);
+      if (documentsResult.status === "fulfilled") setDocuments(Array.isArray(documentsResult.value) ? documentsResult.value : []);
       if (ledgerResult.status === "fulfilled" && !sessionExpired) setLedger(Array.isArray(ledgerResult.value) ? ledgerResult.value : []);
       if (failures.length > 0 && !sessionExpired) {
         setError("Một số dữ liệu chưa tải được. Hãy thử làm mới lại.");

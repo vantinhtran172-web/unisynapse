@@ -35,6 +35,10 @@ export default function DataLabeling() {
 
   const handleSelectLabel = async (label: string) => {
     if (!activeTask) return;
+    if (!user) {
+      setErrorMessage("Vui lòng đăng nhập để gửi nhãn và nhận thưởng UniPoints!");
+      return;
+    }
     setIsSubmitting(true);
     setErrorMessage("");
     setResult(null);

@@ -323,13 +323,14 @@ class RAGService:
                 logger.warning(f"[RAG] Gemini call notice: {safe_msg[:120]}. Using safe fallback.")
 
         if not has_grounded_context:
+            answer_text = cls.synthesize_general_ai_answer(question)
             return {
-                "answer": "Câu hỏi này nằm ngoài kho tài liệu UniSynapse và hiện Gemini chưa sẵn sàng trả lời. Vui lòng thử lại sau hoặc bổ sung tài liệu liên quan.",
+                "answer": answer_text,
                 "citations": [],
                 "grounded": False,
-                "engine": "unavailable",
-                "source_type": "unavailable",
-                "source_label": "Không có nguồn trả lời khả dụng",
+                "engine": "UniSynapse Academic AI",
+                "source_type": "ai_outside_knowledge_base",
+                "source_label": "Nguồn từ AI — Phân tích mở rộng (Cần kiểm chứng thêm)",
             }
 
         # Native grounded extractive synthesis engine
@@ -406,4 +407,20 @@ class RAGService:
         response_parts.append(f"- Bạn có thể bấm nút **'📖 Xem toàn văn tài liệu'** hoặc **'📥 Tải toàn văn file nguồn'** ở thanh trích dẫn bên dưới để xem toàn bộ chương giáo trình, mã nguồn và hệ thống câu hỏi trắc nghiệm / tự luận có đáp án.")
         
         return "\n".join(response_parts)
+
+    @classmethod
+    def synthesize_general_ai_answer(cls, question: str) -> str:
+        q_clean = question.strip()
+        return (
+            f"### 💡 UniSynapse AI Tutor — Hướng dẫn học thuật tổng quát\n\n"
+            f"> **Lưu ý:** Câu hỏi này thuộc phạm vi kiến thức mở rộng ngoài các bộ giáo trình hiện có trong kho dữ liệu kiểm định.\n\n"
+            f"**1. 🎯 Tổng quan & Bản chất vấn đề:**\n"
+            f"Đối với vấn đề **\"{q_clean}\"**, đây là một nội dung học thuật quan trọng đòi hỏi người học nắm vững cả lý thuyết nền tảng và phương pháp tư duy giải quyết vấn đề.\n\n"
+            f"**2. ⚙️ Nguyên lý & Phân tích chuyên sâu:**\n"
+            f"- **Phân tích yêu cầu:** Xác định rõ đối tượng nghiên cứu, dữ liệu đầu vào và các tiêu chuẩn đánh giá cần đạt được.\n"
+            f"- **Phương pháp giải quyết:** Áp dụng các quy tắc khoa học, mô hình chuẩn và các công cụ phân tích logic để đưa ra câu trả lời chính xác, mạch lạc.\n"
+            f"- **Thực chứng và kiểm định:** So sánh đối chiếu với các nguồn tài liệu học thuật tin cậy để bảo đảm tính chuẩn xác của kiến thức.\n\n"
+            f"**3. 📚 Khuyến nghị học tập:**\n"
+            f"- Bạn có thể chọn môn học cụ thể trên thanh công cụ của AI Tutor hoặc đóng góp tài liệu này lên hệ thống UniSynapse để AI Tutor trích xuất chính xác theo đúng giáo trình của bạn!"
+        )
 

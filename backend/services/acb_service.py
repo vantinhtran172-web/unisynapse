@@ -245,61 +245,70 @@ class ACBService:
         cls,
         order_code: str,
         amount_vnd: int,
-        initial_balance: Optional[float] = None
+        initial_balance: Optional[float] = None,
+        already_used_refs: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
-        Check if an incoming transaction matches order_code and amount_vnd.
-        Supports dual-verification:
-        1. Direct statement match (when ACB statement API is available)
-        2. Real-time balance delta match (fallback when statement API is restricted by bank)
+        Check if an incoming transaction strictly matches order_code memo and amount_vnd.
+        Enforces strict transfer description (memo) verification to ensure each payment
+        is credited to the exact corresponding order invoice, preventing unintended settlements
+        when multiple orders share the same amount.
         """
+        import re
         code_upper = order_code.strip().upper()
+        code_alnum = re.sub(r"[^A-Z0-9]", "", code_upper)
+        used_set = set(already_used_refs or [])
 
-        # Method 1: Check transaction statement if accessible
+        # Check transaction statement from bank
         transactions = cls.get_transaction_history(days=2)
         if transactions is not None:
             for tx in transactions:
                 if tx.get("type") != "IN":
                     continue
-                desc = (tx.get("description") or "").upper()
                 amt = float(tx.get("amount") or 0)
-                if code_upper in desc and amt >= float(amount_vnd):
-                    return {
-                        "matched": True,
-                        "transaction": tx,
-                        "method": "statement_match",
-                        "api_available": True,
-                        "message": f"Tìm thấy giao dịch nạp tiền hợp lệ (+{amt:,.0f} VNĐ).",
-                    }
+                if amt < float(amount_vnd):
+                    continue
 
-        # Method 2: Live Balance Delta Verification (when transaction history is blocked by bank gateway)
-        live_balance = cls.get_live_balance()
-        if live_balance is not None:
-            if initial_balance is not None:
-                delta = live_balance - float(initial_balance)
-                if delta >= float(amount_vnd):
-                    return {
-                        "matched": True,
-                        "transaction": {"amount": delta, "type": "IN", "live_balance": live_balance},
-                        "method": "balance_delta",
-                        "api_available": True,
-                        "message": f"Đã xác nhận tiền vào tài khoản ACB (+{delta:,.0f} VNĐ).",
-                    }
-            else:
-                # Historical fallback for pre-existing orders where initial_balance was 20,200
-                if live_balance >= 70200.0 and amount_vnd == 50000:
-                    return {
-                        "matched": True,
-                        "transaction": {"amount": amount_vnd, "type": "IN", "live_balance": live_balance},
-                        "method": "balance_delta",
-                        "api_available": True,
-                        "message": f"Đã xác nhận tiền vào tài khoản ACB (+{amount_vnd:,.0f} VNĐ).",
-                    }
+                raw_desc = str(tx.get("description") or "")
+                desc_upper = raw_desc.upper()
+                desc_alnum = re.sub(r"[^A-Z0-9]", "", desc_upper)
+
+                # Strict check: transfer description MUST contain the specific order_code
+                if code_upper not in desc_upper and (not code_alnum or code_alnum not in desc_alnum):
+                    continue
+
+                # Unique bank transaction reference to prevent replay/duplicate crediting
+                tx_ref = str(
+                    tx.get("transactionNumber")
+                    or tx.get("id")
+                    or tx.get("reference")
+                    or tx.get("refNo")
+                    or ""
+                ).strip()
+                if not tx_ref and tx.get("transactionDate"):
+                    tx_ref = f"{tx.get('transactionDate')}_{int(amt)}_{code_alnum}"
+
+                if tx_ref and tx_ref in used_set:
+                    logger.warning(
+                        "Bank transaction %s already credited to another order; skipping for %s.",
+                        tx_ref, code_upper
+                    )
+                    continue
+
+                return {
+                    "matched": True,
+                    "transaction": tx,
+                    "tx_ref": tx_ref or code_upper,
+                    "method": "statement_memo_match",
+                    "api_available": True,
+                    "message": f"Tìm thấy giao dịch nạp tiền hợp lệ khớp mã '{code_upper}' (+{amt:,.0f} VNĐ).",
+                }
 
         return {
             "matched": False,
             "transaction": None,
+            "tx_ref": None,
             "api_available": True,
-            "message": f"Chưa phát hiện giao dịch có mã '{code_upper}' hoặc số dư ACB chưa tăng thêm {amount_vnd:,.0f} đ.",
+            "message": f"Chưa phát hiện giao dịch có nội dung chuyển khoản chứa mã '{code_upper}' với số tiền tối thiểu {amount_vnd:,.0f} đ.",
         }
 

@@ -457,6 +457,10 @@ export const api = {
     return request<DocumentContentResponse>(`/documents/${documentId}/content`);
   },
 
+  getDocumentDownloadUrl(documentId: string): string {
+    return `${API_BASE}/documents/${documentId}/download`;
+  },
+
   async getTutorTier(): Promise<TutorTierResponse> {
     return request<TutorTierResponse>("/tutor/tier");
   },

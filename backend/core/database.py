@@ -425,11 +425,17 @@ def init_db():
             "sol_amount REAL DEFAULT 0.0",
             "target_wallet TEXT",
             "solana_signature TEXT",
+            "bank_tx_ref TEXT",
         ]:
             try:
                 cursor.execute(f"ALTER TABLE bank_deposits ADD COLUMN {col_def}")
             except Exception:
                 pass
+
+        try:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bank_deposits_tx_ref ON bank_deposits(bank_tx_ref)")
+        except Exception:
+            pass
 
         for tbl, col_def in [
             ("documents", "solana_tx TEXT"),

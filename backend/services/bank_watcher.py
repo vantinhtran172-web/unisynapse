@@ -111,7 +111,14 @@ def _check_and_settle_pending_bank_deposits():
                 except Exception as ex:
                     logger.error("Error in bank_watcher SOL recovery for %s: %s", code, ex)
 
-        # 2. Fetch only active pending orders within 10-minute window
+        # 2. Fetch set of already used bank transaction references
+        used_tx_rows = conn.execute("""
+            SELECT bank_tx_ref FROM bank_deposits
+            WHERE status = 'paid' AND bank_tx_ref IS NOT NULL AND bank_tx_ref != ''
+        """).fetchall()
+        already_used_refs = {r[0] for r in used_tx_rows}
+
+        # 3. Fetch only active pending orders within 10-minute window
         rows = conn.execute("""
             SELECT id, user_id, order_code, amount_vnd, points, status, created_at, initial_balance,
                    payout_mode, sol_amount, target_wallet, solana_signature
@@ -135,10 +142,16 @@ def _check_and_settle_pending_bank_deposits():
             check_res = ACBService.verify_transaction(
                 order_code=order_code,
                 amount_vnd=amount_vnd,
-                initial_balance=initial_bal
+                initial_balance=initial_bal,
+                already_used_refs=already_used_refs,
             )
 
             if check_res.get("matched"):
+                tx_ref = check_res.get("tx_ref")
+                if tx_ref and tx_ref in already_used_refs:
+                    logger.warning("Bank transaction ref %s already settled in current pass; skipping %s", tx_ref, order_code)
+                    continue
+
                 solana_sig = order.get("solana_signature")
                 if order.get("payout_mode") == "sol_swap" and order.get("target_wallet") and not solana_sig:
                     from ..services.solana_onramp_service import SolanaOnRampService
@@ -162,6 +175,15 @@ def _check_and_settle_pending_bank_deposits():
                     if curr and curr[0] == "paid":
                         continue
 
+                    if tx_ref:
+                        dup = conn.execute(
+                            "SELECT id FROM bank_deposits WHERE bank_tx_ref = ? AND status = 'paid'",
+                            (tx_ref,)
+                        ).fetchone()
+                        if dup:
+                            logger.warning("Transaction ref %s already in database; aborting duplicate settle for %s", tx_ref, order_code)
+                            continue
+
                     settle_reward(
                         conn,
                         user_id=user_id,
@@ -177,16 +199,19 @@ def _check_and_settle_pending_bank_deposits():
                     final_bal = tx_meta.get("live_balance") if isinstance(tx_meta, dict) else None
                     conn.execute("""
                         UPDATE bank_deposits 
-                        SET status = 'paid', credited_at = ?, final_balance = ?, solana_signature = ?
+                        SET status = 'paid', credited_at = ?, final_balance = ?, solana_signature = ?, bank_tx_ref = ?
                         WHERE order_code = ?
-                    """, (time.time(), final_bal, solana_sig, order_code))
+                    """, (time.time(), final_bal, solana_sig, tx_ref, order_code))
                     if solana_sig:
                         conn.execute("UPDATE reward_ledger SET solana_signature = ? WHERE reward_event_key = ?", (solana_sig, f"acb_deposit:{order_code}"))
                     conn.commit()
 
+                if tx_ref:
+                    already_used_refs.add(tx_ref)
+
                 logger.info(
-                    "🎉 [ACB AUTO-SETTLE] Order %s for user %s: automatically settled (%s, Method: %s)!",
-                    order_code, user_id, order.get("payout_mode", "unipoints"), check_res.get("method")
+                    "🎉 [ACB AUTO-SETTLE] Order %s for user %s: automatically settled (%s, TxRef: %s, Method: %s)!",
+                    order_code, user_id, order.get("payout_mode", "unipoints"), tx_ref, check_res.get("method")
                 )
         except Exception as e:
             logger.error("Error in auto-settling order %s: %s", order_code, e)

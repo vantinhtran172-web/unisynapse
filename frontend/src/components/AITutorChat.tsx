@@ -71,6 +71,14 @@ export default function AITutorChat() {
 
   useEffect(() => {
     fetchTier();
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const subj = params.get("subject") || sessionStorage.getItem("unisynapse_target_subject");
+      if (subj) {
+        setSelectedSubject(subj);
+        sessionStorage.removeItem("unisynapse_target_subject");
+      }
+    }
   }, []);
 
   const handleOpenDocumentReader = async (docId: string, excerpt?: string) => {
@@ -457,7 +465,7 @@ export default function AITutorChat() {
                 📖 Xem toàn văn tài liệu
               </button>
               <a
-                href={`http://127.0.0.1:8000/api/v1/documents/${activeCitation.document_id}/download`}
+                href={api.getDocumentDownloadUrl(activeCitation.document_id)}
                 download
                 className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[11px] inline-flex items-center gap-1.5 shadow-sm transition-colors"
                 title="Tải nguyên bản file nguồn giáo trình (.txt)"
@@ -658,7 +666,7 @@ export default function AITutorChat() {
               <div className="flex items-center gap-2">
                 {(docReader.doc?.document_id || docReader.doc?.id) && (
                   <a
-                    href={`http://127.0.0.1:8000/api/v1/documents/${docReader.doc.document_id || docReader.doc.id}/download`}
+                    href={api.getDocumentDownloadUrl(docReader.doc.document_id || docReader.doc.id || "")}
                     download
                     className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition-colors flex items-center gap-1.5 shadow-sm"
                     title="Tải nguyên bản file giáo trình toàn văn (.txt)"

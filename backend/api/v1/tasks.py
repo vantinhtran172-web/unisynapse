@@ -1,8 +1,9 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from typing import Optional
 from ...core.database import get_db
-from ...core.security import require_member_session
+from ...core.security import require_member_session, get_optional_member_session
 from ...services.consensus_service import ConsensusService
 
 router = APIRouter(prefix="/tasks", tags=["Data Labeling Tasks"])
@@ -12,28 +13,30 @@ class TaskSubmitRequest(BaseModel):
     label: str
 
 @router.get("/open")
-def list_open_tasks(session_user: dict = Depends(require_member_session)):
-    user_id = session_user["id"]
+def list_open_tasks(session_user: Optional[dict] = Depends(get_optional_member_session)):
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM tasks WHERE status = 'open' ORDER BY created_at DESC")
         tasks = [dict(r) for r in cursor.fetchall()]
         
-        # Check submissions by current user
-        cursor.execute("SELECT task_id, label FROM task_submissions WHERE user_id = ?", (user_id,))
-        user_subs = {r["task_id"]: r["label"] for r in cursor.fetchall()}
+        user_subs = {}
+        if session_user:
+            user_id = session_user["id"]
+            cursor.execute("SELECT task_id, label FROM task_submissions WHERE user_id = ?", (user_id,))
+            user_subs = {r["task_id"]: r["label"] for r in cursor.fetchall()}
         
         # Parse labels json
         for t in tasks:
             try:
-                t["labels"] = json.loads(t["labels"])
+                t["labels"] = json.loads(t["labels"]) if isinstance(t["labels"], str) else t["labels"]
             except Exception:
                 t["labels"] = []
             t["user_submitted"] = t["id"] in user_subs
             t["user_label"] = user_subs.get(t["id"])
 
         # Prioritize tasks the user has not submitted yet
-        tasks.sort(key=lambda t: (1 if t.get("user_submitted") else 0, -t.get("created_at", 0)))
+        if session_user:
+            tasks.sort(key=lambda t: (1 if t.get("user_submitted") else 0, -t.get("created_at", 0)))
             
     return tasks
 

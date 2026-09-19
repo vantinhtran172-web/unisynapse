@@ -36,6 +36,8 @@ async def lifespan(app: FastAPI):
             from .scripts.seed_demo_public import ensure_demo_user, main as seed_public_demo
             ensure_demo_user()
             seed_public_demo()
+            from .scripts.seed_full_vhu_sources import seed_full_vhu_sources
+            seed_full_vhu_sources()
         except Exception as err:
             import logging
             logging.getLogger("uvicorn.error").warning("Demo seed skipped or failed: %s", err)

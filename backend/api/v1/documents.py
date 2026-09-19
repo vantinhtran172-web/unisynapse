@@ -34,13 +34,20 @@ def _update_gate(document_id: str, **fields: str) -> None:
         conn.commit()
 
 @router.get("")
-def list_documents(session_user: dict = Depends(require_member_session)):
+def list_documents(session_user: Optional[dict] = Depends(get_optional_member_session)):
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM documents WHERE owner_id = ? ORDER BY created_at DESC",
-            (session_user["id"],),
-        )
+        if session_user:
+            # Show documents owned by user PLUS all approved public curriculum documents
+            cursor.execute(
+                "SELECT * FROM documents WHERE owner_id = ? OR status = 'approved' ORDER BY created_at DESC",
+                (session_user["id"],),
+            )
+        else:
+            # Public visitors: show all approved curriculum documents
+            cursor.execute(
+                "SELECT * FROM documents WHERE status = 'approved' ORDER BY created_at DESC"
+            )
         return [dict(r) for r in cursor.fetchall()]
 
 @router.post("/upload")

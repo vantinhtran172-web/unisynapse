@@ -1170,15 +1170,12 @@ def seed_full_vhu_sources():
     with get_db() as conn:
         cursor = conn.cursor()
         
-        # Ensure owner exists
-        cursor.execute("SELECT id FROM users WHERE id = 'usr_demo'")
-        if not cursor.fetchone():
-            now = time.time()
-            cursor.execute("""
-                INSERT OR IGNORE INTO users (id, username, email, role, reputation, created_at)
-                VALUES ('usr_demo', 'Giáo Trình ĐH Văn Hiến', 'giaotrinh@vhu.edu.vn', 'student', 100, ?)
-            """, (now,))
-            conn.commit()
+        cursor.execute("SELECT COUNT(*) FROM documents WHERE id LIKE 'doc_vhu%' AND status = 'approved' AND size_bytes > 3000")
+        row = cursor.fetchone()
+        existing_vhu_count = row[0] if row else 0
+        if existing_vhu_count >= len(FULL_VHU_SOURCES):
+            print(f"ℹ️ Đã có đủ {existing_vhu_count} tài liệu giáo trình VHU toàn văn trong CSDL.")
+            return
 
         for course in FULL_VHU_SOURCES:
             code = course["code"]
