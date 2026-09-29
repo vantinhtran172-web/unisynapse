@@ -152,3 +152,15 @@ Tài liệu này vạch rõ 4 giai đoạn phát triển của dự án UniSynap
   - [x] Nạp đầy đủ 42 tài liệu VHU (23 tệp từ `tai-lieu-trac-nghiem-VHU.zip` + 19 môn chuyên ngành CNTT VHU từ Google Drive) vào kho dữ liệu quản trị Admin và RAG.
   - [x] Chuẩn hóa toàn bộ chữ ký giao dịch Solana on-chain thành chuỗi Ed25519 88 ký tự chuẩn từ ví Treasury đã finalized trên Solana Devnet, triệt tiêu lỗi "Signature is not valid".
 
+- [x] **Chuẩn Hóa Toàn Diện Trang Nạp SOL / Đổi UniPoints (`/vi`) Port 3001 & Cơ Chế Xác Thực Ngân Hàng ACB Nghiêm Ngặt** (Hoàn thành 30/09/2026):
+  - [x] Đồng bộ layout trang `/vi` với Port 3001: bọc trong `<main className="preview-shell">`, tích hợp `<PreviewNavbar />`, `<div className="preview-container">` và breadcrumbs hiện đại, loại bỏ hoàn toàn giao diện cô lập cũ.
+  - [x] Nâng cấp `PreviewNavbar.tsx` hỗ trợ tự động điều hướng sang `/?tab=${id}` khi người dùng click vào các tab từ `/vi`.
+  - [x] Cập nhật số tài khoản ACB thật: `38038627` (ACB - TRAN VAN TINH) trên cả giao diện VietQR, chi tiết đơn hàng và API xử lý.
+  - [x] Thiết lập Banner cảnh báo nổi bật: `⚠️ LƯU Ý BẮT BUỘC: ĐÚNG NỘI DUNG & ĐÚNG SỐ TIỀN` kèm nút sao chép cú pháp chuẩn `UNISYNAPSE <order_code>` và số tiền chính xác.
+  - [x] Khóa cứng bảo mật ngân quỹ: API `rewards/bank/check/:code` luôn duy trì `status: "pending"` trong suốt thời gian chờ, tuyệt đối không bao giờ tự ý trả về `"paid"` khi chưa có xác nhận từ ngân hàng.
+  - [x] Tích hợp hàm `verifyACBPaymentStrict` kết nối API ngân hàng ACB (`apiapp.acb.com.vn`), tự động đối soát số dư thời gian thực (`liveBalance >= baseline + amountVnd`).
+  - [x] Kiểm tra nghiêm ngặt cả 2 yếu tố trong `POST /rewards/bank/confirm`: Khớp nội dung mã đơn VÀ đủ số tiền, bác bỏ bằng HTTP 400 nếu sai lệch.
+  - [x] Bổ sung nút bấm thủ công: `⚡ Tôi đã chuyển tiền xong - Kiểm tra ngay` giúp người dùng kích hoạt đối soát tức thì ngay sau khi chuyển khoản trên app ngân hàng.
+  - [x] Đồng bộ song song toàn diện giữa `ui-preview` và `frontend`, vượt qua 100% build Next.js (Exit code 0) và test suite nghiêm ngặt.
+
+

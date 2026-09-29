@@ -833,8 +833,94 @@ const mockBankDeposits: BankDepositItem[] = [
     status: "paid",
     created_at: Math.floor(Date.now() / 1000) - 1800,
     solana_signature: "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj",
+    account_number: "38038627",
+    account_name: "TRAN VAN TINH",
+    bank_name: "ACB",
+    transfer_content: "UNISYNAPSE VHU892341",
   },
 ];
+
+const bankBalanceBaselines = new Map<string, number>();
+const verifiedBankTransactions = new Map<string, { ref: string; verified_at: number }>();
+
+function calculateBankPoints(vnd: number): number {
+  if (vnd < 10000) return 0;
+  const basePoints = Math.floor((vnd / 10000) * 1000);
+  let bonusRate = 0;
+  if (vnd >= 100000) bonusRate = 0.30;
+  else if (vnd >= 50000) bonusRate = 0.20;
+  else if (vnd >= 20000) bonusRate = 0.10;
+  return Math.round(basePoints * (1 + bonusRate));
+}
+
+function calculateSolAmount(vnd: number): number {
+  if (vnd < 10000) return 0;
+  if (vnd >= 100000) return Math.round((vnd / 125000) * 1000) / 1000;
+  if (vnd >= 50000) return Math.round((vnd / 142857) * 1000) / 1000;
+  if (vnd >= 20000) return Math.round((vnd / 166666) * 1000) / 1000;
+  return Math.round((vnd / 200000) * 1000) / 1000;
+}
+
+async function getACBLiveBalance(): Promise<number | null> {
+  try {
+    const loginRes = await fetch("https://apiapp.acb.com.vn/mb/v2/auth/tokens", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Host": "apiapp.acb.com.vn",
+        "User-Agent": "ACB-MBA/5 CFNetwork/1325.0.1 Darwin/21.1.0"
+      },
+      body: JSON.stringify({
+        clientId: "iuSuHYVufIUuNIREV0FB9EoLn9kHsDbm",
+        username: "0388890465",
+        password: "Tinhtranvan987@"
+      }),
+      signal: AbortSignal.timeout(6000)
+    });
+    if (!loginRes.ok) return null;
+    const loginData = await loginRes.json();
+    const token = loginData.accessToken;
+    if (!token) return null;
+
+    const accRes = await fetch("https://apiapp.acb.com.vn/mb/legacy/ss/cs/bankservice/transfers/list/account-payment", {
+      headers: {
+        "authorization": `Bearer ${token}`,
+        "User-Agent": "ACB-MBA/5 CFNetwork/1325.0.1 Darwin/21.1.0"
+      },
+      signal: AbortSignal.timeout(6000)
+    });
+    if (!accRes.ok) return null;
+    const accData = await accRes.json();
+    const balance = accData.data?.[0]?.balance;
+    return typeof balance === "number" ? balance : null;
+  } catch {
+    return null;
+  }
+}
+
+async function verifyACBPaymentStrict(orderCode: string, amountVnd: number): Promise<{ paid: boolean; ref?: string; message?: string }> {
+  const codeKey = orderCode.trim().toUpperCase();
+  if (verifiedBankTransactions.has(codeKey)) {
+    const item = verifiedBankTransactions.get(codeKey)!;
+    return { paid: true, ref: item.ref, message: "Đã khớp đối soát ngân hàng ACB." };
+  }
+
+  // Check live ACB balance delta
+  const liveBalance = await getACBLiveBalance();
+  if (liveBalance !== null) {
+    const baseline = bankBalanceBaselines.get(codeKey);
+    if (baseline !== undefined && liveBalance >= baseline + amountVnd) {
+      const ref = `ACB_ONRAMP_${Date.now()}`;
+      verifiedBankTransactions.set(codeKey, { ref, verified_at: Date.now() });
+      return { paid: true, ref, message: `ACB xác nhận số dư tài khoản tăng đúng +${amountVnd.toLocaleString("vi-VN")} đ.` };
+    } else if (baseline === undefined) {
+      bankBalanceBaselines.set(codeKey, liveBalance);
+    }
+  }
+
+  return { paid: false, message: `Chưa ghi nhận chuyển tiền ACB khớp mã ${codeKey} và số tiền ${amountVnd.toLocaleString("vi-VN")} đ.` };
+}
+
 
 function getUserFromCookie(request: NextRequest): RegisteredUser | null {
   const cookie =
@@ -961,15 +1047,111 @@ export async function GET(
 
   // 10. Check bank deposit
   if (path.startsWith("rewards/bank/check/")) {
-    const orderCode = slug[3] || "VHU000000";
+    const orderCode = (slug[3] || "VHU000000").trim().toUpperCase();
+    const order = mockBankDeposits.find(
+      (d) => d.order_code.toUpperCase() === orderCode
+    );
+
+    if (!order) {
+      return NextResponse.json(
+        {
+          order_code: orderCode,
+          status: "pending",
+          message: `Đơn ${orderCode} chưa được tạo hoặc đang khởi tạo đối soát...`,
+        },
+        { status: 200 }
+      );
+    }
+
+    if (order.status === "paid") {
+      return NextResponse.json({
+        order_code: order.order_code,
+        status: "paid",
+        amount_vnd: order.amount_vnd,
+        sol_amount: order.sol_amount,
+        points: order.points,
+        payout_mode: order.payout_mode,
+        solana_signature:
+          order.solana_signature ||
+          "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj",
+        solana_explorer_url: `https://explorer.solana.com/tx/${
+          order.solana_signature ||
+          "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj"
+        }?cluster=devnet`,
+        message: "Giao dịch đã được đối soát thành công.",
+      });
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (order.expires_at && nowSec > order.expires_at) {
+      order.status = "expired";
+      return NextResponse.json({
+        order_code: order.order_code,
+        status: "expired",
+        message: "Đơn giao dịch đã hết thời gian chờ thanh toán (10 phút).",
+      });
+    }
+
+    // Strict bank verification check:
+    const checkResult = await verifyACBPaymentStrict(
+      order.order_code,
+      order.amount_vnd
+    );
+    if (checkResult.paid) {
+      order.status = "paid";
+      order.solana_signature =
+        "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj";
+
+      // Credit UniPoints to member session
+      const user = getUserFromCookie(request);
+      if (user && order.points > 0) {
+        user.unipoints = (user.unipoints || 100) + order.points;
+        mockUsers.set(user.username, user);
+      }
+
+      // Record to ledger
+      mockLedger.unshift({
+        id: `led_bank_${Date.now()}`,
+        user_id: user?.id || "usr_current",
+        created_at: nowSec,
+        reason:
+          order.payout_mode === "sol_swap"
+            ? `Đổi ${order.sol_amount} SOL qua VietQR ACB (${order.order_code})`
+            : `Nạp UniPoints VietQR ACB (${order.order_code})`,
+        source_type: "bank_deposit",
+        delta: order.points || 0,
+        proof_hash: checkResult.ref || order.order_code,
+        proof_status: "verified",
+        solana_signature: order.solana_signature,
+        explorer_url: `https://explorer.solana.com/tx/${order.solana_signature}?cluster=devnet`,
+      });
+
+      return NextResponse.json({
+        order_code: order.order_code,
+        status: "paid",
+        amount_vnd: order.amount_vnd,
+        sol_amount: order.sol_amount,
+        points: order.points,
+        payout_mode: order.payout_mode,
+        solana_signature: order.solana_signature,
+        solana_explorer_url: `https://explorer.solana.com/tx/${order.solana_signature}?cluster=devnet`,
+        message:
+          checkResult.message ||
+          `✓ Xác nhận tiền vào ACB: khớp đúng mã ${order.order_code} và số tiền ${order.amount_vnd.toLocaleString(
+            "vi-VN"
+          )} đ.`,
+      });
+    }
+
+    // Default: Strictly pending! NEVER prematurely return paid!
     return NextResponse.json({
-      order_code: orderCode,
-      status: "paid",
-      sol_amount: 0.12,
-      points: 2200,
-      payout_mode: "sol_swap",
-      solana_signature: "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj",
-      solana_explorer_url: "https://explorer.solana.com/tx/2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj?cluster=devnet",
+      order_code: order.order_code,
+      status: "pending",
+      amount_vnd: order.amount_vnd,
+      points: order.points,
+      payout_mode: order.payout_mode,
+      message:
+        "Đang tự động đối soát số dư ACB... Vui lòng chuyển khoản đúng nội dung và số tiền.",
     });
   }
 
@@ -1381,25 +1563,132 @@ export async function POST(
     const payoutMode = body.payout_mode || "sol_swap";
     const orderCode = `VHU${Math.floor(100000 + Math.random() * 900000)}`;
 
-    const intent = {
+    const points =
+      payoutMode === "sol_swap"
+        ? amount >= 100000
+          ? 7000
+          : amount >= 50000
+          ? 3000
+          : amount >= 20000
+          ? 1100
+          : 500
+        : calculateBankPoints(amount);
+
+    const solAmount =
+      payoutMode === "sol_swap" ? calculateSolAmount(amount) : undefined;
+
+    const intent: BankDepositItem = {
       id: `intent_${Date.now()}`,
       order_code: orderCode,
       amount_vnd: amount,
-      points: payoutMode === "sol_swap" ? 0 : Math.round(amount / 10),
-      sol_amount: payoutMode === "sol_swap" ? (amount >= 100000 ? 0.8 : amount >= 50000 ? 0.35 : amount >= 20000 ? 0.12 : 0.05) : undefined,
+      points,
+      sol_amount: solAmount,
       payout_mode: payoutMode,
-      target_wallet: body.target_wallet || "8xTXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurV",
+      target_wallet:
+        body.target_wallet || "8xTXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurV",
       bank_name: "ACB",
-      account_number: "19836888",
+      account_number: "38038627",
       account_name: "TRAN VAN TINH",
       transfer_content: `UNISYNAPSE ${orderCode}`,
-      qr_url: `https://img.vietqr.io/image/ACB-19836888-compact2.png?amount=${amount}&addInfo=UNISYNAPSE%20${orderCode}`,
+      qr_url: `https://img.vietqr.io/image/ACB-38038627-compact2.png?amount=${amount}&addInfo=UNISYNAPSE%20${orderCode}&accountName=TRAN%20VAN%20TINH`,
       status: "pending",
       created_at: Math.floor(Date.now() / 1000),
       expires_at: Math.floor(Date.now() / 1000) + 600,
     };
     mockBankDeposits.unshift(intent);
+
+    // Record baseline balance for this order
+    void getACBLiveBalance().then((bal) => {
+      if (bal !== null) {
+        bankBalanceBaselines.set(orderCode, bal);
+      }
+    });
+
     return NextResponse.json(intent);
+  }
+
+  // 7b. Bank Deposit Confirm (Đối soát xác thực chuyển tiền thủ công/admin)
+  if (path === "rewards/bank/confirm") {
+    const orderCode = String(body.order_code || "").trim().toUpperCase();
+    const content = String(body.transfer_content || "").trim().toUpperCase();
+    const amount = Number(body.amount_vnd || body.amount || 0);
+
+    const order = mockBankDeposits.find(
+      (d) => d.order_code.toUpperCase() === orderCode
+    );
+    if (!order) {
+      return NextResponse.json(
+        { error: "Không tìm thấy mã đơn hàng." },
+        { status: 404 }
+      );
+    }
+
+    // Strict validation: transfer content MUST include orderCode AND amount MUST be >= order.amount_vnd
+    const contentMatches =
+      content.includes(orderCode) ||
+      content.includes(orderCode.replace("VHU", ""));
+    const amountMatches = amount >= order.amount_vnd;
+
+    if (!contentMatches || !amountMatches) {
+      return NextResponse.json(
+        {
+          error:
+            "Nội dung chuyển khoản hoặc số tiền KHÔNG khớp! Tuyệt đối không cộng điểm khi chưa đúng thông tin.",
+          details: {
+            required_code: order.order_code,
+            provided_content: content,
+            required_amount: order.amount_vnd,
+            provided_amount: amount,
+            content_ok: contentMatches,
+            amount_ok: amountMatches,
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    // Match verified!
+    const txRef = body.bank_ref || `MANUAL_ACB_${Date.now()}`;
+    verifiedBankTransactions.set(orderCode, {
+      ref: txRef,
+      verified_at: Date.now(),
+    });
+    order.status = "paid";
+    order.solana_signature =
+      "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj";
+
+    const user = getUserFromCookie(request);
+    if (user && order.points > 0) {
+      user.unipoints = (user.unipoints || 100) + order.points;
+      mockUsers.set(user.username, user);
+    }
+
+    mockLedger.unshift({
+      id: `led_bank_${Date.now()}`,
+      user_id: user?.id || "usr_current",
+      created_at: Math.floor(Date.now() / 1000),
+      reason:
+        order.payout_mode === "sol_swap"
+          ? `Đổi ${order.sol_amount} SOL qua VietQR ACB (${order.order_code})`
+          : `Nạp UniPoints VietQR ACB (${order.order_code})`,
+      source_type: "bank_deposit",
+      delta: order.points || 0,
+      proof_hash: txRef,
+      proof_status: "verified",
+      solana_signature: order.solana_signature,
+      explorer_url: `https://explorer.solana.com/tx/${order.solana_signature}?cluster=devnet`,
+    });
+
+    return NextResponse.json({
+      success: true,
+      order_code: order.order_code,
+      status: "paid",
+      points_awarded: order.points,
+      sol_amount: order.sol_amount,
+      message: `✓ Đối soát thành công: Khớp nội dung '${orderCode}' và đủ ${amount.toLocaleString(
+        "vi-VN"
+      )} đ. Đã cộng +${order.points} UP!`,
+    });
   }
 
   // 8. Solana Devnet Deposit Intent

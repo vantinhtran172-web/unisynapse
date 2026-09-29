@@ -662,3 +662,36 @@
   1. `admin_documents_42_loaded_1790711928099.png`: Tab Tài liệu hiển thị trọn vẹn 42 tài liệu học thuật VHU, trạng thái Đã duyệt (42), đầy đủ các nút Thao tác.
   2. `ai_tutor_real_gemini_response_1790712127049.png`: Đặt câu hỏi "hello may", AI Tutor trả lời bằng tiếng Việt thông minh, chào hỏi thân thiện dưới tư cách gia sư UniSynapse GPT-6.0 Sol của ĐH Văn Hiến.
   3. Solana Devnet Explorer link: Giao dịch được nhận diện và kiểm chứng thành công trên Solana Explorer, không còn thông báo *"Signature is not valid"*.
+
+---
+
+### Chuẩn Hóa Toàn Diện Trang Nạp SOL / Đổi UniPoints (`/vi`) Port 3001 & Cơ Chế Xác Thực Ngân Hàng ACB Nghiêm Ngặt
+- **Thời điểm**: 2026-09-30.
+- **Tập tin đã sửa đổi & cam kết**:
+  1. `ui-preview/src/app/vi/page.tsx` & `frontend/src/app/vi/page.tsx`:
+     - Bọc giao diện trong layout chuẩn của Port 3001: `<main className="preview-shell"><PreviewNavbar /><div className="preview-container"...><section className={styles.card}>`.
+     - Thay thế thanh mini-header cô lập cũ bằng Breadcrumbs chuẩn: `← Về trang chủ / Cổng Nạp SOL & UniPoints (VietQR ACB)`.
+     - Cập nhật số tài khoản ACB thật: `38038627` (ACB - TRAN VAN TINH).
+     - Thiết lập Banner cảnh báo nổi bật: `⚠️ LƯU Ý BẮT BUỘC: ĐÚNG NỘI DUNG & ĐÚNG SỐ TIỀN`.
+     - Bổ sung nút sao chép chuyên dụng cho cú pháp chuẩn `UNISYNAPSE <order_code>` và số tiền chính xác.
+     - Tích hợp nút kích hoạt đối soát tức thì: `⚡ Tôi đã chuyển tiền xong - Kiểm tra ngay` gọi hàm `handleManualCheckBankDeposit`.
+  2. `ui-preview/src/app/vi/wallet.module.css` & `frontend/src/app/vi/wallet.module.css`:
+     - Mở rộng kích thước thẻ card lên 960px đồng bộ tỷ lệ màn hình rộng.
+     - Thiết kế bộ CSS chuyên biệt cho Banner cảnh báo nghiêm ngặt (`.strictVerificationBanner`, `.strictWarningHeader`, `.strictWarningBody`, `.strictCodeHighlight`, `.strictAmountHighlight`, `.copySmallBtn`, `.manualCheckBtn`).
+     - Hỗ trợ đầy đủ Light Mode và Dark Mode qua `:global(html.light)`.
+  3. `ui-preview/src/components/PreviewNavbar.tsx` & `frontend/src/components/PreviewNavbar.tsx`:
+     - Nâng cấp hàm `selectTab(id)` tự động điều hướng sang `/?tab=${id}` khi người dùng click vào các tab từ `/vi` hoặc các trang con.
+  4. `ui-preview/src/app/api/v1/[...slug]/route.ts` & `frontend/src/app/api/v1/[...slug]/route.ts`:
+     - Áp dụng tài khoản ACB thật `38038627` (TRAN VAN TINH).
+     - Cập nhật `rewards/bank/check/:code`: Luôn duy trì `status: "pending"` trong suốt thời gian chờ. Tuyệt đối **KHÔNG BAO GIỜ** trả về `"paid"` giả mạo.
+     - Tích hợp `verifyACBPaymentStrict` kết nối API ngân hàng ACB thực tế (`apiapp.acb.com.vn`), tự động đối soát số dư gia tăng `liveBalance >= baseline + amountVnd`.
+     - Endpoint `POST /rewards/bank/confirm`: Kiểm tra nghiêm ngặt cả 2 điều kiện: `contentMatches` (chứa mã đơn) VÀ `amountMatches` (số tiền >= giá trị đơn). Bác bỏ bằng HTTP 400 nếu sai nội dung hoặc thiếu tiền.
+     - Ghi nhận `user_id` đầy đủ vào `mockLedger` khi giao dịch được xác nhận.
+- **Bằng chứng kiểm định thực tế**:
+  1. `npm run build` trên cả 2 thư mục `ui-preview` và `frontend`: **Exit Code 0 (0 lỗi TypeScript)**.
+  2. Kịch bản test tự động (`scratch/test_strict_bank_verification.py`):
+     - Sai nội dung chuyển khoản ➔ HTTP 400 (Từ chối).
+     - Thiếu số tiền chuyển khoản ➔ HTTP 400 (Từ chối).
+     - Khớp đúng nội dung và số tiền ➔ HTTP 200 (Cộng điểm thành công, cấp chữ ký Solana Devnet 88 ký tự).
+  3. Trình duyệt thực tế (CDP Browser Subagent): Giao diện `/vi` hiển thị đầy đủ PreviewNavbar, VietQR ACB tài khoản 38038627, Banner cảnh báo, nút kiểm tra tức thì.
+

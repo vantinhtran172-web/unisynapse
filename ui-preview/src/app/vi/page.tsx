@@ -9,6 +9,7 @@ import bs58 from "bs58";
 import { Buffer } from "buffer";
 import { api, LedgerEntry, BankDepositIntent, BankDepositRecord } from "@/lib/api";
 import { useAppState } from "@/context/AppStateContext";
+import PreviewNavbar from "@/components/PreviewNavbar";
 import ThemeToggle from "@/components/ThemeToggle";
 import styles from "./wallet.module.css";
 
@@ -451,13 +452,57 @@ export default function WalletPage() {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       navigator.clipboard.writeText(text);
       setCopiedField(field);
-      const label = field === "stk" ? "Số tài khoản ACB" : field === "order" ? "Nội dung chuyển khoản" : field;
+      const label =
+        field === "stk" || field === "acc"
+          ? "Số tài khoản ACB"
+          : field === "order" || field === "code"
+          ? "Mã đơn hàng"
+          : field === "strict_content"
+          ? "Nội dung chuyển khoản UNISYNAPSE"
+          : field === "strict_amt" || field === "amt"
+          ? "Số tiền chuyển khoản chính xác"
+          : field;
       setToastMessage(`✓ Đã sao chép ${label} vào bộ nhớ tạm!`);
       if (typeof navigator.vibrate === "function") {
         try { navigator.vibrate(15); } catch {}
       }
       setTimeout(() => setCopiedField(null), 2000);
       setTimeout(() => setToastMessage(null), 2500);
+    }
+  }
+
+  async function handleManualCheckBankDeposit() {
+    if (!bankOrder) return;
+    setBusy(true);
+    setMessage(`Đang đối soát biến động số dư ACB cho đơn ${bankOrder.order_code}…`);
+    try {
+      const res = await api.checkBankDeposit(bankOrder.order_code);
+      if (res.status === "paid") {
+        try { localStorage.removeItem(PENDING_VIETQR_KEY); } catch {}
+        setBankOrder((prev) => (prev ? {
+          ...prev,
+          status: "paid",
+          solana_signature: res.solana_signature,
+          solana_explorer_url: res.solana_explorer_url,
+          sol_amount: res.sol_amount,
+          payout_mode: res.payout_mode,
+        } : null));
+        if (res.payout_mode === "sol_swap") {
+          setMessage(`🎉 ACB ĐÃ XÁC NHẬN TIỀN VÀO! Hệ thống đã tự động bắn +${res.sol_amount} SOL vào ví Phantom của bạn.`);
+        } else {
+          setMessage(`🎉 ACB ĐÃ XÁC NHẬN TIỀN VÀO! Hệ thống đã tự động cộng +${res.points.toLocaleString("vi-VN")} UniPoints vào tài khoản.`);
+        }
+        await refreshPoints();
+        void loadBankHistory();
+      } else {
+        setMessage(
+          `⏳ Chưa phát hiện giao dịch khớp với mã '${bankOrder.order_code}' và số tiền ${bankOrder.amount_vnd.toLocaleString("vi-VN")} đ trên ACB. Vui lòng đảm bảo bạn đã bấm xác nhận trên app ngân hàng!`
+        );
+      }
+    } catch (e) {
+      setMessage((e as Error).message || "Chưa thể đối soát tức thì, hệ thống vẫn đang quét tự động nền mỗi 3 giây.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -838,26 +883,24 @@ export default function WalletPage() {
   const projectedQueries = Math.floor(projectedPoints / 80);
 
   return (
-    <main className={styles.shell}>
-      <section className={styles.card}>
-        {/* Header navigation & status */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.6rem", marginBottom: "1rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "nowrap", overflowX: "auto", maxWidth: "100%", paddingBottom: "2px" }}>
-            <Link href="/" style={{ color: "var(--teal, #06b6d4)", textDecoration: "none", fontWeight: 700, fontSize: "0.85rem", display: "inline-flex", alignItems: "center", gap: "4px", padding: "0.3rem 0.6rem", borderRadius: "6px", background: "var(--surface-secondary, rgba(255,255,255,0.06))", border: "1px solid var(--line, rgba(255,255,255,0.1))", whiteSpace: "nowrap" }}>
-              ← Về trang chủ
-            </Link>
-            <Link href="/?tab=labeling" style={{ color: "var(--muted, #94a3b8)", textDecoration: "none", fontSize: "0.78rem", padding: "0.3rem 0.6rem", borderRadius: "6px", background: "var(--surface-secondary, rgba(255,255,255,0.06))", border: "1px solid var(--line, rgba(255,255,255,0.1))", whiteSpace: "nowrap" }}>
-              ◈ Gán nhãn
-            </Link>
-            <Link href="/?tab=tutor" style={{ color: "var(--muted, #94a3b8)", textDecoration: "none", fontSize: "0.78rem", padding: "0.3rem 0.6rem", borderRadius: "6px", background: "var(--surface-secondary, rgba(255,255,255,0.06))", border: "1px solid var(--line, rgba(255,255,255,0.1))", whiteSpace: "nowrap" }}>
-              ✦ AI Tutor
-            </Link>
+    <main className="preview-shell">
+      <PreviewNavbar />
+      <div className="preview-container" style={{ maxWidth: "960px", margin: "0 auto", padding: "1.5rem var(--preview-gutter, 16px) 5rem" }}>
+        <section className={styles.card}>
+          {/* Breadcrumb & network status */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.6rem", marginBottom: "1.25rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}>
+              <Link href="/" style={{ color: "var(--preview-cyan, #06b6d4)", textDecoration: "none", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                ← Về trang chủ
+              </Link>
+              <span style={{ color: "var(--preview-dim, #5a6078)" }}>/</span>
+              <span style={{ color: "var(--preview-muted, #959bb5)", fontWeight: 600 }}>Cổng Nạp SOL &amp; UniPoints (VietQR ACB)</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginLeft: "auto" }}>
+              <ThemeToggle compact />
+              <span className={styles.badge} style={{ whiteSpace: "nowrap" }}>SOLANA DEVNET</span>
+            </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginLeft: "auto" }}>
-            <ThemeToggle compact />
-            <span className={styles.badge} style={{ whiteSpace: "nowrap" }}>SOLANA DEVNET</span>
-          </div>
-        </div>
 
         {!user && (
           <div style={{ padding: "0.75rem 1rem", borderRadius: "8px", background: "rgba(6, 182, 212, 0.15)", border: "1px solid rgba(6, 182, 212, 0.4)", color: "#22d3ee", margin: "1rem 0", fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
@@ -1250,19 +1293,74 @@ export default function WalletPage() {
                     </span>
                   </div>
 
+                  {/* Cảnh báo nghiêm ngặt về nội dung & số tiền */}
+                  <div className={styles.strictVerificationBanner}>
+                    <div className={styles.strictWarningHeader}>
+                      <span className={styles.strictWarningIcon}>⚠️</span>
+                      <span>LƯU Ý BẮT BUỘC: ĐÚNG NỘI DUNG &amp; ĐÚNG SỐ TIỀN</span>
+                    </div>
+                    <div className={styles.strictWarningBody}>
+                      <p>
+                        Hệ thống tự động của UniSynapse <strong>TUYỆT ĐỐI CHỈ CỘNG UNIPOINTS / BẮN SOL</strong> khi bạn chuyển khoản <strong>ĐÚNG CHÍNH XÁC NỘI DUNG VÀ ĐÚNG SỐ TIỀN</strong>:
+                      </p>
+                      <ul>
+                        <li>
+                          <div>
+                            <strong>Nội dung:</strong>{" "}
+                            <span className={styles.strictCodeHighlight}>UNISYNAPSE {bankOrder.order_code}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className={styles.copySmallBtn}
+                            onClick={() => handleCopy(`UNISYNAPSE ${bankOrder.order_code}`, "strict_content")}
+                          >
+                            {copiedField === "strict_content" ? "✓ Đã chép" : "📋 Sao chép nội dung"}
+                          </button>
+                        </li>
+                        <li>
+                          <div>
+                            <strong>Số tiền:</strong>{" "}
+                            <span className={styles.strictAmountHighlight}>{bankOrder.amount_vnd.toLocaleString("vi-VN")} VNĐ</span>
+                          </div>
+                          <button
+                            type="button"
+                            className={styles.copySmallBtn}
+                            onClick={() => handleCopy(String(bankOrder.amount_vnd), "strict_amt")}
+                          >
+                            {copiedField === "strict_amt" ? "✓ Đã chép" : "📋 Sao chép số tiền"}
+                          </button>
+                        </li>
+                      </ul>
+                      <div className={styles.strictNoteSub}>
+                        🔒 Tuyệt đối không tự ý sửa đổi nội dung hoặc làm tròn số tiền. Nếu sai lệch, hệ thống sẽ tạm hoãn cộng điểm để đối soát thủ công.
+                      </div>
+                    </div>
+                  </div>
+
                   <div className={styles.bankContentTransferRow}>
                     <span className={styles.bankContentTransferLabel}>
                       Nội dung chuyển khoản (bắt buộc):
                     </span>
                     <span className={styles.bankContentTransferValue}>
-                      {bankOrder.order_code}
-                      <button
-                        type="button"
-                        className={`${styles.copyButton} ${styles.bankContentTransferBtn}`}
-                        onClick={() => handleCopy(bankOrder.order_code, "code")}
-                      >
-                        {copiedField === "code" ? "✓ Đã chép" : "Sao chép"}
-                      </button>
+                      <span style={{ fontWeight: 800, color: "#38bdf8" }}>UNISYNAPSE {bankOrder.order_code}</span>
+                      <div style={{ display: "flex", gap: "0.4rem", marginTop: "4px" }}>
+                        <button
+                          type="button"
+                          className={`${styles.copyButton} ${styles.bankContentTransferBtn}`}
+                          onClick={() => handleCopy(`UNISYNAPSE ${bankOrder.order_code}`, "strict_content")}
+                          title="Sao chép toàn bộ cú pháp: UNISYNAPSE [Mã đơn]"
+                        >
+                          {copiedField === "strict_content" ? "✓ Đã chép" : "Sao chép UNISYNAPSE + Mã"}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.copyButton}
+                          onClick={() => handleCopy(bankOrder.order_code, "code")}
+                          title="Sao chép chỉ mã đơn"
+                        >
+                          {copiedField === "code" ? "✓ Đã chép" : "Chỉ mã đơn"}
+                        </button>
+                      </div>
                     </span>
                   </div>
 
@@ -1298,16 +1396,25 @@ export default function WalletPage() {
                         <div className={styles.pulseRadar}>
                           <span className={styles.pulseDot}></span>
                         </div>
-                        <div>
+                        <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 700, fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
                             <span>⚡ Đang tự động đối soát ACB theo thời gian thực...</span>
                           </div>
-                          <div style={{ fontSize: "0.78rem", marginTop: "0.25rem", lineHeight: 1.4 }}>
+                          <div style={{ fontSize: "0.78rem", marginTop: "0.25rem", lineHeight: 1.4, color: "#94a3b8" }}>
                             {bankOrder.payout_mode === "sol_swap"
-                              ? `Hệ thống quét số dư ACB mỗi 3 giây. Ngay khi tiền về, Treasury sẽ ký lệnh Solana và chuyển ngay ${bankOrder.sol_amount || calculateSolAmount(bankOrder.amount_vnd)} SOL vào ví Phantom của bạn.`
-                              : "Hệ thống tự động quét số dư ACB mỗi 3 giây. Ngay khi bạn chuyển khoản thành công, UniPoints sẽ tự động nhảy số mà không cần bấm bất kỳ nút nào."
+                              ? `Hệ thống quét số dư ACB mỗi 3 giây. Ngay khi nhận đúng số tiền ${bankOrder.amount_vnd.toLocaleString("vi-VN")} đ và nội dung UNISYNAPSE ${bankOrder.order_code}, Treasury sẽ chuyển ngay ${bankOrder.sol_amount || calculateSolAmount(bankOrder.amount_vnd)} SOL vào ví Phantom của bạn.`
+                              : `Hệ thống tự động quét số dư ACB mỗi 3 giây. Ngay khi chuyển khoản đúng số tiền ${bankOrder.amount_vnd.toLocaleString("vi-VN")} đ và nội dung UNISYNAPSE ${bankOrder.order_code}, UniPoints sẽ tự động cộng ngay vào tài khoản.`
                             }
                           </div>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={handleManualCheckBankDeposit}
+                            className={styles.manualCheckBtn}
+                          >
+                            <span>⚡</span>
+                            <span>{busy ? "Đang liên hệ ACB đối soát..." : "Tôi đã chuyển tiền xong - Kiểm tra ngay"}</span>
+                          </button>
                         </div>
                       </div>
                     )}
@@ -1858,6 +1965,7 @@ export default function WalletPage() {
           🔒 Ứng dụng không bao giờ lưu trữ khóa bí mật của ví. Mọi giao dịch nạp SOL đổi UniPoints được kiểm tra và lập chỉ mục tự động qua giao thức Solana Devnet. Sau khi nạp, số điểm UniPoints khả dụng ngay lập tức cho các phiên học tập và hỏi đáp cùng Gia sư AI.
         </p>
       </section>
+    </div>
 
       {toastMessage && (
         <aside role="status" aria-live="polite" className={styles.copyToast}>

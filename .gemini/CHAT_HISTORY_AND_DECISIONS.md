@@ -831,3 +831,42 @@ Tài liệu này ghi lại toàn bộ tiến trình trao đổi, các phản h�
   - `admin_documents_42_loaded_1790711928099.png`: Tab Tài liệu trong Admin hiển thị trọn vẹn danh mục **42 tài liệu VHU**, trạng thái Đã duyệt (42), đầy đủ thao tác CRUD (Thu hồi, Sửa, Xóa).
   - `ai_tutor_real_gemini_response_1790712127049.png`: Nhập câu hỏi "hello may", AI Tutor phản hồi bằng lời chào tự nhiên, thông minh của gia sư VHU, đi kèm trích dẫn và nút kiểm chứng Solana Devnet.
   - Trình duyệt mở trực tiếp link giao dịch Solana Explorer Devnet chuẩn 88 ký tự thành công.
+
+---
+
+### Yêu cầu 14: Chuẩn Hóa Toàn Diện Trang Nạp SOL / Đổi UniPoints (`/vi`) Theo Chuẩn Port 3001 & Cơ Chế Xác Thực Ngân Hàng ACB Nghiêm Ngặt (Tuyệt Đối Không Sai Sót)
+* **Yêu cầu gốc**: *"trang nạp sol bị dính trang cũ chứ khong phải trang mới của web local port 3001, khi chuyển tiền lưu ý nội dung đúng số tiền mới cộng unipoint, tuyệt đối cấm sảy ra sai sót ở phần này"*
+* **Thực trạng & Vấn đề**:
+  1. Trang `/vi` trước đây được bọc trong `<main className={styles.shell}>` độc lập với thanh mini-nav cổ điển (`← Về trang chủ ◈ Gán nhãn ✦ AI Tutor`), không sử dụng layout `<main className="preview-shell">` và thiếu thanh điều hướng chuẩn `<PreviewNavbar />` của Port 3001. Khi người dùng từ trang chủ sang `/vi`, giao diện bị đứt gãy, thiếu tính đồng bộ thẩm mỹ.
+  2. Số tài khoản ACB trong mã nguồn trước đây là số giữ chỗ `19836888`, trong khi tài khoản thật của chủ dự án (được lưu trong `.env`) là `38038627` (ACB - TRAN VAN TINH).
+  3. Lỗ hổng bảo mật nghiêm trọng trong mock handler cũ: Endpoint `rewards/bank/check/:order_code` trước đây tự động trả về `status: "paid"` ngay trong lần kiểm tra đầu tiên mà không hề kiểm tra đối soát ngân hàng thật hay kiểm tra nội dung/số tiền chuyển khoản. Điều này vi phạm nghiêm trọng nguyên tắc bảo vệ ngân quỹ và logic tài chính của hệ thống.
+* **Hành động & Giải pháp Kỹ thuật**:
+  1. **Tái cấu trúc Giao diện `/vi` đồng bộ 100% với Port 3001**:
+     - Bọc toàn bộ trang `/vi` trong `<main className="preview-shell">` với `<PreviewNavbar />` và `<div className="preview-container">`.
+     - Xóa bỏ thanh mini-header cũ, thay thế bằng Breadcrumbs thanh lịch: `← Về trang chủ / Cổng Nạp SOL & UniPoints (VietQR ACB)`.
+     - Cập nhật `PreviewNavbar.tsx` hỗ trợ tự động điều hướng về `/?tab=${id}` khi người dùng click vào các tab từ `/vi`.
+     - Mở rộng độ rộng thẻ `.card` lên 960px và bổ sung hỗ trợ Light/Dark mode hoàn chỉnh qua CSS variables.
+  2. **Áp dụng Tài khoản Ngân hàng ACB Thật 100%**:
+     - Số tài khoản: `38038627` (ACB - Chi nhánh TP.HCM).
+     - Chủ tài khoản: `TRAN VAN TINH`.
+     - VietQR QR Code tự động nén thông tin: `https://img.vietqr.io/image/ACB-38038627-compact2.png?amount=...&addInfo=UNISYNAPSE%20<order_code>&accountName=TRAN%20VAN%20TINH`.
+  3. **Thiết lập Banner Cảnh báo Nghiêm ngặt về Nội dung & Số tiền**:
+     - Hiển thị banner cảnh báo nổi bật: `⚠️ LƯU Ý BẮT BUỘC: ĐÚNG NỘI DUNG & ĐÚNG SỐ TIỀN`.
+     - Nhấn mạnh quy tắc: Chỉ cộng UniPoints / bắn SOL khi khớp cả 2 điều kiện:
+       1) Ghi đúng cú pháp nội dung: `UNISYNAPSE <order_code>` (hoặc `<order_code>`).
+       2) Chuyển đúng số tiền chính xác (không làm tròn, không chuyển thiếu).
+     - Cung cấp nút sao chép chuyên biệt: `📋 Sao chép nội dung`, `Sao chép UNISYNAPSE + Mã`, `Chỉ mã đơn`, `📋 Sao chép số tiền`.
+  4. **Cơ Chế Đối Soát Ngân Hàng Tuyệt Đối Chống Gian Lận & Sai Sót**:
+     - Trong `rewards/bank/check/:order_code`: Hệ thống luôn duy trì `status: "pending"` trong suốt thời gian chờ. Tuyệt đối **KHÔNG BAO GIỜ** tự ý trả về `"paid"` khi chưa có xác nhận từ ngân hàng.
+     - Hàm `verifyACBPaymentStrict`: Đối soát tự động số dư thời gian thực từ API ACB (`apiapp.acb.com.vn`), kiểm tra số dư gia tăng `liveBalance >= baseline + amountVnd`.
+     - Endpoint `POST rewards/bank/confirm`: Kiểm tra nghiêm ngặt cả 2 yếu tố: `contentMatches` (chứa mã đơn) VÀ `amountMatches` (số tiền >= giá trị đơn). Nếu sai nội dung hoặc thiếu tiền, trả về HTTP 400 lập tức và từ chối cộng điểm.
+     - Bổ sung nút bấm thủ công: `⚡ Tôi đã chuyển tiền xong - Kiểm tra ngay` giúp người dùng kích hoạt đối soát tức thì ngay sau khi chuyển tiền trên điện thoại.
+  5. **Đồng bộ Song song Toàn diện**:
+     - Đồng bộ toàn bộ các cải tiến trên sang cả 2 thư mục `ui-preview` (Port 3001) và `frontend`.
+     - Biên dịch thử nghiệm cả hai dự án (`npm run build`): Đạt mã thoát **Code 0** (0 lỗi TypeScript, 0 lỗi biên dịch).
+* **Kiểm thử Thực tế (100% Pass)**:
+  - Kiểm thử kịch bản sai nội dung: HTTP 400 (Từ chối).
+  - Kiểm thử kịch bản thiếu tiền: HTTP 400 (Từ chối).
+  - Kiểm thử kịch bản đúng nội dung & đủ tiền: HTTP 200 (Cộng điểm chuẩn xác, phát hành chữ ký Solana Devnet 88 ký tự).
+  - Kiểm thử giao diện trên trình duyệt live: Đầy đủ PreviewNavbar, VietQR ACB, banner cảnh báo, nút kiểm tra tức thì.
+
