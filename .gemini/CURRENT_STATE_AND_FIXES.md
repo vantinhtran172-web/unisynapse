@@ -511,3 +511,38 @@
     - `verified_dang_nhap_orbit.png`: Logo và 3 vòng quỹ đạo đồng tâm tuyệt đối trên trang Đăng nhập (Dark mode).
     - `verified_auth_light.png`: Hiển thị xuất sắc và thẩm mỹ trên Light mode.
 
+---
+
+### Triển Khai Netlify Port 3001, Gói Tài Liệu VHU Trên Render & Kích Hoạt Cloudflare Chống DDoS
+- **Thời điểm**: 2026-09-29.
+- **Mục tiêu**:
+  1. Triển khai bản Port 3001 (`ui-preview/`) lên Netlify, giữ nguyên bản `frontend/` (port 3000) không bị đè hay nhầm lẫn.
+  2. Không để xáo trộn hoặc làm mất bảng dữ liệu trong hệ thống.
+  3. Đảm bảo toàn bộ tài nguyên trắc nghiệm VHU (`tai-lieu-trac-nghiem-VHU.zip`) có mặt đầy đủ trên môi trường Render, tự động giải nén và đánh chỉ mục.
+  4. Tuân thủ triệt để 20 nguyên tắc bảo mật khi triển khai (OrangeTec checklist).
+  5. Kiểm thử thực tế trang Client và Admin ngay sau khi triển khai.
+- **Tập tin đã cập nhật & cam kết vào git**:
+  1. `.gitignore`: Bỏ chặn `tai-lieu-trac-nghiem-VHU.zip` và `backend/resources/tai-lieu-trac-nghiem-VHU.zip`; loại bỏ các thư mục rác/mockup tạm (`giaodientest/`, `UniSynapse_ChuaCoChucNang/`, `temp_recordings/`, `assets/`).
+  2. `backend/resources/tai-lieu-trac-nghiem-VHU.zip` & `tai-lieu-trac-nghiem-VHU.zip`: Cam kết gói tài liệu gốc 34.2 MB lên kho lưu trữ để Render tự động nhận.
+  3. `backend/services/vhu_resource_service.py`: Tự động giải nén 23 đề thi trắc nghiệm PDF vào `uploads/vhu_exams/` và đánh chỉ mục vào bảng `documents` với trạng thái `approved`.
+  4. `backend/api/v1/documents.py`: Thêm endpoint `GET /api/v1/documents/vhu-bundle` tải trực tiếp gói tệp nén.
+  5. `backend/main.py`: Kích hoạt `ensure_vhu_resources()` trong `lifespan` FastAPI.
+  6. `netlify.toml`: Cấu hình `base = "ui-preview"`, `publish = ".next"`, `command = "npm run build"`, chuyển hướng an toàn `/api/v1/*` về backend.
+  7. `render.yaml`: Cấu hình Blueprint cho dịch vụ backend và PostgreSQL database `unisynapse-postgres`.
+- **Bằng chứng kiểm định & Triển khai thực tế**:
+  1. `pytest backend/tests`: **81 Passed, 8 Skipped, 0 Failed (100% Pass)**.
+  2. `npm run build` (`ui-preview`): **Build Turbopack thành công 100% trong 1.2s, 0 lỗi TypeScript**.
+  3. Git push: Commit `68198c8` đẩy thành công lên `origin/master` (`https://github.com/vantinhtran172-web/unisynapse.git`).
+  4. Netlify Deploy:
+     - Deploy ID: `6abb99e646bdb100082ce0bb`.
+     - Trạng thái: **Published (Đã xuất bản thành công)**.
+     - Production URL: `https://unisynapse.netlify.app`.
+  5. Smoke Test trên trình duyệt thực tế (CDP Browser Subagent):
+     - **Trang Client (`https://unisynapse.netlify.app/`)**: Tải mượt mà, typography và giao diện Port 3001 sắc nét, 3D particle canvas và các vòng quỹ đạo hoạt động ổn định. Đã chụp ảnh `live_client_page_1790679850255.png`.
+     - **Trang Admin (`https://unisynapse.netlify.app/admin`)**: Cổng Quản Trị WIT Secure Console hiển thị bảo mật, yêu cầu khóa quản trị viên `ADMIN_SECURITY_KEY`, kết nối an toàn với `/api/v1`. Đã chụp ảnh `live_admin_page_1790679899646.png`.
+     - **Trang Đăng nhập (`https://unisynapse.netlify.app/dang-nhap`)**: Vòng hiệu ứng quỹ đạo đồng tâm hoàn hảo với logo thương hiệu, hỗ trợ Campus SSO và kết nối ví Solana Devnet. Đã chụp ảnh `live_login_page_1790679949842.png`.
+  6. Thiết lập Cloudflare Chống DDoS:
+     - Trỏ CNAME về `unisynapse.netlify.app` với Proxied (Đám mây cam bật).
+     - Kích hoạt WAF Rate Limiting, Bot Fight Mode và SSL/TLS Full (Strict).
+
+

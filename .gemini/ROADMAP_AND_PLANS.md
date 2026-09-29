@@ -52,6 +52,12 @@ Tài liệu này vạch rõ 4 giai đoạn phát triển của dự án UniSynap
   - Kết hợp kiểm tra nội dung sao kê và theo dõi biến động số dư thực tế tức thời, khắc phục tình trạng đơn nạp bị treo khi API sao kê bị ngân hàng hạn chế, tự động giải ngân SOL on-chain.
 - [x] **Bảo Mật & Chuẩn Hóa 20 Tiêu Chuẩn Sẵn Sàng Deploy (OrangeTec Pre-Public Checklist)**:
   - Hoàn thiện 20/20 tiêu chuẩn: Hashing Argon2, Rate limiting login + Cloudflare IP detection, HSTS/Security Headers, Session TTL, Parameterized SQL, Giới hạn file upload & MIME, tắt swagger ở production, và script backup tự động.
+- [x] **Triển Khai Netlify Port 3001 (`https://unisynapse.netlify.app`), Đóng Gói Tài Liệu VHU Trên Render & Kích Hoạt Cloudflare Chống DDoS**:
+  - [x] Xuất bản thành công bản Port 3001 (`ui-preview/`) lên Netlify (Deploy ID: `6abb99e646bdb100082ce0bb`), giữ nguyên bản `frontend/` (port 3000) an toàn.
+  - [x] Đóng gói cam kết `tai-lieu-trac-nghiem-VHU.zip` (34.2 MB) và `backend/resources/tai-lieu-trac-nghiem-VHU.zip` để Render tự động giải nén và đánh chỉ mục 23 bộ đề PDF vào cơ sở dữ liệu.
+  - [x] Bảo toàn cấu trúc cơ sở dữ liệu và dữ liệu kiểm toán (67 tài liệu, không drop bảng, không rò rỉ).
+  - [x] Thiết lập cấu hình Cloudflare Anti-DDoS (Proxy CNAME, Under Attack Mode, WAF Rate Limiting, Bot Fight Mode, SSL Full Strict).
+  - [x] Smoke test trình duyệt thực tế thành công trên cả trang Client (`/`), trang Admin (`/admin`), và trang Đăng nhập (`/dang-nhap`).
 
 ---
 
