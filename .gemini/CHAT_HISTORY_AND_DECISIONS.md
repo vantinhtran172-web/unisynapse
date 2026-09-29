@@ -870,3 +870,33 @@ Tài liệu này ghi lại toàn bộ tiến trình trao đổi, các phản h�
   - Kiểm thử kịch bản đúng nội dung & đủ tiền: HTTP 200 (Cộng điểm chuẩn xác, phát hành chữ ký Solana Devnet 88 ký tự).
   - Kiểm thử giao diện trên trình duyệt live: Đầy đủ PreviewNavbar, VietQR ACB, banner cảnh báo, nút kiểm tra tức thì.
 
+---
+
+### Yêu cầu 15: Khôi Phục Động Cơ AI Tutor GPT-5.6 Luna (9Router Gateway), Gỡ Bỏ Hardcoding Gemini & Mặt Nạ Regex
+* **Yêu cầu gốc**: *"ai tutor không gọi về api gpt 5.6 luna mà dường như đang gọi về api gemini"*
+* **Nguyên nhân cốt lõi phát hiện**:
+  1. Trong đợt cập nhật trước đó, logic trong `ui-preview/src/app/api/v1/[...slug]/route.ts` đã hardcode gọi trực tiếp hàm `queryGeminiAITutor` (gọi về `gemini-3.1-flash-lite`), hoàn toàn bỏ qua cổng 9Router và mô hình `cx/gpt-5.6-luna`.
+  2. Trong `ui-preview/src/components/AITutorChat.tsx`, mã nguồn đã sử dụng regex `s.replace(/GPT-?5\.6[- ]Luna/gi, "GPT-6.0 Sol")` và hardcode tên "GPT-6.0 Sol", đồng thời thay badge mô hình thành Google Gemini.
+  3. Cấu hình biến môi trường `NINEROUTER_BASE_URL` và `NINEROUTER_API_KEY` trong `backend/core/config.py` và `.env` bị thiếu default url hoạt động.
+* **Hành động & Khắc phục chuẩn xác**:
+  1. **Tích hợp Gọi Trực tiếp 9Router `cx/gpt-5.6-luna` trong Next.js Route Handler**:
+     - Cập nhật hàm `queryGPT56LunaTutor` trong cả `ui-preview` và `frontend`: Gọi trực tiếp endpoint `https://rrzqgu4.abc-tunnel.us/v1/chat/completions` với mô hình `cx/gpt-5.6-luna` và bearer token `sk-7d22549baacade14-wn4lw5-471a8dbb`.
+     - System prompt thiết lập đúng định danh: `Bạn là UniSynapse AI Tutor (GPT-5.6 Luna) - Trợ lý gia sư AI và đối chiếu tri thức học thuật chính thức của Trường Đại học Văn Hiến (VHU)`.
+     - Hỗ trợ cơ chế hybrid dự phòng (fallback) tự động sang Gemini chỉ khi mạng 9Router timeout hoặc gặp sự cố upstream, đảm bảo trải nghiệm sinh viên luôn liên tục không gián đoạn.
+  2. **Gỡ Bỏ Hoàn Toàn Regex Che Giấu & Khôi Phục Nhãn GPT-5.6 Luna trên UI**:
+     - Gỡ bỏ `sanitizeAI` regex khỏi `AITutorChat.tsx`.
+     - Khôi phục tiêu đề: `UniSynapse AI Tutor (GPT-5.6 Luna)` • `Vận hành bởi GPT-5.6 Luna • Đối chiếu kho học liệu kiểm định`.
+     - Khôi phục badge trạng thái: `⚡ GPT-5.6 Luna`.
+     - Khôi phục modal chọn mô hình: `<option value="cx/gpt-5.6-luna">⚡ GPT-5.6 Luna (Mặc định)</option>`.
+     - Gắn nhãn câu trả lời chuẩn xác: `⚡ GPT-5.6 Luna (Grounded RAG)`.
+  3. **Khôi Phục Cấu Hình Backend Python**:
+     - Cập nhật `backend/core/config.py`: Đặt mặc định `NINEROUTER_BASE_URL="https://rrzqgu4.abc-tunnel.us/v1"`, `NINEROUTER_API_KEY="sk-7d22549baacade14-wn4lw5-471a8dbb"`.
+     - Cập nhật `backend/services/ninerouter_service.py` và `backend/services/rag_service.py`: Gỡ bỏ chuỗi replace `GPT-6.0 Sol`, khôi phục provider và engine `GPT-5.6 Luna`.
+  4. **Kiểm thử Thực tế (Pass 100%)**:
+     - `npm run build` trên cả `ui-preview` và `frontend`: Biên dịch thành công 0 lỗi.
+     - Trình duyệt subagent truy cập `http://localhost:3001/?tab=tutor`:
+       - Header, sub-header, model badge, modal dropdown đều hiển thị đúng **GPT-5.6 Luna**.
+       - Gửi câu hỏi test vào chat input: AI Tutor phản hồi kiến thức 19 môn VHU với nhãn **`⚡ GPT-5.6 Luna (Grounded RAG)`**.
+       - Ảnh chụp màn hình kiểm chứng: `ai_tutor_luna_verify_1790717566125.png`.
+     - Đã đồng bộ và đẩy mã nguồn lên cả 2 remote GitHub (`vantinhtran172-web/unisynapse` và `dericaesal-sys/unisynapse`).
+
