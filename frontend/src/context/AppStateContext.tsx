@@ -37,15 +37,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState<boolean>(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const p = new URLSearchParams(window.location.search).get("tab");
-        if (p) return p;
-      } catch {}
-    }
-    return "dashboard";
-  });
+  const [activeTab, setActiveTab] = useState<string>("dashboard");
   const refreshGeneration = useRef(0);
 
   const refreshState = useCallback(async () => {
@@ -53,49 +45,39 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setRefreshing(true);
     setError(null);
     try {
-      // 1. Get session status gracefully without generating 401 network errors
-      const session = await api.getSession();
+      const results = await Promise.allSettled([
+        api.getMe(),
+        api.getOpenTasks(),
+        api.getDocuments(),
+        api.getLedger(),
+      ]);
       if (generation !== refreshGeneration.current) return;
 
-      const isAuthenticated = session.authenticated && Boolean(session.user);
-      setAuthRequired(!isAuthenticated);
-
-      if (isAuthenticated && session.user) {
-        setUser(session.user);
-        setUnipoints(session.user.unipoints);
-        setReputation(session.user.reputation);
-      } else {
+      const [userResult, tasksResult, documentsResult, ledgerResult] = results;
+      const failures = results.filter((result) => result.status === "rejected");
+      const sessionExpired = userResult.status === "rejected" && userResult.reason instanceof Error &&
+        "status" in userResult.reason && userResult.reason.status === 401;
+      setAuthRequired(sessionExpired);
+      if (sessionExpired) {
         setUser(null);
         setUnipoints(0);
         setReputation(0);
         setLedger([]);
+        setLastUpdated(null);
+      } else if (userResult.status === "fulfilled") {
+        setUser(userResult.value);
+        setUnipoints(userResult.value.unipoints);
+        setReputation(userResult.value.reputation);
       }
-
-      // 2. Fetch public tasks and documents; only fetch ledger for authenticated users
-      const requests = [
-        api.getOpenTasks(),
-        api.getDocuments(),
-        ...(isAuthenticated ? [api.getLedger()] : []),
-      ] as const;
-
-      const results = await Promise.allSettled(requests);
-      if (generation !== refreshGeneration.current) return;
-
-      const tasksResult = results[0];
-      const documentsResult = results[1];
-      const ledgerResult = results[2];
-
-      if (tasksResult && tasksResult.status === "fulfilled") {
-        setTasks(Array.isArray(tasksResult.value) ? tasksResult.value : []);
+      // Open labeling tasks and approved documents are public curriculum assets
+      if (tasksResult.status === "fulfilled") setTasks(Array.isArray(tasksResult.value) ? tasksResult.value : []);
+      if (documentsResult.status === "fulfilled") setDocuments(Array.isArray(documentsResult.value) ? documentsResult.value : []);
+      if (ledgerResult.status === "fulfilled" && !sessionExpired) setLedger(Array.isArray(ledgerResult.value) ? ledgerResult.value : []);
+      if (failures.length > 0 && !sessionExpired) {
+        setError("Một số dữ liệu chưa tải được. Hãy thử làm mới lại.");
+      } else if (!sessionExpired) {
+        setLastUpdated(Date.now());
       }
-      if (documentsResult && documentsResult.status === "fulfilled") {
-        setDocuments(Array.isArray(documentsResult.value) ? documentsResult.value : []);
-      }
-      if (ledgerResult && ledgerResult.status === "fulfilled") {
-        setLedger(Array.isArray(ledgerResult.value) ? ledgerResult.value : []);
-      }
-
-      setLastUpdated(Date.now());
     } catch (err) {
       if (generation === refreshGeneration.current) {
         setError(err instanceof Error ? err.message : "Không thể tải dữ liệu ứng dụng.");
@@ -109,38 +91,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get("tab");
-      if (tabParam) {
-        setActiveTab(tabParam);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const isAuthPage = typeof window !== "undefined" && (
-      window.location.pathname.startsWith("/dang-ky") ||
-      window.location.pathname.startsWith("/dang-nhap")
-    );
-
     const timer = window.setTimeout(() => {
       void refreshState();
     }, 0);
-
-    // On registration / login pages, do not poll
-    if (isAuthPage) {
-      return () => {
-        window.clearTimeout(timer);
-        refreshGeneration.current += 1;
-      };
-    }
-
     // Poll every 10 seconds for real-time peer votes/consensus
     const interval = setInterval(() => {
       void refreshState();
     }, 10000);
-
     return () => {
       window.clearTimeout(timer);
       clearInterval(interval);
@@ -156,32 +113,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const submitTask = async (taskId: string, label: string) => {
     const res = await api.submitTask(taskId, label);
-    const addedPoints = res?.reward_points ?? 50;
-    setUnipoints((prev) => prev + addedPoints);
-    setReputation((prev) => prev + 1);
-    if (user) {
-      setUser((prevUser) => prevUser ? {
-        ...prevUser,
-        unipoints: (prevUser.unipoints || 0) + addedPoints,
-        reputation: (prevUser.reputation || 0) + 1,
-      } : null);
-    }
     await refreshState();
     return res;
   };
 
   const uploadDocument = async (file: File, university?: string, subject_code?: string, subject_name?: string) => {
     const res = await api.uploadDocument(file, true, university, subject_code, subject_name);
-    const addedPoints = (res as any)?.reward_points ?? 100;
-    setUnipoints((prev) => prev + addedPoints);
-    setReputation((prev) => prev + 5);
-    if (user) {
-      setUser((prevUser) => prevUser ? {
-        ...prevUser,
-        unipoints: (prevUser.unipoints || 0) + addedPoints,
-        reputation: (prevUser.reputation || 0) + 5,
-      } : null);
-    }
     await refreshState();
     return res;
   };

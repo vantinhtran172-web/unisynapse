@@ -110,14 +110,14 @@ export default function ProofExplorer() {
           </a>
         </div>
 
-        {oracleRegistry && oracleRegistry.oracle_registry_pda ? (
+        {oracleRegistry && (
           <div className="flex items-center justify-between text-[11px] pt-2 border-t border-purple-200 dark:border-purple-500/20 text-slate-600 dark:text-slate-300 font-mono">
             <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
               Oracle Registry:
             </span>
             <a
-              href={oracleRegistry.explorer_url || `https://explorer.solana.com/address/${oracleRegistry.oracle_registry_pda}?cluster=devnet`}
+              href={oracleRegistry.explorer_url}
               target="_blank"
               rel="noreferrer"
               className="text-violet-700 dark:text-violet-400 hover:underline font-bold truncate max-w-[220px]"
@@ -125,13 +125,13 @@ export default function ProofExplorer() {
               {oracleRegistry.oracle_registry_pda.slice(0, 8)}...{oracleRegistry.oracle_registry_pda.slice(-6)} ↗
             </a>
           </div>
-        ) : null}
+        )}
 
       </div>
 
       {/* Ledger list */}
       <div className="flex-grow overflow-y-auto space-y-2.5 max-h-[360px] pr-1">
-        {!Array.isArray(ledger) || ledger.length === 0 ? (
+        {ledger.length === 0 ? (
           <div className="p-8 text-center text-slate-500 text-xs">
             Chưa có bút toán nào trong sổ cái. Hãy hoàn thành 1 nhiệm vụ hoặc tải lên tài liệu để nhận bằng chứng đầu tiên!
           </div>
@@ -144,7 +144,7 @@ export default function ProofExplorer() {
               <div className="flex justify-between items-start">
                 <div>
                   <span className="font-semibold text-slate-900 dark:text-white text-xs block">{entry.reason}</span>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400">Nguồn: {(entry.source_type || "TASK").toUpperCase()} • {new Date((entry.created_at || Math.floor(Date.now()/1000)) * 1000).toLocaleTimeString()}</span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">Nguồn: {entry.source_type.toUpperCase()} • {new Date(entry.created_at * 1000).toLocaleTimeString()}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-mono">
@@ -157,14 +157,14 @@ export default function ProofExplorer() {
                       ? "text-rose-700 dark:text-rose-300 bg-rose-500/10 border-rose-500/20"
                       : "text-amber-700 dark:text-amber-200 bg-amber-500/10 border-amber-500/20"
                   }`}>
-                    {entry.solana_signature ? "Đã ký On-chain" : entry.proof_status === "verified" ? "Đã xác minh" : entry.proof_status || "Chờ xử lý"}
+                    {entry.solana_signature ? "Đã ký On-chain" : entry.proof_status === "verified" ? "Đã xác minh" : entry.proof_status}
                   </span>
                 </div>
               </div>
 
               <div className="pt-1.5 border-t border-slate-100 dark:border-white/5 flex items-center justify-between text-[10px] font-mono text-slate-500 dark:text-slate-400">
                 <span className="truncate max-w-[200px]" title={entry.solana_signature || entry.proof_hash}>
-                  {entry.solana_signature ? `Tx: ${entry.solana_signature.slice(0, 10)}...${entry.solana_signature.slice(-6)}` : entry.proof_hash ? `Hash: ${entry.proof_hash.slice(0, 14)}...` : "Tx: Đang đồng bộ"}
+                  {entry.solana_signature ? `Tx: ${entry.solana_signature.slice(0, 10)}...${entry.solana_signature.slice(-6)}` : `Hash: ${entry.proof_hash.slice(0, 14)}...`}
                 </span>
                 {(entry.explorer_url || entry.solana_signature) ? (
                   <a

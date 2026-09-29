@@ -21,17 +21,11 @@ const nextConfig: NextConfig = {
     "reflects-self-relation-tigers.trycloudflare.com",
     "*.loca.lt"
   ],
-  async redirects() {
+  async rewrites() {
     return [
       {
-        source: "/dant-ky",
-        destination: "/dang-ky",
-        permanent: true,
-      },
-      {
-        source: "/dant-nhap",
-        destination: "/dang-nhap",
-        permanent: true,
+        source: "/api/v1/:path*",
+        destination: `${upstreamTarget}/api/v1/:path*`,
       },
     ];
   },

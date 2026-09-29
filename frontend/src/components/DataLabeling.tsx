@@ -32,16 +32,11 @@ export default function DataLabeling() {
 
   const safeIndex = currentTaskIndex < tasks.length ? currentTaskIndex : 0;
   const activeTask = tasks[safeIndex];
-  const completedTasksCount = tasks.filter((t) => t.user_submitted).length;
 
   const handleSelectLabel = async (label: string) => {
     if (!activeTask) return;
     if (!user) {
       setErrorMessage("Vui lòng đăng nhập để gửi nhãn và nhận thưởng UniPoints!");
-      return;
-    }
-    if (activeTask.user_submitted) {
-      setErrorMessage("Bạn đã gửi nhãn cho bài toán này rồi. Mỗi tài khoản chỉ được thực hiện 1 lần duy nhất!");
       return;
     }
     setIsSubmitting(true);
@@ -76,9 +71,6 @@ export default function DataLabeling() {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-bold text-slate-900 dark:text-white">Nhiệm Vụ Gán Nhãn Dữ Liệu</h2>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-300 dark:border-emerald-700/50">
-              Đã làm: {completedTasksCount}/{tasks.length}
-            </span>
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -108,11 +100,11 @@ export default function DataLabeling() {
         </span>
       </div>
 
-      <div className="bg-slate-100 dark:bg-slate-800/95 p-4 rounded-xl border border-slate-300/80 dark:border-slate-700/70 mb-5 flex-grow">
-        <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider block mb-1">
+      <div className="bg-slate-50 dark:bg-slate-800/90 p-4 rounded-xl border border-slate-200 dark:border-white/5 mb-5 flex-grow">
+        <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold uppercase tracking-wider block mb-1">
           {activeTask.category}
         </span>
-        <p className="text-slate-900 dark:text-slate-100 text-sm leading-relaxed italic font-medium">
+        <p className="text-slate-800 dark:text-slate-200 text-sm leading-relaxed italic">
           &quot;{activeTask.input_text}&quot;
         </p>
       </div>
@@ -135,17 +127,17 @@ export default function DataLabeling() {
 
       {!result ? (
         <div className="space-y-3 mt-auto">
-          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">Chọn phân loại của bạn:</p>
+          <p className="text-xs font-medium text-slate-700 dark:text-slate-300">Chọn phân loại của bạn:</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             {activeTask.labels.map((lbl) => (
               <button
                 key={lbl}
                 onClick={() => handleSelectLabel(lbl)}
                 disabled={isSubmitting || activeTask.user_submitted}
-                className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all duration-200 capitalize flex items-center justify-center gap-1.5 ${
+                className={`py-2.5 px-3 rounded-xl text-xs font-semibold border transition-all duration-200 capitalize flex items-center justify-center gap-1.5 ${
                   activeTask.user_label === lbl
                     ? "bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-500/25"
-                    : "bg-white text-slate-900 border-slate-300 hover:bg-slate-100 hover:text-blue-600 dark:bg-slate-800/95 dark:text-slate-100 dark:border-slate-700/80 dark:hover:bg-slate-700 dark:hover:text-blue-300 dark:hover:border-blue-500 shadow-xs"
+                    : "bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-white/10 hover:border-blue-500 shadow-xs"
                 } disabled:opacity-50`}
               >
                 {lbl}
@@ -154,45 +146,14 @@ export default function DataLabeling() {
           </div>
 
           {activeTask.user_submitted && !result && (
-            <div className="mt-3 space-y-2.5">
-              <div className="p-2.5 bg-amber-500/10 dark:bg-amber-950/30 border border-amber-500/30 rounded-xl text-[11px] text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
-                <span>🔒</span>
-                <span>Mỗi tài khoản chỉ được thực hiện nhiệm vụ này 1 lần duy nhất để bảo đảm tính khách quan đồng thuận.</span>
-              </div>
-              <div className="p-3 bg-emerald-500/10 dark:bg-emerald-950/40 border border-emerald-500/30 rounded-xl space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span>✓ Đã đóng góp nhãn: &quot;{activeTask.user_label}&quot;</span>
-                  </span>
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded font-mono font-semibold">
-                    +{activeTask.reward_points} UP
-                  </span>
-                </div>
-                {activeTask.user_proof_status === "verified" && activeTask.user_explorer_url && activeTask.user_solana_signature ? (
-                  <div className="flex items-center justify-between pt-2 border-t border-emerald-500/20 text-[11px]">
-                    <span className="text-emerald-800 dark:text-emerald-300 font-semibold font-mono">Bằng chứng Solana Devnet:</span>
-                    <a
-                      href={activeTask.user_explorer_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-mono text-[11px] font-semibold transition-all shadow-xs"
-                    >
-                      <span>Tx: {activeTask.user_solana_signature.slice(0, 8)}...</span>
-                      <span>↗</span>
-                    </a>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between pt-2 border-t border-emerald-500/20 text-[11px] text-slate-500 dark:text-slate-400">
-                    <span>Trạng thái:</span>
-                    <span className="font-semibold text-amber-700 dark:text-amber-300 font-mono">Đã ghi nhận điểm nội bộ · Chưa có bằng chứng on-chain</span>
-                  </div>
-                )}
-              </div>
+            <div className="mt-3 text-center space-y-2">
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                ✓ Bạn đã đóng góp cho bài toán này (Đang chờ thêm phiếu đối chiếu chéo).
+              </p>
               <button
                 type="button"
                 onClick={handleNextTask}
-                className="btn-cyber-secondary w-full py-2 text-xs font-semibold flex items-center justify-center gap-1 shadow-sm"
+                className="btn-cyber-secondary py-1.5 px-3 text-xs font-semibold inline-flex items-center gap-1 shadow-sm"
               >
                 Chuyển bài toán tiếp theo →
               </button>
@@ -202,7 +163,7 @@ export default function DataLabeling() {
           {isSubmitting && (
             <div className="flex items-center justify-center gap-2 text-xs text-blue-600 dark:text-blue-400 mt-2">
               <div className="w-3.5 h-3.5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin"></div>
-              Đang ghi nhận nhãn và kiểm tra xác nhận Solana Devnet...
+              Đang xác thực và đối chiếu chéo (Consensus)...
             </div>
           )}
         </div>
@@ -235,27 +196,26 @@ export default function DataLabeling() {
               </div>
             </div>
 
-            <div className="text-[11px] text-slate-600 dark:text-slate-400 font-mono space-y-1.5 pt-2 border-t border-slate-200 dark:border-white/10">
-              <div className="flex justify-between items-center text-[10px]">
-                <span><b className="text-slate-500 dark:text-slate-400">Mã nhiệm vụ:</b> #{result.task_id}</span>
-                <span><b className="text-slate-500 dark:text-slate-400">Người đóng góp:</b> {publicKey ? publicKey.toBase58().slice(0, 8) + "..." : user?.id?.slice(0, 10)}</span>
-              </div>
-              
-              {result.proof_status === "verified" && result.solana_signature && result.explorer_url ? (
-                <div className="mt-2 p-2.5 rounded-lg bg-emerald-500/10 dark:bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between gap-2">
-                  <span className="text-emerald-800 dark:text-emerald-300 font-bold text-xs">Bằng chứng Solana Devnet:</span>
+            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono space-y-1 pt-1.5 border-t border-slate-200 dark:border-white/5">
+              <p><span className="text-slate-400 dark:text-slate-500">Mã nhiệm vụ:</span> #{result.task_id}</p>
+              <p><span className="text-slate-400 dark:text-slate-500">Người đóng góp:</span> {publicKey ? publicKey.toBase58().slice(0, 10) + "..." : user?.id}</p>
+              {(result.explorer_url || result.solana_signature) ? (
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1">
+                    <span>⛓️</span> Neo bằng chứng Solana:
+                  </span>
                   <a
-                    href={result.explorer_url}
+                    href={result.explorer_url || `https://explorer.solana.com/tx/${result.solana_signature}?cluster=devnet`}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-mono text-[11px] font-semibold transition-all"
-                  >Tx: {result.solana_signature.slice(0, 8)}... ↗</a>
+                    className="text-blue-600 dark:text-blue-400 hover:underline font-semibold flex items-center gap-0.5"
+                  >
+                    <span>Explorer ({result.solana_signature?.slice(0, 8)}...)</span>
+                    <span>↗</span>
+                  </a>
                 </div>
               ) : (
-                <div className="mt-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs text-amber-800 dark:text-amber-300">
-                  <span>Bằng chứng:</span>
-                  <span className="font-semibold">Đã ghi nhận điểm nội bộ · Chưa có bằng chứng on-chain</span>
-                </div>
+                <p><span className="text-slate-400 dark:text-slate-500">Bằng chứng:</span> Đã ghi nhận vào Sổ cái bất biến</p>
               )}
             </div>
           </div>
@@ -269,7 +229,6 @@ export default function DataLabeling() {
           </button>
         </div>
       )}
-
     </div>
   );
 }
