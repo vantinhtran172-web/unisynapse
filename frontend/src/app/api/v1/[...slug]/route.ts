@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sampleTasks, TaskItemData } from "@/lib/sampleTasks";
+import { sampleLedger, LedgerItemData } from "@/lib/sampleLedger";
+import { sampleAuditEvents, AuditItemData } from "@/lib/sampleAudit";
 
 // In-memory persistent registries for Edge / Serverless / Netlify
 interface RegisteredUser {
@@ -761,32 +763,30 @@ interface TaskSubmissionRecord {
 
 const mockTaskSubmissions: Map<string, TaskSubmissionRecord> = new Map();
 
-const mockLedger = [
-  {
-    id: "led_01",
-    user_id: "usr_vhu_demo_001",
-    reason: "Thưởng khởi tạo tài khoản thành viên mới",
-    delta: 100,
-    created_at: Math.floor(Date.now() / 1000) - 7200,
-    source_type: "signup_bonus",
-    proof_status: "verified",
-    solana_signature: "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj",
-    explorer_url: "https://explorer.solana.com/tx/2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj?cluster=devnet",
-    proof_hash: "8f14e45fceea167a5a36dedd4bea2543",
-  },
-  {
-    id: "led_02",
-    user_id: "usr_vhu_demo_001",
-    reason: "Đóng góp gán nhãn Giáo trình OOP VHU",
-    delta: 50,
-    created_at: Math.floor(Date.now() / 1000) - 3600,
-    source_type: "data_labeling",
-    proof_status: "verified",
-    solana_signature: "knVVCmSvPGqZNpkzod3qB1eAYSmFQEZunMjtn6PHAwGDk3cgs4Lv3zUvR6x15DMvUuGVQX1anYF4UCFN9DRSesN",
-    explorer_url: "https://explorer.solana.com/tx/knVVCmSvPGqZNpkzod3qB1eAYSmFQEZunMjtn6PHAwGDk3cgs4Lv3zUvR6x15DMvUuGVQX1anYF4UCFN9DRSesN?cluster=devnet",
-    proof_hash: "3a91b2c4d5e6f708192a3b4c5d6e7f80",
-  },
-];
+export interface OracleJobRecord {
+  id: string;
+  document_id: string;
+  owner_id: string;
+  checksum_sha256: string;
+  quality_score: number;
+  chunk_count: number;
+  nonce: number;
+  status: "queued" | "processed" | "confirmed" | "finalized" | "failed";
+  tx_signature?: string;
+  attestation_pda: string;
+  fast_gate_latency_ms: number;
+  submit_latency_ms?: number;
+  confirmed_latency_ms?: number;
+  finalized_latency_ms?: number;
+  created_at: number;
+  updated_at: number;
+  explorer_url?: string;
+}
+
+const mockOracleJobs: Map<string, OracleJobRecord> = new Map();
+
+const mockLedger: LedgerItemData[] = [...sampleLedger];
+const mockAuditEvents: AuditItemData[] = [...sampleAuditEvents];
 
 interface BankDepositItem {
   id: string;
@@ -1118,17 +1118,36 @@ export async function GET(
       mockLedger.unshift({
         id: `led_bank_${Date.now()}`,
         user_id: user?.id || "usr_current",
-        created_at: nowSec,
+        username: user?.username || "sinhvien_vhu",
+        amount: order.points || 0,
+        delta: order.points || 0,
+        tx_type: order.payout_mode === "sol_swap" ? "sol_swap" : "bank_deposit",
+        source_type: "bank_deposit",
+        memo:
+          order.payout_mode === "sol_swap"
+            ? `Đổi ${order.sol_amount} SOL qua VietQR ACB (${order.order_code})`
+            : `Nạp UniPoints VietQR ACB (${order.order_code})`,
         reason:
           order.payout_mode === "sol_swap"
             ? `Đổi ${order.sol_amount} SOL qua VietQR ACB (${order.order_code})`
             : `Nạp UniPoints VietQR ACB (${order.order_code})`,
-        source_type: "bank_deposit",
-        delta: order.points || 0,
+        created_at: nowSec,
+        timestamp: nowSec,
         proof_hash: checkResult.ref || order.order_code,
         proof_status: "verified",
         solana_signature: order.solana_signature,
         explorer_url: `https://explorer.solana.com/tx/${order.solana_signature}?cluster=devnet`,
+      });
+
+      mockAuditEvents.unshift({
+        id: `aud_${Date.now().toString(36)}`,
+        action: "bank_deposit_auto_verified",
+        event_type: "bank_deposit_auto_verified",
+        user_id: user?.username || "sinhvien_vhu",
+        actor_id: "acb_gateway",
+        details: `Đối soát ACB VietQR tự động thành công đơn [${order.order_code}] ${order.amount_vnd.toLocaleString("vi-VN")} đ. +${order.points} UP`,
+        timestamp: nowSec,
+        created_at: nowSec,
       });
 
       return NextResponse.json({
@@ -1160,16 +1179,66 @@ export async function GET(
     });
   }
 
-  // 11. Oracle Registry (Tab Solana ProofExplorer)
+  // 11. Oracle Registry (Tab Solana ProofExplorer & Document Verification)
   if (path === "oracle/registry") {
     return NextResponse.json({
+      ok: true,
       status: "active",
       program_id: "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
       oracle_registry_pda: "8xTXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurV",
+      oracle_registry_bump: 254,
+      oracle_authority: "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
       explorer_url: "https://explorer.solana.com/address/8xTXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurV?cluster=devnet",
-      total_attestations: 142,
+      total_attestations: 142 + mockOracleJobs.size,
       network: "devnet",
     });
+  }
+
+  // 11b. Oracle Job Status Lookup & Dynamic 4-Stage Attestation Progression
+  if (path.startsWith("oracle/jobs/")) {
+    const jobId = slug[2];
+    const nowSec = Date.now() / 1000;
+    let job = mockOracleJobs.get(jobId);
+    if (!job) {
+      job = {
+        id: jobId,
+        document_id: "doc_vhu_verified",
+        owner_id: "usr_vhu",
+        checksum_sha256: "8afcb385db17cef27cd271d378ad4dc780bd533115da9d57a30707f7e8d984c4",
+        quality_score: 96,
+        chunk_count: 14,
+        nonce: 1,
+        status: "finalized",
+        tx_signature: "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj",
+        attestation_pda: "8xTXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurV",
+        fast_gate_latency_ms: 42,
+        submit_latency_ms: 115,
+        confirmed_latency_ms: 340,
+        finalized_latency_ms: 650,
+        created_at: nowSec - 5,
+        updated_at: nowSec,
+        explorer_url: "https://explorer.solana.com/tx/2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj?cluster=devnet",
+      };
+      mockOracleJobs.set(jobId, job);
+    } else {
+      // Dynamic progression across the 4 stages
+      const elapsed = nowSec - job.created_at;
+      if (elapsed >= 2.0) {
+        job.status = "finalized";
+        job.submit_latency_ms = job.submit_latency_ms || 110;
+        job.confirmed_latency_ms = job.confirmed_latency_ms || 340;
+        job.finalized_latency_ms = job.finalized_latency_ms || 650;
+      } else if (elapsed >= 0.8) {
+        job.status = "confirmed";
+        job.submit_latency_ms = job.submit_latency_ms || 110;
+        job.confirmed_latency_ms = job.confirmed_latency_ms || 340;
+      } else {
+        job.status = "processed";
+        job.submit_latency_ms = job.submit_latency_ms || 110;
+      }
+      job.updated_at = nowSec;
+    }
+    return NextResponse.json({ ok: true, job });
   }
 
   // 12. AI Tutor Tier
@@ -1204,12 +1273,12 @@ export async function GET(
       users: mockUsers.size + 47,
       total_tasks: mockTasksMap.size,
       open_tasks: Array.from(mockTasksMap.values()).filter(t => t.status === "open").length,
-      total_documents: sampleDocuments.length + 20,
-      approved_documents: sampleDocuments.length + 20,
-      pending_documents: 0,
-      rejected_documents: 0,
+      total_documents: sampleDocuments.length,
+      approved_documents: sampleDocuments.filter(d => d.status === "approved").length,
+      pending_documents: sampleDocuments.filter(d => d.status === "pending_review").length,
+      rejected_documents: sampleDocuments.filter(d => d.status === "rejected").length,
       indexed_chunks: 142,
-      solana_proofs: 88,
+      solana_proofs: mockLedger.length,
       total_unipoints: 14200,
       total_labels_submitted: 350,
     });
@@ -1238,7 +1307,7 @@ export async function GET(
   // 19. Admin Ledger & Bank & Audit list
   if (path === "admin/ledger") return NextResponse.json(mockLedger);
   if (path === "admin/bank-deposits") return NextResponse.json(mockBankDeposits);
-  if (path === "admin/audit-events") return NextResponse.json([]);
+  if (path === "admin/audit-events") return NextResponse.json(mockAuditEvents);
 
   // Safety fallback for array-like endpoints
   if (
@@ -1550,17 +1619,34 @@ export async function POST(
     user.reputation = (user.reputation || 0) + 1;
     mockUsers.set(user.username, user);
 
+    const nowSecTask = Math.floor(Date.now() / 1000);
     mockLedger.unshift({
       id: `led_${Date.now()}`,
       user_id: user.id,
-      reason: `Đóng góp gán nhãn: ${task.title}`,
+      username: user.username,
+      amount: rewardPoints,
       delta: rewardPoints,
-      created_at: Math.floor(Date.now() / 1000),
+      tx_type: "task_labeling",
       source_type: "data_labeling",
+      memo: `Đóng góp gán nhãn: ${task.title}`,
+      reason: `Đóng góp gán nhãn: ${task.title}`,
+      created_at: nowSecTask,
+      timestamp: nowSecTask,
       proof_status: "verified",
       solana_signature: solanaTx,
       explorer_url: explorerUrl,
       proof_hash: `hash_task_${Date.now()}`,
+    });
+
+    mockAuditEvents.unshift({
+      id: `aud_${Date.now().toString(36)}`,
+      action: "task_completed",
+      event_type: "task_completed",
+      user_id: user.username,
+      actor_id: user.username,
+      details: `Sinh viên [${user.username}] hoàn tất gán nhãn [${task.id}] nhãn "${label}". +${rewardPoints} UP`,
+      timestamp: nowSecTask,
+      created_at: nowSecTask,
     });
 
     const response = NextResponse.json({
@@ -1586,7 +1672,70 @@ export async function POST(
     return response;
   }
 
-  // 5. Document upload (Góp tài liệu) - AWARDS +100 UNIPOINTS
+  // 4b. Autonomous On-Chain Oracle Live Attestation (Quy trình 6 Cổng)
+  if (path === "oracle/attest") {
+    const user = getUserFromCookie(request);
+    const docId = String(body.document_id || body.documentId || "").trim();
+    if (!docId) {
+      return NextResponse.json({ detail: "Thiếu mã tài liệu (document_id)" }, { status: 400 });
+    }
+
+    const doc = sampleDocuments.find((d) => d.id === docId);
+    const checksum = doc?.checksum || `ck_${Date.now().toString(36)}`;
+    const chunkCount = doc?.chunk_count || 14;
+    const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const pda = "8xTXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurV";
+    const solanaSig = doc?.solana_tx || "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj";
+    const explorerUrl = `https://explorer.solana.com/tx/${solanaSig}?cluster=devnet`;
+    const nowSecOracle = Date.now() / 1000;
+
+    const jobRecord: OracleJobRecord = {
+      id: jobId,
+      document_id: docId,
+      owner_id: user?.id || "usr_current",
+      checksum_sha256: checksum,
+      quality_score: 95,
+      chunk_count: chunkCount,
+      nonce: mockOracleJobs.size + 1,
+      status: "queued",
+      tx_signature: solanaSig,
+      attestation_pda: pda,
+      fast_gate_latency_ms: 45,
+      submit_latency_ms: 110,
+      confirmed_latency_ms: 360,
+      finalized_latency_ms: 680,
+      created_at: nowSecOracle,
+      updated_at: nowSecOracle,
+      explorer_url: explorerUrl,
+    };
+    mockOracleJobs.set(jobId, jobRecord);
+
+    mockAuditEvents.unshift({
+      id: `aud_${Date.now().toString(36)}`,
+      action: "oracle_attestation_initiated",
+      event_type: "oracle_attestation_initiated",
+      user_id: user?.username || "sinhvien_vhu",
+      actor_id: user?.username || "sinhvien_vhu",
+      details: `Oracle Live Attestation kích hoạt cho tài liệu [${docId}] (PDA: ${pda.slice(0, 8)}..., Fast Gate: 45ms)`,
+      timestamp: Math.floor(nowSecOracle),
+      created_at: Math.floor(nowSecOracle),
+    });
+
+    return NextResponse.json(
+      {
+        ok: true,
+        job_id: jobId,
+        status: "queued",
+        document_id: docId,
+        attestation_pda: pda,
+        fast_gate_latency_ms: 45,
+        explorer_url: explorerUrl,
+      },
+      { status: 202 }
+    );
+  }
+
+  // 5. Document upload (Góp tài liệu qua 6 cổng kiểm định) - AWARDS +100 UNIPOINTS
   if (path === "documents/upload" || path === "documents") {
     const user = getUserFromCookie(request);
     let updatedPoints = 200;
@@ -1618,24 +1767,60 @@ export async function POST(
     };
     sampleDocuments.unshift(newDoc);
 
+    const nowSecUpload = Math.floor(Date.now() / 1000);
     // Add entry to ledger
     mockLedger.unshift({
       id: `led_${Date.now()}`,
       user_id: user?.id || "usr_current",
-      reason: "Đóng góp tài liệu học tập VHU mới",
+      username: user?.username || "sinhvien_vhu",
+      amount: 100,
       delta: 100,
-      created_at: Math.floor(Date.now() / 1000),
+      tx_type: "document_upload",
       source_type: "document_upload",
+      memo: `Đóng góp tài liệu học tập VHU mới (${newDoc.original_name})`,
+      reason: `Đóng góp tài liệu học tập VHU mới (${newDoc.original_name})`,
+      created_at: nowSecUpload,
+      timestamp: nowSecUpload,
       proof_status: "verified",
-      solana_signature: "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj",
-      explorer_url: "https://explorer.solana.com/tx/2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj?cluster=devnet",
+      solana_signature: newDoc.solana_tx,
+      explorer_url: newDoc.explorer_url,
       proof_hash: newDoc.checksum,
+    });
+
+    mockAuditEvents.unshift({
+      id: `aud_${Date.now().toString(36)}`,
+      action: "document_uploaded_6gates",
+      event_type: "document_uploaded_6gates",
+      user_id: user?.username || "sinhvien_vhu",
+      actor_id: user?.username || "sinhvien_vhu",
+      details: `Sinh viên tải lên [${newDoc.original_name}] vượt qua 6 cổng kiểm định (14 chunks). +100 UP`,
+      timestamp: nowSecUpload,
+      created_at: nowSecUpload,
     });
 
     const response = NextResponse.json({
       success: true,
-      document: newDoc,
+      document_id: newDoc.id,
+      filename: newDoc.filename,
+      status: newDoc.status,
+      checksum: newDoc.checksum,
+      chunk_count: newDoc.chunk_count,
       reward_points: 100,
+      reputation_gain: 5,
+      solana_signature: newDoc.solana_tx,
+      explorer_url: newDoc.explorer_url,
+      university: newDoc.university,
+      subject_code: newDoc.subject_code,
+      subject_name: newDoc.subject_name,
+      steps: {
+        mime: "pass",
+        privacy: "pass",
+        dedupe: "pass",
+        copyright: "pass",
+        quality: "pass",
+        approval: "pass",
+      },
+      document: newDoc,
       new_balance: updatedPoints,
     });
     if (user) {
@@ -1785,20 +1970,40 @@ export async function POST(
       mockUsers.set(user.username, user);
     }
 
+    const nowSecBankConfirm = Math.floor(Date.now() / 1000);
     mockLedger.unshift({
       id: `led_bank_${Date.now()}`,
       user_id: user?.id || "usr_current",
-      created_at: Math.floor(Date.now() / 1000),
+      username: user?.username || "sinhvien_vhu",
+      amount: order.points || 0,
+      delta: order.points || 0,
+      tx_type: order.payout_mode === "sol_swap" ? "sol_swap" : "bank_deposit",
+      source_type: "bank_deposit",
+      memo:
+        order.payout_mode === "sol_swap"
+          ? `Đổi ${order.sol_amount} SOL qua VietQR ACB (${order.order_code})`
+          : `Nạp UniPoints VietQR ACB (${order.order_code})`,
       reason:
         order.payout_mode === "sol_swap"
           ? `Đổi ${order.sol_amount} SOL qua VietQR ACB (${order.order_code})`
           : `Nạp UniPoints VietQR ACB (${order.order_code})`,
-      source_type: "bank_deposit",
-      delta: order.points || 0,
+      created_at: nowSecBankConfirm,
+      timestamp: nowSecBankConfirm,
       proof_hash: txRef,
       proof_status: "verified",
       solana_signature: order.solana_signature,
       explorer_url: `https://explorer.solana.com/tx/${order.solana_signature}?cluster=devnet`,
+    });
+
+    mockAuditEvents.unshift({
+      id: `aud_${Date.now().toString(36)}`,
+      action: "bank_deposit_confirmed",
+      event_type: "bank_deposit_confirmed",
+      user_id: user?.username || "sinhvien_vhu",
+      actor_id: "acb_gateway",
+      details: `Xác nhận chuyển khoản VietQR thành công đơn [${order.order_code}] ${order.amount_vnd.toLocaleString("vi-VN")} đ. +${order.points} UP`,
+      timestamp: nowSecBankConfirm,
+      created_at: nowSecBankConfirm,
     });
 
     return NextResponse.json({
@@ -1856,6 +2061,16 @@ export async function POST(
       solana_tx: "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj",
     };
     mockTasksMap.set(newTask.id, newTask);
+    mockAuditEvents.unshift({
+      id: `aud_${Date.now().toString(36)}`,
+      action: "task_created",
+      event_type: "task_created",
+      user_id: "admin",
+      actor_id: "admin",
+      details: `Admin tạo bài toán gán nhãn mới: ${newTask.title}`,
+      timestamp: Math.floor(Date.now() / 1000),
+      created_at: Math.floor(Date.now() / 1000),
+    });
     return NextResponse.json({ success: true, task: newTask }, { status: 201 });
   }
 
@@ -1896,6 +2111,16 @@ export async function PUT(
         status: body.status !== undefined ? String(body.status).trim() : existing.status,
       };
       mockTasksMap.set(taskId, updated);
+      mockAuditEvents.unshift({
+        id: `aud_${Date.now().toString(36)}`,
+        action: "task_updated",
+        event_type: "task_updated",
+        user_id: "admin",
+        actor_id: "admin",
+        details: `Admin cập nhật bài toán: ${updated.title}`,
+        timestamp: Math.floor(Date.now() / 1000),
+        created_at: Math.floor(Date.now() / 1000),
+      });
       return NextResponse.json({ success: true, task: updated });
     }
     return NextResponse.json({ detail: "Không tìm thấy nhiệm vụ." }, { status: 404 });
@@ -1913,16 +2138,39 @@ export async function DELETE(
 
   if (path.startsWith("admin/tasks/")) {
     const taskId = slug[2];
+    const task = mockTasksMap.get(taskId);
     mockTasksMap.delete(taskId);
+    mockAuditEvents.unshift({
+      id: `aud_${Date.now().toString(36)}`,
+      action: "task_deleted",
+      event_type: "task_deleted",
+      user_id: "admin",
+      actor_id: "admin",
+      details: `Admin xóa bài toán: ${task?.title || taskId}`,
+      timestamp: Math.floor(Date.now() / 1000),
+      created_at: Math.floor(Date.now() / 1000),
+    });
     return NextResponse.json({ success: true, message: `Đã xóa bài toán ${taskId}` });
   }
 
   if (path.startsWith("admin/documents/")) {
     const docId = slug[2];
     const index = sampleDocuments.findIndex((d) => d.id === docId);
+    let docName = docId;
     if (index !== -1) {
+      docName = sampleDocuments[index].original_name;
       sampleDocuments.splice(index, 1);
     }
+    mockAuditEvents.unshift({
+      id: `aud_${Date.now().toString(36)}`,
+      action: "document_revoked",
+      event_type: "document_revoked",
+      user_id: "admin",
+      actor_id: "admin",
+      details: `Admin thu hồi/xóa tài liệu: ${docName}`,
+      timestamp: Math.floor(Date.now() / 1000),
+      created_at: Math.floor(Date.now() / 1000),
+    });
     return NextResponse.json({ success: true, message: `Đã xóa tài liệu ${docId}` });
   }
 

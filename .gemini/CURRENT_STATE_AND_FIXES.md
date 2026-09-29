@@ -709,3 +709,39 @@
     * Khóa vô hiệu hóa (`disabled`) toàn bộ nút bấm gán nhãn khi `activeTask.user_submitted === true`.
     * Hiển thị banner cảnh báo màu hổ phách: `🔒 Bạn đã hoàn thành nhiệm vụ này. Mỗi tài khoản chỉ được thực hiện 1 lần duy nhất để bảo đảm tính khách quan đồng thuận.`
     * Bổ sung chốt chặn client-side ngăn chặn gọi API khi bài toán đã hoàn thành.
+
+### F. Phân hệ 6 Cổng Tự Chứng Thực Oracle & Sổ Cái / Nhật Ký Kiểm Toán Admin
+13. **[ui-preview/src/lib/sampleLedger.ts](file:///c:/Users/TGDD/Downloads/unisynapse/ui-preview/src/lib/sampleLedger.ts)** & **[frontend/src/lib/sampleLedger.ts](file:///c:/Users/TGDD/Downloads/unisynapse/frontend/src/lib/sampleLedger.ts)**:
+    * Khởi tạo bộ dữ liệu chuẩn gồm **88 bút toán kinh tế** trích xuất từ `data/unisynapse.db`, chuẩn hóa các thuộc tính `tx_type`, `amount`, `delta`, `memo`, `username`, `source_type`.
+14. **[ui-preview/src/lib/sampleAudit.ts](file:///c:/Users/TGDD/Downloads/unisynapse/ui-preview/src/lib/sampleAudit.ts)** & **[frontend/src/lib/sampleAudit.ts](file:///c:/Users/TGDD/Downloads/unisynapse/frontend/src/lib/sampleAudit.ts)**:
+    * Khởi tạo bộ dữ liệu an ninh gồm **76 sự kiện kiểm toán** trích xuất từ `data/unisynapse.db`, chuẩn hóa `action`, `actor`, `details`, `ip_address`, `created_at`.
+15. **[ui-preview/src/components/DocumentUpload.tsx](file:///c:/Users/TGDD/Downloads/unisynapse/ui-preview/src/components/DocumentUpload.tsx)** & **[frontend/src/components/DocumentUpload.tsx](file:///c:/Users/TGDD/Downloads/unisynapse/frontend/src/components/DocumentUpload.tsx)**:
+    * Cải tiến quy trình kiểm định: Chạy tuần tự các bước 1 -> 6 với thời gian chờ 500ms mỗi cổng để người dùng quan sát được toàn bộ tiến trình tự chứng thực.
+    * Kích hoạt mượt mà `OracleLiveAttestation` với `documentId` chuẩn sau khi cổng 6 hoàn tất.
+16. **[ui-preview/src/app/api/v1/[...slug]/route.ts](file:///c:/Users/TGDD/Downloads/unisynapse/ui-preview/src/app/api/v1/[...slug]/route.ts)** & **[frontend/src/app/api/v1/[...slug]/route.ts](file:///c:/Users/TGDD/Downloads/unisynapse/frontend/src/app/api/v1/[...slug]/route.ts)**:
+    * `POST /documents/upload`: Trả về `document_id` ở cấp cao nhất, tự động chèn bút toán vào `mockLedger` (+100 UP) và ghi nhật ký kiểm toán vào `mockAuditEvents`.
+    * `POST /oracle/attest`: Khởi tạo công việc chứng thực On-Chain Ed25519, trả về HTTP 202 Accepted kèm `attestation_pda` và `job_id`.
+    * `GET /oracle/jobs/:jobId`: Trả về tiến trình 4 giai đoạn (`queued` -> `processed` -> `confirmed` -> `finalized`) với chữ ký giao dịch Solana Devnet 88 ký tự chuẩn.
+    * `GET /admin/ledger`: Trả về toàn bộ danh sách bút toán (88+ dòng).
+    * `GET /admin/audit-events`: Trả về toàn bộ danh sách sự kiện kiểm toán an ninh (76+ dòng).
+
+---
+
+### Khôi Phục Quy Trình 6 Cổng Tự Chứng Thực (Oracle On-Chain) & Nạp Đầy Đủ Sổ Cái 88 Bút Toán + Nhật Ký Kiểm Toán 76 Sự Kiện
+- **Thời điểm**: 2026-09-30.
+- **Tập tin đã cập nhật & cam kết**:
+  1. `ui-preview/src/lib/sampleLedger.ts` & `frontend/src/lib/sampleLedger.ts`: Nạp 88 bút toán CSDL local vào TypeScript catalog.
+  2. `ui-preview/src/lib/sampleAudit.ts` & `frontend/src/lib/sampleAudit.ts`: Nạp 76 sự kiện an ninh CSDL local vào TypeScript catalog.
+  3. `ui-preview/src/components/DocumentUpload.tsx` & `frontend/src/components/DocumentUpload.tsx`: Tuần tự hóa tiến trình 6 cổng tự chứng thực và kích hoạt Oracle Live Attestation.
+  4. `ui-preview/src/app/api/v1/[...slug]/route.ts` & `frontend/src/app/api/v1/[...slug]/route.ts`: Bổ sung `/oracle/attest`, `/oracle/jobs/:jobId`, chuẩn hóa schema ledger & audit log, kết nối trực tiếp bảng admin.
+- **Bằng chứng kiểm định thực tế**:
+  1. `scratch/test_6gates_and_admin_ledger_audit.py`: **Pass 100% (7/7 tests)**:
+     - `GET /admin/ledger` trả về 88 dòng.
+     - `GET /admin/audit-events` trả về 76 dòng.
+     - `POST /documents/upload` trả về top-level `document_id`.
+     - `POST /oracle/attest` phản hồi 202 Accepted với `attestation_pda`.
+     - `GET /oracle/jobs/:id` chuyển trạng thái sang `finalized` với chữ ký Solana Devnet 88 ký tự.
+     - Sổ cái tăng tự động 88 -> 89; Nhật ký kiểm toán tăng tự động 76 -> 78.
+  2. `npm run build` trên `ui-preview`: **Exit Code 0 (0 lỗi TypeScript)**.
+  3. `npm run build` trên `frontend`: **Exit Code 0 (0 lỗi TypeScript)**.
+

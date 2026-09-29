@@ -60,26 +60,36 @@ export default function DocumentUpload() {
       finalSubName = subjectPresets[subjectOption].name;
     }
 
-    // Visual step sequence while server processes
-    const stepTimer1 = setTimeout(() => setStep('privacy'), 600);
-    const stepTimer2 = setTimeout(() => setStep('duplicate'), 1200);
-    const stepTimer3 = setTimeout(() => setStep('copyright'), 1800);
-    const stepTimer4 = setTimeout(() => setStep('quality'), 2400);
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
     try {
-      const res = await uploadDocument(file, finalUniversity, finalSubCode, finalSubName);
-      clearTimeout(stepTimer1);
-      clearTimeout(stepTimer2);
-      clearTimeout(stepTimer3);
-      clearTimeout(stepTimer4);
+      // Cổng 1: Kiểm tra cấu trúc tập tin & MIME header
+      setStep('upload');
+      const uploadPromise = uploadDocument(file, finalUniversity, finalSubCode, finalSubName);
+      await sleep(500);
+
+      // Cổng 2: Quét bảo mật riêng tư (PII scanner)
+      setStep('privacy');
+      await sleep(500);
+
+      // Cổng 3: Đối soát mã băm SHA-256 (Chống trùng lặp)
+      setStep('duplicate');
+      await sleep(500);
+
+      // Cổng 4: Xác thực cam kết quyền chia sẻ
+      setStep('copyright');
+      await sleep(500);
+
+      // Cổng 5: Đánh giá chất lượng & phân đoạn (Chunking)
+      setStep('quality');
+      const res = await uploadPromise;
+      await sleep(600);
+
+      // Cổng 6: Phê duyệt, cấp thưởng và Tự động Kích hoạt Oracle Live Attestation
       setStep('approved');
       setSuccessInfo(res);
       await refreshState();
     } catch (err: unknown) {
-      clearTimeout(stepTimer1);
-      clearTimeout(stepTimer2);
-      clearTimeout(stepTimer3);
-      clearTimeout(stepTimer4);
       setStep('idle');
       setErrorMessage(err instanceof Error ? err.message : "Lỗi khi kiểm định tài liệu");
     }

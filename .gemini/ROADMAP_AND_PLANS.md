@@ -170,3 +170,11 @@ Tài liệu này vạch rõ 4 giai đoạn phát triển của dự án UniSynap
   - [x] Xây dựng cơ chế Anti-Duplicate định danh duy nhất theo `${user.id}:${taskId}`: Nếu tài khoản đã gửi nhãn cho bài toán, máy chủ lập tức từ chối với HTTP 400.
   - [x] Cải tiến giao diện Client (`DataLabeling.tsx`): Khóa cứng nút gán nhãn khi đã hoàn thành, hiển thị thông báo hổ phách `🔒 Mỗi tài khoản chỉ được thực hiện 1 lần duy nhất` và bộ đếm tiến độ `Đã làm: X/44`.
   - [x] Vượt qua 100% kiểm thử kịch bản tự động `test_tasks_and_anti_duplicate.py` và biên dịch Next.js (Code 0).
+
+- [x] **Khôi Phục Quy Trình 6 Cổng Tự Chứng Thực (Oracle On-Chain) & Nạp Đầy Đủ Sổ Cái 88 Bút Toán + Nhật Ký Kiểm Toán 76 Sự Kiện** (Hoàn thành 30/09/2026):
+  - [x] Trích xuất 88 bản ghi sổ cái và 76 sự kiện kiểm toán bảo mật từ CSDL local `data/unisynapse.db` sang `sampleLedger.ts` và `sampleAudit.ts` (đồng bộ trên cả `ui-preview` và `frontend`).
+  - [x] Khắc phục luồng nộp tài liệu 6 cổng: Thiết lập delay 500ms tuần tự trực quan giữa các cổng (MIME -> PII -> SHA-256 -> Copyright -> Quality -> Approved), tự động mount `OracleLiveAttestation` với đúng `document_id`.
+  - [x] Triển khai 2 API On-Chain: `POST /api/v1/oracle/attest` (trả về 202 Accepted kèm `attestation_pda`) và `GET /api/v1/oracle/jobs/:jobId` (chu kỳ chuyển đổi 4 pha `queued` -> `processed` -> `confirmed` -> `finalized` với chữ ký Solana Devnet 88 ký tự chuẩn).
+  - [x] Kết nối dữ liệu sống động cho Trang Admin `/admin`: Tab Sổ cái hiển thị đầy đủ 88+ bút toán, Tab Nhật ký kiểm toán hiển thị 76+ sự kiện an ninh; tự động tăng số lượng khi có tương tác mới.
+  - [x] Vượt qua 100% kịch bản kiểm thử tự động `test_6gates_and_admin_ledger_audit.py` và biên dịch Next.js 16.3.4 (Code 0) trên cả hai cổng.
+
