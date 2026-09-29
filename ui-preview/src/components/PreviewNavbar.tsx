@@ -26,7 +26,17 @@ export default function PreviewNavbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    const close = () => setMobileOpen(false);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("menu") === "1" || params.get("menu") === "open") {
+        setMobileOpen(true);
+      }
+    }
+    const close = () => {
+      if (window.innerWidth > 768) {
+        setMobileOpen(false);
+      }
+    };
     window.addEventListener("resize", close);
     return () => window.removeEventListener("resize", close);
   }, []);
@@ -85,7 +95,7 @@ export default function PreviewNavbar() {
             ))}
           </nav>
           <div className="preview-actions">
-            <ThemeToggle compact />
+            <ThemeToggle compact className="preview-nav-theme-toggle" />
             <Link
               href="/vi"
               className="preview-points preview-points-link"
@@ -117,6 +127,24 @@ export default function PreviewNavbar() {
                 Đăng ký
               </Link>
             )}
+            {user ? (
+              <button
+                type="button"
+                className="preview-mobile-top-auth preview-mobile-top-logout"
+                onClick={() => void logout()}
+                title="Đăng xuất tài khoản"
+              >
+                Thoát
+              </button>
+            ) : (
+              <Link
+                className="preview-mobile-top-auth preview-mobile-top-login"
+                href="/dang-nhap"
+                title="Đăng nhập tài khoản"
+              >
+                Đăng nhập
+              </Link>
+            )}
             <button
               id="preview-wallet-button"
               type="button"
@@ -134,9 +162,20 @@ export default function PreviewNavbar() {
               className="preview-menu-button"
               onClick={() => setMobileOpen((value) => !value)}
               aria-expanded={mobileOpen}
-              aria-label="Mở menu"
+              aria-label={mobileOpen ? "Đóng menu" : "Mở menu"}
             >
-              {mobileOpen ? "×" : "☰"}
+              {mobileOpen ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <line x1="3" y1="12" x2="21" y2="12"></line>
+                  <line x1="3" y1="6" x2="21" y2="6"></line>
+                  <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+              )}
             </button>
           </div>
         </div>
@@ -150,27 +189,110 @@ export default function PreviewNavbar() {
         </div>
       </header>
       {mobileOpen && (
-        <div className="preview-mobile-menu">
-          <div className="preview-mobile-user">
-            <strong>{user?.username || "Khách vãng lai"}</strong>
-            <span>{user ? `${user.reputation} reputation` : "Chưa đăng nhập"}</span>
+        <>
+          <div
+            className="preview-mobile-backdrop"
+            onClick={() => setMobileOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="preview-mobile-menu" role="dialog" aria-modal="true" aria-label="Menu điều hướng di động">
+            <div className="preview-mobile-user">
+              <div>
+                <strong>{user?.username || "Khách vãng lai"}</strong>
+                <span>{user ? `${user.reputation} reputation` : "Chưa đăng nhập"}</span>
+              </div>
+              <Link
+                href="/vi"
+                className="preview-points preview-points-link"
+                onClick={() => setMobileOpen(false)}
+              >
+                ★ {user ? user.unipoints.toLocaleString("vi-VN") : "0"} UP
+                <span className="preview-points-add">+ Nạp</span>
+              </Link>
+            </div>
+
+            <div className="preview-mobile-nav-group">
+              <span className="preview-mobile-group-title">PHÂN HỆ HỌC THUẬT</span>
+              {navItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={activeTab === item.id ? "active" : ""}
+                  onClick={() => selectTab(item.id)}
+                >
+                  <span className="preview-mobile-nav-icon">{item.icon}</span>
+                  <span className="preview-mobile-nav-label">{item.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="preview-mobile-nav-group">
+              <span className="preview-mobile-group-title">TÀI KHOẢN & VÍ WEB3</span>
+              <button
+                type="button"
+                className="preview-mobile-wallet-btn"
+                onClick={() => {
+                  handleWallet();
+                  setMobileOpen(false);
+                }}
+              >
+                <span>🟣</span>
+                {connected && publicKey
+                  ? `Ví Phantom (${publicKey.toBase58().slice(0, 4)}…${publicKey.toBase58().slice(-4)})`
+                  : "Kết nối Ví Phantom"}
+              </button>
+              <Link
+                href="/vi"
+                className="preview-mobile-wallet-btn"
+                onClick={() => setMobileOpen(false)}
+              >
+                <span>⚡</span>
+                Đổi SOL ➔ UniPoints
+              </Link>
+              <Link
+                href="/admin"
+                className="preview-mobile-wallet-btn"
+                onClick={() => setMobileOpen(false)}
+              >
+                <span>🛡️</span>
+                Cổng Quản Trị WIT
+              </Link>
+            </div>
+
+            <div className="preview-mobile-footer-actions">
+              {user ? (
+                <button
+                  type="button"
+                  className="preview-mobile-auth-btn preview-mobile-logout"
+                  onClick={() => void logout()}
+                >
+                  Đăng xuất ({user.username})
+                </button>
+              ) : (
+                <div className="preview-mobile-auth-row">
+                  <Link
+                    href="/dang-nhap"
+                    className="preview-mobile-auth-btn preview-mobile-login"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Đăng nhập
+                  </Link>
+                  <Link
+                    href="/dang-ky"
+                    className="preview-mobile-auth-btn preview-mobile-register"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Đăng ký tài khoản
+                  </Link>
+                </div>
+              )}
+              <div className="preview-mobile-theme-row">
+                <span className="preview-mobile-theme-label">Giao diện</span>
+                <ThemeToggle showLabels className="preview-mobile-theme" />
+              </div>
+            </div>
           </div>
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={activeTab === item.id ? "active" : ""}
-              onClick={() => selectTab(item.id)}
-            >
-              <span>{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
-          <Link href="/vi" onClick={() => setMobileOpen(false)}>
-            ⚡ Đổi SOL sang UniPoints
-          </Link>
-          <ThemeToggle showLabels className="preview-mobile-theme" />
-        </div>
+        </>
       )}
     </>
   );

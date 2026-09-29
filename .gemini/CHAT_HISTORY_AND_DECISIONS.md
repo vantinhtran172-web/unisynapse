@@ -650,3 +650,44 @@ Tài liệu này ghi lại toàn bộ tiến trình trao đổi, các phản h�
      - Thiết lập mã hóa SSL/TLS Full (Strict).
 
 
+
+
+---
+
+### Yêu cầu 9: Tối ưu hóa Giao diện Mobile trên Local (Port 3001) Trước Khi Triển Khai
+* **Yêu cầu gốc**: *"giao diện app trên mobile chưa được tối ưu lắm sửa trên local trước cho tôi coi"*
+* **Bối cảnh & Vấn đề thực tế (Ảnh chụp điện thoại từ người dùng `media_1790683616147.png`, `media_1790683627623.png`)*:
+  1. **Thanh điều hướng bị dồn nén & tràn ngang**: Logo `UniSynapse` chiếm `min-width: 210px`, nút chuyển theme, badge điểm `★ - UP`, nút nạp SOL, nút đăng nhập/đăng ký bị ép cùng hàng khiến thanh header vượt khỏi lề phải màn hình 390px. Nút menu hamburger (`☰`) bị đẩy ra ngoài vùng nhìn thấy được.
+  2. **Hero Section bị chiếm dụng không gian**: Vòng 3D Orbit Mandala nằm đè lên trên tiêu đề chính và chiếm tới hơn 40% chiều cao màn hình điện thoại, đẩy toàn bộ khẩu hiệu "Học tập cùng nhau. Xác minh mọi điều.", đoạn giới thiệu và các nút hành động cốt lõi tụt xuống dưới màn hình đầu tiên (below the fold).
+  3. **Thanh tab phân hệ bị cắt cụt**: Thanh điều hướng tab cuộn ngang không mượt, các tab bị ép méo mó.
+  4. **Trang ví Web3 (`/vi`) bị phình to 800px**: Do hàng tab `.tabs` trong `wallet.module.css` sử dụng `flex-wrap: nowrap` không có thanh cuộn ngang, làm toàn bộ trang ví bị kéo dãn ra 800px chiều rộng, tạo ra hơn 400px khoảng trống cuộn ngang trên điện thoại.
+  5. **Trang Đăng nhập / Đăng ký mobile bị rối**: Vòng quỹ đạo đồng tâm lớn làm nền bị chèn đè lên các khối thông tin bảo vệ 01, 02, 03 và chân trang (`preview-auth-visual-footer`) có `position: absolute` đè lên chữ.
+* **Quyết định & Thực thi**:
+  1. **Hệ thống thanh điều hướng Mobile chuẩn Awwwards (`ui-preview/src/app/globals.css` & `PreviewNavbar.tsx`)**:
+     - Chiều cao header cố định 52px, ẩn dòng mô tả phụ của logo trên mobile, ẩn toàn bộ các nút thừa thãi trên top bar (`.preview-nav-theme-toggle`, `.preview-sol-btn`, `.preview-ghost`, `.preview-primary`, `.preview-phantom`).
+     - Giữ lại badge điểm siêu gọn `★ - UP + Nạp` và nút Menu Hamburger tròn góc với icon SVG 3 nét sắc sảo (thay thế ký tự unicode `☰` thô sơ).
+     - Bổ sung thanh tab học thuật cố định bên dưới header (Top 52px, cao 44px, cuộn ngang cảm ứng mượt mà `-webkit-overflow-scrolling: touch; scrollbar-width: none`).
+  2. **Thực đơn Ngăn kéo Di động (Mobile Off-Canvas Drawer)**:
+     - Khi bấm nút menu (hoặc mở qua `?menu=1`), hiển thị lớp phủ mờ nền `backdrop-filter: blur(5px)`.
+     - Panel trượt êm từ phải sang với chiều rộng `min(340px, 86vw)`, chứa đầy đủ:
+       - Thẻ định danh người dùng: Username, Reputation, Badge UniPoints và nút Nạp nhanh.
+       - Nhóm điều hướng Phân hệ Học thuật: Tổng quan, Gán nhãn dữ liệu, Góp tài liệu, AI Tutor, Solana.
+       - Nhóm Tài khoản & Ví Web3: Kết nối Ví Phantom, Đổi SOL ➔ UniPoints, Cổng Quản Trị WIT.
+       - Nút Đăng nhập & Đăng ký nổi bật (gradient tím/xanh ngọc).
+       - Nút chuyển giao diện Sáng / Tối trực tiếp trong menu.
+  3. **Tái cấu trúc bố cục Hero trên Mobile**:
+     - Thiết lập `order: 1` cho tiêu đề và nội dung (`.preview-hero-copy`), sử dụng font chữ co giãn linh hoạt `clamp(26px, 7.4vw, 34px)` với `line-height: 1.15`.
+     - Đưa 3D Orbit Mandala xuống bên dưới (`order: 2`), thu nhỏ tỷ lệ `scale(0.62)` để làm nền trang trí nhẹ nhàng, giúp toàn bộ nội dung giá trị nhất hiển thị ngay lập tức khi mở app.
+  4. **Triệt tiêu lỗi tràn ngang trên trang Ví `/vi` (`wallet.module.css` & `vi/page.tsx`)**:
+     - Bổ sung media query `@media (max-width: 768px)` cho `wallet.module.css`: Khống chế `.shell` và `.card` với `padding: 4.5rem 12px 24px`, thiết lập `.tabs` cuộn ngang độc lập, triệt tiêu 100% hiện tượng tràn chiều rộng 800px.
+     - Thay thế thanh navbar cũ của trang ví bằng thanh điều hướng thu nhỏ linh hoạt.
+  5. **Tối ưu Trang Xác thực Mobile (`/dang-nhap` & `/dang-ky`)**:
+     - Tự động ẩn vòng orbit 3D nền trên màn hình nhỏ để tránh gây rối mắt và che chữ.
+     - Chuyển `preview-auth-visual-footer` từ `position: absolute` sang `position: static` với viền ngăn cách tinh tế, triệt tiêu triệt để hiện tượng chữ đè lên chữ.
+     - Form đăng nhập và các trường nhập liệu hiển thị ngay lập tức, người dùng có thể thao tác tức thì mà không cần cuộn trang dài.
+* **Bằng chứng Kiểm chứng Thực tế trên Trình duyệt Mobile (CDP 390×844 Retina Viewport)**:
+  - `cdp_mobile_home.png`: Trang chủ hiển thị hoàn hảo, topbar gọn gàng, thanh tab ngang mượt mà, headline to rõ, mandala co gọn dưới bài viết, dashboard học viên hiển thị ngay trong tầm mắt.
+  - `cdp_mobile_drawer.png`: Menu trượt sang trọng chuẩn iOS/Android, đầy đủ mọi liên kết học thuật, ví Phantom, đổi SOL, đăng nhập/đăng ký và đổi theme Sáng/Tối.
+  - `cdp_mobile_vi.png`: Trang ví đổi SOL không còn bị phình ngang, các ô thống kê và quy đổi vừa vặn 100% chiều rộng 390px.
+  - `cdp_mobile_login.png`: Trang đăng nhập sạch đẹp, không bị đè chữ, form nhập liệu sẵn sàng nhập ngay.
+  - `cdp_mobile_tutor.png`: Trợ lý AI Tutor hiển thị gọn gàng, hỗ trợ chọn trường, chọn môn và khung chat phản hồi chuẩn mực.

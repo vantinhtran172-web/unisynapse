@@ -1881,6 +1881,143 @@
   color: #059669 !important;
 }
 
+/* ── MOBILE RESPONSIVE ADAPTATION FOR ON-RAMP & WALLET ── */
+@media (max-width: 768px) {
+  .shell {
+    padding: 4.5rem 12px 3rem !important;
+  }
+
+  .card {
+    padding: 1.25rem 12px !important;
+    border-radius: 16px !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+  }
+
+  .card h1 {
+    font-size: clamp(1.75rem, 6.5vw, 2.25rem) !important;
+    line-height: 1.15 !important;
+    margin: 0.75rem 0 0.5rem !important;
+  }
+
+  .tabs {
+    display: flex !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    gap: 0.4rem !important;
+    padding: 0.35rem 0.25rem !important;
+    margin: 1rem 0 !important;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .tabBtn {
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+    padding: 0.55rem 0.85rem !important;
+    font-size: 0.78rem !important;
+  }
+
+  .card p {
+    font-size: 0.85rem !important;
+    line-height: 1.5 !important;
+  }
+
+  .statsGrid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .statCard {
+    padding: 1rem !important;
+    border-radius: 12px !important;
+  }
+
+  .statValue {
+    font-size: 1.6rem !important;
+  }
+
+  .onrampModeSwitch {
+    flex-direction: column !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .modePillBtn {
+    width: 100% !important;
+    text-align: center !important;
+    justify-content: center !important;
+    padding: 0.75rem !important;
+    font-size: 0.85rem !important;
+  }
+
+  .bankPresetGrid,
+  .presetGrid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .presetBtn {
+    padding: 0.75rem 0.5rem !important;
+  }
+
+  .presetSolHighlight,
+  .presetPointsHighlight {
+    font-size: 1.05rem !important;
+  }
+
+  .bankContentTransferRow {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .bankContentTransferBtn {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 0.6rem !important;
+  }
+
+  .bankDetailRow {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+  }
+
+  .copyButton {
+    align-self: flex-end !important;
+    margin-top: 4px !important;
+  }
+
+  .qrContainer {
+    max-width: 220px !important;
+    margin: 0 auto !important;
+  }
+
+  .tableWrapper {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    margin-top: 12px !important;
+  }
+
+  .ledgerTable {
+    min-width: 480px !important;
+  }
+
+  .copyToast {
+    bottom: 16px !important;
+    left: 16px !important;
+    right: 16px !important;
+    transform: none !important;
+    max-width: calc(100vw - 32px) !important;
+    font-size: 0.82rem !important;
+  }
+}
+
+
 
 
 

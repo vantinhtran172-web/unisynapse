@@ -13,16 +13,16 @@
   package = "@netlify/plugin-nextjs"
 
 [[redirects]]
-  from = "/api/v1/*"
-  to = "https://unisynapse-backend.onrender.com/api/v1/:splat"
-  status = 200
-  force = false
+  from = "/dant-ky"
+  to = "/dang-ky"
+  status = 301
+  force = true
 
 [[redirects]]
-  from = "/health"
-  to = "https://unisynapse-backend.onrender.com/health"
-  status = 200
-  force = false
+  from = "/dant-nhap"
+  to = "/dang-nhap"
+  status = 301
+  force = true
 
 [[redirects]]
   from = "https://unihackfest-web.netlify.app/*"

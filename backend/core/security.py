@@ -99,8 +99,8 @@ def verify_wallet_challenge(wallet_address: str, nonce: str, message: str, signa
 
 
 def hash_password(password: str) -> str:
-    if len(password) < 14:
-        raise ValueError("Password must contain at least 14 characters")
+    if len(password) < 6:
+        raise ValueError("Password must contain at least 6 characters")
     return _PASSWORDS.hash(password)
 
 

@@ -53,8 +53,8 @@ def member_register(payload: MemberRegisterRequest, response: Response):
     username = payload.username.strip()
     if not re.fullmatch(r"[A-Za-z0-9_]{3,32}", username):
         raise HTTPException(400, "Tên tài khoản gồm 3–32 chữ, số hoặc dấu gạch dưới.")
-    if not 14 <= len(payload.password) <= 128:
-        raise HTTPException(400, "Mật khẩu cần từ 14 đến 128 ký tự.")
+    if not 6 <= len(payload.password) <= 128:
+        raise HTTPException(400, "Mật khẩu cần từ 6 đến 128 ký tự.")
     member_id = f"usr_{uuid.uuid4().hex}"
     password_hash = hash_password(payload.password)
     try:

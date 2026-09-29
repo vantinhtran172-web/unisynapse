@@ -54,7 +54,7 @@ export default function RegisterPage() {
     const password = String(data.get("password") || "");
     const confirm = String(data.get("confirm") || "");
     if (password !== confirm) { setError("Mật khẩu xác nhận không khớp."); return; }
-    if (password.length < 14) { setError("Mật khẩu phải chứa ít nhất 14 ký tự."); return; }
+    if (password.length < 6) { setError("Mật khẩu phải chứa ít nhất 6 ký tự."); return; }
     setBusy(true); setError("");
     try {
       await api.register(username, password);
@@ -94,13 +94,13 @@ export default function RegisterPage() {
             </div>
             <div className="preview-auth-field">
               <label htmlFor="register-password">Mật khẩu</label>
-              <span>Tối thiểu 14 ký tự</span>
+              <span>Tối thiểu 6 ký tự</span>
               <input
                 id="register-password"
                 name="password"
                 type="password"
                 required
-                minLength={14}
+                minLength={6}
                 maxLength={128}
                 placeholder="Nhập mật khẩu an toàn"
                 autoComplete="new-password"
@@ -114,7 +114,7 @@ export default function RegisterPage() {
                 name="confirm"
                 type="password"
                 required
-                minLength={14}
+                minLength={6}
                 maxLength={128}
                 placeholder="Nhập lại mật khẩu"
                 autoComplete="new-password"

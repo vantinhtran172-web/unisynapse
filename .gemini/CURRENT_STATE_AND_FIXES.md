@@ -546,3 +546,40 @@
      - Kích hoạt WAF Rate Limiting, Bot Fight Mode và SSL/TLS Full (Strict).
 
 
+
+
+---
+
+### Tối Ưu Hóa Giao Diện Mobile Port 3001 & Kiểm Thử Toàn Diện (Mobile Responsive Overhaul)
+- **Thời điểm**: 2026-09-29.
+- **Mục tiêu**:
+  1. Khắc phục triệt để các lỗi vỡ giao diện trên smartphone phát hiện từ ảnh chụp thực tế của người dùng (`media_1790683616147.png`).
+  2. Xóa bỏ hiện tượng thanh header tràn ngang, ẩn các nút desktop thừa, giữ thanh điều hướng co gọn 52px với badge `★ - UP + Nạp` và nút Hamburger SVG.
+  3. Xây dựng thực đơn trượt di động (Off-Canvas Drawer) cao cấp với backdrop blur và đầy đủ tính năng: Học thuật, Ví Web3, Đổi SOL, Đăng nhập/Đăng ký, Đổi giao diện Sáng/Tối.
+  4. Đảo thứ tự Hero Section: Tiêu đề và nút bấm ưu tiên hiển thị trước (`order: 1`), vòng 3D Orbit Mandala thu nhỏ đặt bên dưới (`order: 2`).
+  5. Khắc phục trang ví `/vi` bị tràn ngang 800px, đảm bảo cuộn dọc mượt mà không layout shift.
+  6. Khắc phục lỗi chữ đè lên chữ trên trang Đăng nhập / Đăng ký mobile.
+- **Tập tin đã cập nhật**:
+  1. `ui-preview/src/app/globals.css`:
+     - Thiết lập hệ thống `@media (max-width: 768px)` toàn diện.
+     - Cấu hình `.preview-nav`: Chiều cao 52px, ẩn logo subtext, ẩn desktop clutter (`.preview-nav-theme-toggle`, `.preview-actions > div`, `.preview-sol-btn`, `.preview-ghost`, `.preview-primary`, `.preview-phantom`).
+     - Cấu hình thanh tab cuộn ngang cố định `.preview-tabs` (Top 52px, cao 44px, `-webkit-overflow-scrolling: touch`).
+     - Cấu hình Mobile Drawer: `.preview-mobile-backdrop`, `.preview-mobile-menu`, `.preview-mobile-user`, `.preview-mobile-nav-group`, `.preview-mobile-wallet-btn`, `.preview-mobile-auth-btn`, `.preview-mobile-theme`.
+     - Cấu hình Mobile Hero: Tiêu đề `order: 1` (`clamp(26px, 7.4vw, 34px)`), Mandala `order: 2` (`scale(0.62)`).
+     - Tối ưu trang Auth Mobile: `.preview-auth-visual` padding 24px 18px 32px, ẩn `.preview-auth-orbit`, chuyển `.preview-auth-visual-footer` thành `position: static` chống đè chữ.
+  2. `ui-preview/src/components/PreviewNavbar.tsx`:
+     - Bổ sung class `preview-nav-theme-toggle` cho ThemeToggle desktop.
+     - Thay thế ký tự thô `☰` / `×` bằng icon SVG 3 nét sắc nét.
+     - Hỗ trợ deep link / preview query `?menu=1` để mở drawer tức thì.
+     - Tích hợp Backdrop và Off-Canvas Drawer đầy đủ phân hệ học thuật, kết nối ví Phantom, đổi SOL, đăng nhập/đăng ký, và theme toggle.
+  3. `ui-preview/src/app/vi/page.tsx` & `ui-preview/src/app/vi/wallet.module.css`:
+     - Bổ sung media query `@media (max-width: 768px)` trong `wallet.module.css`.
+     - Điều chỉnh padding `.shell` và `.card` từ 6rem xuống 4.5rem 12px 24px.
+     - Thiết lập `.tabs` cuộn ngang độc lập, triệt tiêu 100% hiện tượng tràn chiều rộng 800px.
+     - Cập nhật header thu nhỏ linh hoạt trên trang ví.
+- **Bằng chứng kiểm chứng thực tế (CDP Mobile Emulation 390×844)**:
+  - `cdp_mobile_home.png`: Trang chủ hiển thị chuẩn xác, không tràn ngang, typography rõ nét, mandala làm nền trang nhã, dashboard học viên hiển thị ngay trong tầm mắt.
+  - `cdp_mobile_drawer.png`: Menu trượt di động hiển thị mượt mà với hiệu ứng làm mờ nền (blur backdrop), liên kết đầy đủ và sắc sảo.
+  - `cdp_mobile_vi.png`: Trang ví đổi SOL hiển thị gọn gàng, loại bỏ hoàn toàn thanh cuộn ngang 800px.
+  - `cdp_mobile_login.png`: Trang đăng nhập sạch đẹp, không bị đè chữ, form sẵn sàng tương tác ngay.
+  - `cdp_mobile_tutor.png`: Tab AI Tutor hiển thị gọn gàng trên mobile, hỗ trợ chọn trường, chọn môn và chat học tập.

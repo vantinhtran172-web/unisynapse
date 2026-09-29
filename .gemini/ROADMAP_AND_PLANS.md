@@ -58,6 +58,14 @@ Tài liệu này vạch rõ 4 giai đoạn phát triển của dự án UniSynap
   - [x] Bảo toàn cấu trúc cơ sở dữ liệu và dữ liệu kiểm toán (67 tài liệu, không drop bảng, không rò rỉ).
   - [x] Thiết lập cấu hình Cloudflare Anti-DDoS (Proxy CNAME, Under Attack Mode, WAF Rate Limiting, Bot Fight Mode, SSL Full Strict).
   - [x] Smoke test trình duyệt thực tế thành công trên cả trang Client (`/`), trang Admin (`/admin`), và trang Đăng nhập (`/dang-nhap`).
+- [x] **Tối Ưu Hóa Giao Diện Mobile Port 3001 Toàn Diện (Awwwards-Standard Mobile UX & Off-Canvas Drawer)**:
+  - [x] Khắc phục triệt để lỗi tràn ngang navbar, ẩn desktop clutter, chuẩn hóa header 52px với badge UniPoints và nút Hamburger SVG.
+  - [x] Thiết lập thanh tab học thuật cố định (44px) cuộn ngang cảm ứng mượt mà.
+  - [x] Xây dựng Mobile Drawer trượt mượt mà với backdrop blur: Định danh học viên, điều hướng học thuật, kết nối ví Phantom, đổi SOL, đăng nhập/đăng ký và theme switcher.
+  - [x] Đảo thứ tự Hero Section trên mobile: Đưa khẩu hiệu và nút bấm lên đầu (`order: 1`), thu nhỏ 3D Orbit Mandala làm nền bên dưới (`order: 2`).
+  - [x] Triệt tiêu lỗi phình to 800px trên trang ví `/vi`, căn chỉnh toàn bộ ô thẻ vừa vặn màn hình điện thoại.
+  - [x] Khắc phục chữ đè lên chữ trên trang Xác thực `/dang-nhap`, form nhập liệu sẵn sàng tương tác ngay.
+  - [x] Kiểm chứng thực tế qua CDP Mobile Emulation 390×844: Chụp 5 ảnh màn hình kiểm chứng chuẩn xác (`cdp_mobile_home.png`, `cdp_mobile_drawer.png`, `cdp_mobile_vi.png`, `cdp_mobile_login.png`, `cdp_mobile_tutor.png`).
 
 ---
 

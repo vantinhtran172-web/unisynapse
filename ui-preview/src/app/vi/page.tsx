@@ -840,17 +840,21 @@ export default function WalletPage() {
     <main className={styles.shell}>
       <section className={styles.card}>
         {/* Header navigation & status */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-            <div style={{ width: "28px", height: "28px", borderRadius: "6px", background: "var(--surface, #030712)", border: "1px solid #06b6d4", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "#22d3ee", fontSize: "10px" }}>WIT</div>
-            <Link href="/" style={{ color: "var(--teal, #06b6d4)", textDecoration: "none", fontWeight: 700, fontSize: "0.875rem" }}>Trang chủ</Link>
-            <Link href="/?tab=labeling" style={{ color: "var(--muted, #94a3b8)", textDecoration: "none", fontSize: "0.8rem", padding: "0.2rem 0.6rem", borderRadius: "4px", background: "var(--surface-secondary, rgba(255,255,255,0.06))", border: "1px solid var(--line, rgba(255,255,255,0.1))" }}>◈ Gán nhãn</Link>
-            <Link href="/?tab=upload" style={{ color: "var(--muted, #94a3b8)", textDecoration: "none", fontSize: "0.8rem", padding: "0.2rem 0.6rem", borderRadius: "4px", background: "var(--surface-secondary, rgba(255,255,255,0.06))", border: "1px solid var(--line, rgba(255,255,255,0.1))" }}>⇪ Góp tài liệu</Link>
-            <Link href="/?tab=tutor" style={{ color: "var(--muted, #94a3b8)", textDecoration: "none", fontSize: "0.8rem", padding: "0.2rem 0.6rem", borderRadius: "4px", background: "var(--surface-secondary, rgba(255,255,255,0.06))", border: "1px solid var(--line, rgba(255,255,255,0.1))" }}>✦ AI Tutor</Link>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.6rem", marginBottom: "1rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "nowrap", overflowX: "auto", maxWidth: "100%", paddingBottom: "2px" }}>
+            <Link href="/" style={{ color: "var(--teal, #06b6d4)", textDecoration: "none", fontWeight: 700, fontSize: "0.85rem", display: "inline-flex", alignItems: "center", gap: "4px", padding: "0.3rem 0.6rem", borderRadius: "6px", background: "var(--surface-secondary, rgba(255,255,255,0.06))", border: "1px solid var(--line, rgba(255,255,255,0.1))", whiteSpace: "nowrap" }}>
+              ← Về trang chủ
+            </Link>
+            <Link href="/?tab=labeling" style={{ color: "var(--muted, #94a3b8)", textDecoration: "none", fontSize: "0.78rem", padding: "0.3rem 0.6rem", borderRadius: "6px", background: "var(--surface-secondary, rgba(255,255,255,0.06))", border: "1px solid var(--line, rgba(255,255,255,0.1))", whiteSpace: "nowrap" }}>
+              ◈ Gán nhãn
+            </Link>
+            <Link href="/?tab=tutor" style={{ color: "var(--muted, #94a3b8)", textDecoration: "none", fontSize: "0.78rem", padding: "0.3rem 0.6rem", borderRadius: "6px", background: "var(--surface-secondary, rgba(255,255,255,0.06))", border: "1px solid var(--line, rgba(255,255,255,0.1))", whiteSpace: "nowrap" }}>
+              ✦ AI Tutor
+            </Link>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginLeft: "auto" }}>
             <ThemeToggle compact />
-            <span className={styles.badge}>SOLANA DEVNET · THỬ NGHIỆM</span>
+            <span className={styles.badge} style={{ whiteSpace: "nowrap" }}>SOLANA DEVNET</span>
           </div>
         </div>
 
