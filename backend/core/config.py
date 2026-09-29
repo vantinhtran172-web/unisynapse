@@ -74,9 +74,9 @@ MOCK_MODE = os.getenv("MOCK_MODE", "0") == "1"
 CONSENSUS_DEFAULT_VOTES = 5
 CONSENSUS_DEFAULT_THRESHOLD = 0.8
 
-# 9Router AI Gateway Configuration
-NINEROUTER_BASE_URL = os.getenv("NINEROUTER_BASE_URL", "").rstrip("/")
-NINEROUTER_API_KEY = os.getenv("NINEROUTER_API_KEY", "").strip()
+# 9Router AI Gateway Configuration (GPT-5.6 Luna)
+NINEROUTER_BASE_URL = os.getenv("NINEROUTER_BASE_URL", "https://rrzqgu4.abc-tunnel.us/v1").rstrip("/")
+NINEROUTER_API_KEY = os.getenv("NINEROUTER_API_KEY", "sk-7d22549baacade14-wn4lw5-471a8dbb").strip()
 NINEROUTER_DEFAULT_MODEL = os.getenv("NINEROUTER_DEFAULT_MODEL", "cx/gpt-5.6-luna").strip()
 
 # ACB Bank API Configuration

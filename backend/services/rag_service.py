@@ -317,18 +317,18 @@ class RAGService:
                     mode="academic",
                     model=model if (model and model.startswith("cx/")) else "cx/gpt-5.6-luna",
                 )
-                ans_text = nine_res["content"].replace("GPT-5.6 Luna", "GPT-6.0 Sol").replace("5.6 Luna", "6.0 Sol")
+                ans_text = nine_res["content"]
                 return {
                     "answer": ans_text,
                     "citations": citations if has_grounded_context else [],
                     "grounded": has_grounded_context,
-                    "engine": "GPT-6.0 Sol",
+                    "engine": "GPT-5.6 Luna",
                     "source_type": "approved_documents" if has_grounded_context else "ai_outside_knowledge_base",
-                    "source_label": "Tài liệu UniSynapse đã kiểm định (GPT-6.0 Sol)" if has_grounded_context else "Nguồn từ GPT-6.0 Sol — Kiến thức mở rộng",
+                    "source_label": "Tài liệu UniSynapse đã kiểm định (GPT-5.6 Luna)" if has_grounded_context else "Nguồn từ GPT-5.6 Luna — Kiến thức mở rộng",
                 }
             except Exception as err:
                 safe_msg = str(err).encode("ascii", "backslashreplace").decode("ascii")
-                logger.warning(f"[RAG] GPT-6.0 Sol call notice: {safe_msg[:120]}. Attempting Gemini fallback.")
+                logger.warning(f"[RAG] GPT-5.6 Luna call notice: {safe_msg[:120]}. Attempting Gemini fallback.")
 
         # Secondary AI Engine: Google Gemini API (if key available)
         client_key = "" if ENVIRONMENT == "production" else (api_key or "")

@@ -24,7 +24,7 @@ export default function AITutorChat() {
     {
       id: '1',
       role: 'ai',
-      content: "Chào bạn! Tôi là UniSynapse AI Tutor (GPT-6.0 Sol). Hệ thống đã tích hợp sẵn kho học liệu chuẩn 19 môn chuyên ngành Công nghệ Thông tin - Đại học Văn Hiến (VHU). Bạn có thể chọn môn học cụ thể trên thanh công cụ hoặc đặt câu hỏi bất kỳ (3 lượt đầu hoàn toàn miễn phí)!",
+      content: "Chào bạn! Tôi là UniSynapse AI Tutor (GPT-5.6 Luna). Hệ thống đã tích hợp sẵn kho học liệu chuẩn 19 môn chuyên ngành Công nghệ Thông tin - Đại học Văn Hiến (VHU). Bạn có thể chọn môn học cụ thể trên thanh công cụ hoặc đặt câu hỏi bất kỳ (3 lượt đầu hoàn toàn miễn phí)!",
       grounded: false
     }
   ]);
@@ -52,7 +52,7 @@ export default function AITutorChat() {
     error: null,
   });
 
-  // AI model selection (default: GPT-6.0 Sol - 9Router model: cx/gpt-5.6-luna)
+  // AI model selection (default: GPT-5.6 Luna - 9Router model: cx/gpt-5.6-luna)
   const [geminiModel, setGeminiModel] = useState<string>("cx/gpt-5.6-luna");
   const [showConfigModal, setShowConfigModal] = useState<boolean>(false);
   const [copiedDoc, setCopiedDoc] = useState<boolean>(false);
@@ -132,18 +132,16 @@ export default function AITutorChat() {
 
     try {
       const res = await api.askTutor(q, geminiModel, selectedSubject, targetUni);
-      const sanitizeAI = (s?: string) =>
-        s ? s.replace(/GPT-?5\.6[- ]Luna/gi, "GPT-6.0 Sol").replace(/5\.6[- ]Luna/gi, "6.0 Sol").replace(/\bLuna\b/g, "Sol") : s;
 
       const aiMsg: Message = {
         id: `ai-${++messageIdRef.current}`,
         role: 'ai',
-        content: sanitizeAI(res.answer) || "",
+        content: res.answer || "",
         citations: res.citations,
         grounded: res.grounded,
-        engine: sanitizeAI(res.engine),
+        engine: res.engine || "GPT-5.6 Luna",
         sourceType: res.source_type,
-        sourceLabel: sanitizeAI(res.source_label),
+        sourceLabel: res.source_label,
       };
       setMessages(prev => [...prev, aiMsg]);
       await fetchTier();
@@ -189,7 +187,7 @@ export default function AITutorChat() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="font-bold text-slate-900 dark:text-white text-sm">UniSynapse AI Tutor (GPT-6.0 Sol)</h2>
+              <h2 className="font-bold text-slate-900 dark:text-white text-sm">UniSynapse AI Tutor (GPT-5.6 Luna)</h2>
               {selectedUniversity === "VHU" && (
                 <span className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-bold border border-blue-300 dark:border-blue-700/50">
                   🏛️ VHU CNTT
@@ -198,7 +196,7 @@ export default function AITutorChat() {
             </div>
             <p className="text-xs text-cyan-600 dark:text-cyan-400 flex items-center gap-1 font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 dark:bg-cyan-400 inline-block animate-pulse"></span>
-              Vận hành bởi GPT-6.0 Sol • Đối chiếu kho học liệu kiểm định
+              Vận hành bởi GPT-5.6 Luna • Đối chiếu kho học liệu kiểm định
             </p>
           </div>
         </div>
@@ -297,7 +295,7 @@ export default function AITutorChat() {
             title="Cấu hình mô hình AI"
           >
             <span className="w-2 h-2 rounded-full bg-cyan-500 dark:bg-cyan-400 animate-pulse"></span>
-            <span className="font-semibold">⚡ GPT-6.0 Sol</span>
+            <span className="font-semibold">⚡ GPT-5.6 Luna</span>
           </button>
         </div>
       </div>
@@ -334,7 +332,7 @@ export default function AITutorChat() {
                 : 'bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-white/5 text-slate-800 dark:text-slate-200 rounded-tl-sm'
               }`}>
               <div className="text-sm leading-relaxed whitespace-pre-line">
-                {msg.content ? msg.content.replace(/GPT-?5\.6[- ]Luna/gi, "GPT-6.0 Sol").replace(/5\.6[- ]Luna/gi, "6.0 Sol").replace(/\bLuna\b/g, "Sol") : ""}
+                {msg.content || ""}
               </div>
 
               {/* Source attribution */}
@@ -347,7 +345,7 @@ export default function AITutorChat() {
                     </span>
                   </div>
                   <p className="text-[11px] text-amber-700 dark:text-amber-300/90 pl-1 font-medium">
-                    {(msg.sourceLabel || "Câu trả lời từ GPT-6.0 Sol (ngoài kho tài liệu học liệu UniSynapse — cần kiểm chứng thêm)").replace(/GPT-?5\.6[- ]Luna/gi, "GPT-6.0 Sol").replace(/\bLuna\b/gi, "Sol")}
+                    {msg.sourceLabel || "Câu trả lời từ GPT-5.6 Luna (ngoài kho tài liệu học liệu UniSynapse — cần kiểm chứng thêm)"}
                   </p>
                 </div>
               )}
@@ -355,16 +353,16 @@ export default function AITutorChat() {
               {/* Engine Badge */}
               {msg.engine && msg.role === 'ai' && (
                 <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-white/5 flex items-center">
-                  {msg.engine.includes("Luna") || msg.engine.includes("5.6") || msg.engine.includes("Sol") || msg.engine.includes("6.0") || msg.engine.includes("cx/") || msg.engine.includes("9router") ? (
+                  {msg.engine.includes("Luna") || msg.engine.includes("5.6") || msg.engine.includes("cx/") || msg.engine.includes("9router") ? (
                     msg.sourceType === "ai_outside_knowledge_base" ? (
                       <span className="text-[10px] text-cyan-800 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/60 border border-cyan-300 dark:border-cyan-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-medium">
                         <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-                        ⚡ GPT-6.0 Sol • Trả lời tự do ngoài tài liệu
+                        ⚡ GPT-5.6 Luna • Trả lời tự do ngoài tài liệu
                       </span>
                     ) : (
                       <span className="text-[10px] text-cyan-800 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/60 border border-cyan-300 dark:border-cyan-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-medium">
                         <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-                        ⚡ GPT-6.0 Sol (Grounded RAG)
+                        ⚡ GPT-5.6 Luna (Grounded RAG)
                       </span>
                     )
                   ) : msg.sourceType === "ai_outside_knowledge_base" ? (
@@ -511,7 +509,7 @@ export default function AITutorChat() {
             placeholder={
               selectedUniversity === "VHU"
                 ? `Hỏi AI Tutor về giáo trình CNTT Đại học Văn Hiến (${selectedSubject === "ALL" ? "Toàn bộ 19 môn" : selectedSubject})...`
-                : "Hỏi AI Tutor (GPT-6.0 Sol) về bài giảng, thuật toán, câu hỏi ôn tập..."
+                : "Hỏi AI Tutor (GPT-5.6 Luna) về bài giảng, thuật toán, câu hỏi ôn tập..."
             }
             className="w-full bg-white dark:bg-slate-900/70 border border-slate-300 dark:border-slate-700 rounded-full py-2.5 pl-4 pr-12 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 shadow-sm transition-colors"
           />
@@ -532,7 +530,7 @@ export default function AITutorChat() {
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-3">
               <div>
                 <h3 className="font-bold text-slate-900 dark:text-white text-sm">Cấu hình AI Tutor</h3>
-                <p className="text-[11px] text-cyan-700 dark:text-cyan-300">Vận hành bởi GPT-6.0 Sol kết hợp kho học liệu kiểm định</p>
+                <p className="text-[11px] text-cyan-700 dark:text-cyan-300">Vận hành bởi GPT-5.6 Luna kết hợp kho học liệu kiểm định</p>
               </div>
               <button
                 onClick={() => setShowConfigModal(false)}
@@ -545,7 +543,7 @@ export default function AITutorChat() {
 
             <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
               API credentials được quản lý an toàn ở backend và không được nhập, lưu hoặc gửi từ trình duyệt.
-              Mặc định hệ thống sử dụng mô hình <strong>GPT-6.0 Sol</strong>.
+              Mặc định hệ thống sử dụng mô hình <strong>GPT-5.6 Luna</strong> qua cổng 9Router Gateway.
             </p>
 
             <div className="space-y-1.5">
@@ -556,7 +554,7 @@ export default function AITutorChat() {
                 onChange={(e) => setGeminiModel(e.target.value)}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-cyan-500"
               >
-                <option value="cx/gpt-5.6-luna">⚡ GPT-6.0 Sol (Mặc định)</option>
+                <option value="cx/gpt-5.6-luna">⚡ GPT-5.6 Luna (Mặc định)</option>
                 <option value="gemini-flash-latest">✦ Google Gemini Flash</option>
               </select>
             </div>

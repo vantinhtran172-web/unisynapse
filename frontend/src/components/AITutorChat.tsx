@@ -52,7 +52,7 @@ export default function AITutorChat() {
     error: null,
   });
 
-  // AI model selection (default: GPT-5.6 Luna)
+  // AI model selection (default: GPT-5.6 Luna - 9Router model: cx/gpt-5.6-luna)
   const [geminiModel, setGeminiModel] = useState<string>("cx/gpt-5.6-luna");
   const [showConfigModal, setShowConfigModal] = useState<boolean>(false);
   const [copiedDoc, setCopiedDoc] = useState<boolean>(false);
@@ -132,13 +132,14 @@ export default function AITutorChat() {
 
     try {
       const res = await api.askTutor(q, geminiModel, selectedSubject, targetUni);
+
       const aiMsg: Message = {
         id: `ai-${++messageIdRef.current}`,
         role: 'ai',
-        content: res.answer,
+        content: res.answer || "",
         citations: res.citations,
         grounded: res.grounded,
-        engine: res.engine,
+        engine: res.engine || "GPT-5.6 Luna",
         sourceType: res.source_type,
         sourceLabel: res.source_label,
       };
@@ -330,7 +331,9 @@ export default function AITutorChat() {
                 ? 'bg-blue-600 text-white rounded-tr-sm shadow-md'
                 : 'bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-white/5 text-slate-800 dark:text-slate-200 rounded-tl-sm'
               }`}>
-              <div className="text-sm leading-relaxed whitespace-pre-line">{msg.content}</div>
+              <div className="text-sm leading-relaxed whitespace-pre-line">
+                {msg.content || ""}
+              </div>
 
               {/* Source attribution */}
               {msg.sourceType === "ai_outside_knowledge_base" && msg.role === 'ai' && (
@@ -540,7 +543,7 @@ export default function AITutorChat() {
 
             <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
               API credentials được quản lý an toàn ở backend và không được nhập, lưu hoặc gửi từ trình duyệt.
-              Mặc định hệ thống sử dụng mô hình <strong>GPT-5.6 Luna</strong>.
+              Mặc định hệ thống sử dụng mô hình <strong>GPT-5.6 Luna</strong> qua cổng 9Router Gateway.
             </p>
 
             <div className="space-y-1.5">

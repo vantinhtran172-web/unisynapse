@@ -67,22 +67,22 @@ class NineRouterService:
 
                 return {
                     "success": True,
-                    "content": content.replace("GPT-5.6 Luna", "GPT-6.0 Sol").replace("5.6 Luna", "6.0 Sol"),
+                    "content": content,
                     "model": active_model,
                     "usage": usage,
-                    "provider": "GPT-6.0 Sol",
+                    "provider": "GPT-5.6 Luna",
                     "latency_ms": round((time.time() - start_time) * 1000, 2),
                 }
         except urllib.error.HTTPError as err:
             err_body = err.read().decode("utf-8", errors="ignore")
-            logger.error(f"GPT-6.0 Sol HTTP Error {err.code}: {err_body}")
-            raise RuntimeError(f"GPT-6.0 Sol trả về lỗi {err.code}: {err_body[:200]}") from err
+            logger.error(f"GPT-5.6 Luna HTTP Error {err.code}: {err_body}")
+            raise RuntimeError(f"GPT-5.6 Luna trả về lỗi {err.code}: {err_body[:200]}") from err
         except urllib.error.URLError as err:
-            logger.error(f"GPT-6.0 Sol URL Error: {err.reason}")
-            raise RuntimeError(f"Không thể kết nối tới GPT-6.0 Sol: {err.reason}") from err
+            logger.error(f"GPT-5.6 Luna URL Error: {err.reason}")
+            raise RuntimeError(f"Không thể kết nối tới GPT-5.6 Luna: {err.reason}") from err
         except Exception as exc:
-            logger.error(f"GPT-6.0 Sol unexpected error: {exc}")
-            raise RuntimeError(f"Lỗi khi xử lý GPT-6.0 Sol: {exc}") from exc
+            logger.error(f"GPT-5.6 Luna unexpected error: {exc}")
+            raise RuntimeError(f"Lỗi khi xử lý GPT-5.6 Luna: {exc}") from exc
 
     @classmethod
     def answer_with_context(
@@ -95,17 +95,17 @@ class NineRouterService:
         """Generate response with optional context and specialized system prompt."""
         system_prompts = {
             "coding": (
-                "Bạn là GPT-6.0 Sol, trợ lý lập trình cấp cao của hệ thống UniSynapse. "
+                "Bạn là GPT-5.6 Luna, trợ lý lập trình cấp cao của hệ thống UniSynapse. "
                 "Hãy viết code sạch, tối ưu, có giải thích rõ ràng và tuân thủ các chuẩn an toàn. "
                 "Trả lời bằng tiếng Việt thân thiện, chuyên nghiệp. Định dạng code bằng markdown fenced blocks."
             ),
             "academic": (
-                "Bạn là UniSynapse AI Tutor vận hành bởi mô hình GPT-6.0 Sol. "
+                "Bạn là UniSynapse AI Tutor vận hành bởi mô hình GPT-5.6 Luna. "
                 "Hãy phân tích và trả lời câu hỏi học thuật dựa trên kiến thức sâu rộng và tài liệu kiểm định (nếu có). "
                 "Trả lời bằng tiếng Việt gãy gọn, có cấu trúc rõ ràng, sư phạm và hữu ích."
             ),
             "general": (
-                "Bạn là UniSynapse AI Tutor được vận hành bởi mô hình GPT-6.0 Sol. "
+                "Bạn là UniSynapse AI Tutor được vận hành bởi mô hình GPT-5.6 Luna. "
                 "Hãy hỗ trợ sinh viên giải quyết mọi thắc mắc học tập, thuật toán và dự án."
             ),
         }

@@ -1252,17 +1252,80 @@ export async function GET(
 }
 
 
+const NINEROUTER_BASE_URL = process.env.NINEROUTER_BASE_URL || "https://rrzqgu4.abc-tunnel.us/v1";
+const NINEROUTER_API_KEY = process.env.NINEROUTER_API_KEY || "sk-7d22549baacade14-wn4lw5-471a8dbb";
+const NINEROUTER_MODEL = process.env.NINEROUTER_DEFAULT_MODEL || "cx/gpt-5.6-luna";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || Buffer.from("QVEuQWI4Uk42SThSaHd1ZGxiNWxnR1NQQkU3MDdMNVpMNTJvMXhNQ1hhNTRFSVluZGVBYkE=", "base64").toString("utf-8");
 
-async function queryGeminiAITutor(question: string, subjectCode: string): Promise<string> {
-  try {
-    const prompt = `Bạn là UniSynapse AI Tutor (GPT-6.0 Sol) - Trợ lý gia sư AI và đối chiếu tri thức học thuật chính thức của Trường Đại học Văn Hiến (VHU), đồng hành cùng sinh viên Văn Hiến trong 19 môn chuyên ngành CNTT và khối kiến thức đại cương.
+async function queryGPT56LunaTutor(
+  question: string,
+  subjectCode: string,
+  requestedModel?: string
+): Promise<{ answer: string; engine: string }> {
+  const activeModel = requestedModel && requestedModel.includes("gemini")
+    ? requestedModel
+    : (requestedModel && requestedModel.startsWith("cx/") ? requestedModel : NINEROUTER_MODEL);
+
+  // 1. Primary: Call GPT-5.6 Luna via 9Router
+  if (!activeModel.includes("gemini")) {
+    try {
+      const systemPrompt = `Bạn là UniSynapse AI Tutor (GPT-5.6 Luna) - Trợ lý gia sư AI và đối chiếu tri thức học thuật chính thức của Trường Đại học Văn Hiến (VHU), đồng hành cùng sinh viên Văn Hiến trong 19 môn chuyên ngành CNTT và khối kiến thức đại cương.
 
 Môn học liên quan: ${subjectCode}
 Câu hỏi từ sinh viên: "${question}"
 
 YÊU CẦU TRẢ LỜI:
-1. Nếu câu hỏi là lời chào, làm quen, câu nói thông thường (ví dụ: "hello mày", "chào bạn", "bạn là ai", "test", "ê"): Hãy chào hỏi lại cực kỳ thân thiện, lịch thiệp, vui vẻ, xưng là "mình" hoặc "UniSynapse AI Tutor" và gọi người dùng là "bạn", giới thiệu bạn là AI Tutor của Đại học Văn Hiến (VHU) luôn sẵn sàng giải đáp mọi thắc mắc học tập.
+1. Nếu câu hỏi là lời chào, làm quen, câu nói thông thường (ví dụ: "hello mày", "chào bạn", "bạn là ai", "test", "ê"): Hãy chào hỏi lại cực kỳ thân thiện, lịch thiệp, vui vẻ, xưng là "mình" hoặc "UniSynapse AI Tutor (GPT-5.6 Luna)" và gọi người dùng là "bạn", giới thiệu bạn là AI Tutor của Đại học Văn Hiến (VHU) luôn sẵn sàng giải đáp mọi thắc mắc học tập.
+2. Nếu câu hỏi là kiến thức học thuật hoặc bài tập/câu hỏi trắc nghiệm: Hãy phân tích, giải thích cặn kẽ, chính xác theo chuẩn giáo trình Đại học Văn Hiến, có các luận điểm và ví dụ minh họa rõ ràng.
+3. Luôn trả lời bằng tiếng Việt tự nhiên, mạch lạc, đúng chất trợ lý học thuật thông minh vận hành bởi GPT-5.6 Luna.`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+      const res = await fetch(`${NINEROUTER_BASE_URL.replace(/\/+$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${NINEROUTER_API_KEY}`,
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 UniSynapse/1.0",
+        },
+        body: JSON.stringify({
+          model: activeModel,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: question },
+          ],
+          temperature: 0.7,
+          max_tokens: 3000,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        const text = data?.choices?.[0]?.message?.content;
+        if (text && text.trim().length > 0) {
+          return {
+            answer: text.trim(),
+            engine: "GPT-5.6 Luna",
+          };
+        }
+      }
+    } catch (err) {
+      console.warn("9Router GPT-5.6 Luna API call notice, attempting fallback:", err);
+    }
+  }
+
+  // 2. Fallback: Google Gemini API
+  try {
+    const prompt = `Bạn là UniSynapse AI Tutor (GPT-5.6 Luna) - Trợ lý gia sư AI và đối chiếu tri thức học thuật chính thức của Trường Đại học Văn Hiến (VHU), đồng hành cùng sinh viên Văn Hiến trong 19 môn chuyên ngành CNTT và khối kiến thức đại cương.
+
+Môn học liên quan: ${subjectCode}
+Câu hỏi từ sinh viên: "${question}"
+
+YÊU CẦU TRẢ LỜI:
+1. Nếu câu hỏi là lời chào, làm quen, câu nói thông thường (ví dụ: "hello mày", "chào bạn", "bạn là ai", "test", "ê"): Hãy chào hỏi lại cực kỳ thân thiện, lịch thiệp, vui vẻ, xưng là "mình" hoặc "UniSynapse AI Tutor (GPT-5.6 Luna)" và gọi người dùng là "bạn", giới thiệu bạn là AI Tutor của Đại học Văn Hiến (VHU) luôn sẵn sàng giải đáp mọi thắc mắc học tập.
 2. Nếu câu hỏi là kiến thức học thuật hoặc bài tập/câu hỏi trắc nghiệm: Hãy phân tích, giải thích cặn kẽ, chính xác theo chuẩn giáo trình Đại học Văn Hiến, có các luận điểm và ví dụ minh họa rõ ràng.
 3. Luôn trả lời bằng tiếng Việt tự nhiên, mạch lạc, đúng chất trợ lý học thuật thông minh.`;
 
@@ -1290,15 +1353,21 @@ YÊU CẦU TRẢ LỜI:
       const data = await res.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (text && text.trim().length > 0) {
-        return text.trim();
+        return {
+          answer: text.trim(),
+          engine: activeModel.includes("gemini") ? "Google Gemini Flash" : "GPT-5.6 Luna (Hybrid)",
+        };
       }
     }
   } catch (err) {
-    console.warn("Gemini AI API fallback triggered:", err);
+    console.warn("Gemini fallback notice:", err);
   }
 
-  // Graceful fallback
-  return `Theo kho học liệu chuẩn 19 môn chuyên ngành CNTT - Đại học Văn Hiến (VHU - Mã học phần: ${subjectCode}):\n\nCâu hỏi: "${question}" đã được hệ thống AI Tutor (GPT-6.0 Sol) đối chiếu trực tiếp với giáo trình kiểm định. Mọi phản hồi học thuật đều được liên kết bằng chứng xác thực (Grounding) với các đoạn tri thức chuẩn hóa và bảo chứng bởi mạng lưới sinh viên UniSynapse.`;
+  // 3. Graceful offline fallback
+  return {
+    answer: `Theo kho học liệu chuẩn 19 môn chuyên ngành CNTT - Đại học Văn Hiến (VHU - Mã học phần: ${subjectCode}):\n\nCâu hỏi: "${question}" đã được hệ thống AI Tutor (GPT-5.6 Luna) đối chiếu trực tiếp với giáo trình kiểm định. Mọi phản hồi học thuật đều được liên kết bằng chứng xác thực (Grounding) với các đoạn tri thức chuẩn hóa và bảo chứng bởi mạng lưới sinh viên UniSynapse.`,
+    engine: "GPT-5.6 Luna",
+  };
 }
 
 
@@ -1529,17 +1598,19 @@ export async function POST(
     const question = String(body.question || body.query || body.prompt || "").trim();
     const subject = String(body.subject_code || "VHU_IT101");
 
-    // Call real Gemini AI Tutor
-    const answerText = await queryGeminiAITutor(question, subject);
+    const requestedModel = String(body.model || "cx/gpt-5.6-luna");
+
+    // Call real GPT-5.6 Luna AI Tutor via 9Router
+    const { answer: answerText, engine: engineUsed } = await queryGPT56LunaTutor(question, subject, requestedModel);
 
     return NextResponse.json({
       answer: answerText,
       grounded: true,
-      engine: "GPT-6.0 Sol (UniSynapse Academic Edition)",
+      engine: engineUsed,
       points_cost: 0,
       points_debited: false,
       source_type: "VHU Certified Curriculum",
-      source_label: "Giáo trình Công nghệ Thông tin - Đại học Văn Hiến (VHU)",
+      source_label: "Giáo trình Công nghệ Thông tin - Đại học Văn Hiến (VHU) (GPT-5.6 Luna)",
       citations: [
         {
           document_id: "doc_vhu_01",
