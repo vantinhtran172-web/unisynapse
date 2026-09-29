@@ -696,3 +696,16 @@
      - Khớp đúng nội dung và số tiền ➔ HTTP 200 (Cộng điểm thành công, cấp chữ ký Solana Devnet 88 ký tự).
   3. Trình duyệt thực tế (CDP Browser Subagent): Giao diện `/vi` hiển thị đầy đủ PreviewNavbar, VietQR ACB tài khoản 38038627, Banner cảnh báo, nút kiểm tra tức thì.
 
+
+### E. Phân hệ Quản Trị & Nhiệm Vụ Gán Nhãn (Admin & Client Data Labeling)
+10. **[ui-preview/src/lib/sampleTasks.ts](file:///c:/Users/TGDD/Downloads/unisynapse/ui-preview/src/lib/sampleTasks.ts)** & **[frontend/src/lib/sampleTasks.ts](file:///c:/Users/TGDD/Downloads/unisynapse/frontend/src/lib/sampleTasks.ts)**:
+    * Khởi tạo danh mục đầy đủ **44 nhiệm vụ gán nhãn** trích xuất từ cơ sở dữ liệu local (`data/unisynapse.db`), bao gồm đầy đủ các chủ đề CNTT (CS101, Cấu trúc dữ liệu, Thuật toán BFS/DFS, OOP, Khái niệm AI, Đề thi VHU) với các lựa chọn nhãn, ngưỡng đồng thuận và điểm thưởng thực tế (+10 đến +20 UP).
+11. **[ui-preview/src/app/api/v1/[...slug]/route.ts](file:///c:/Users/TGDD/Downloads/unisynapse/ui-preview/src/app/api/v1/[...slug]/route.ts)** & **[frontend/src/app/api/v1/[...slug]/route.ts](file:///c:/Users/TGDD/Downloads/unisynapse/frontend/src/app/api/v1/[...slug]/route.ts)**:
+    * Cung cấp danh mục 44 bài toán cho `GET /tasks/open` và `GET /admin/tasks`.
+    * Cung cấp các thao tác CRUD Admin: `POST /admin/tasks`, `PUT /admin/tasks/:id`, `DELETE /admin/tasks/:id`.
+    * **Cơ chế Khóa Chặt Anti-Duplicate**: Khóa định danh `${user.id}:${taskId}` trong `mockTaskSubmissions`. Khi phát hiện tài khoản đã gửi nhãn cho bài toán, `POST /tasks/submit` lập tức bác bỏ bằng HTTP 400: `"Bạn đã gửi nhãn cho bài toán này rồi. Mỗi tài khoản chỉ được thực hiện 1 lần duy nhất!"`.
+12. **[ui-preview/src/components/DataLabeling.tsx](file:///c:/Users/TGDD/Downloads/unisynapse/ui-preview/src/components/DataLabeling.tsx)** & **[frontend/src/components/DataLabeling.tsx](file:///c:/Users/TGDD/Downloads/unisynapse/frontend/src/components/DataLabeling.tsx)**:
+    * Bổ sung bộ đếm số bài toán đã làm: `Đã làm: X/44` và vị trí hiện tại `i/44` kèm các nút điều hướng chuyển bài trước/sau (`←` / `→`).
+    * Khóa vô hiệu hóa (`disabled`) toàn bộ nút bấm gán nhãn khi `activeTask.user_submitted === true`.
+    * Hiển thị banner cảnh báo màu hổ phách: `🔒 Bạn đã hoàn thành nhiệm vụ này. Mỗi tài khoản chỉ được thực hiện 1 lần duy nhất để bảo đảm tính khách quan đồng thuận.`
+    * Bổ sung chốt chặn client-side ngăn chặn gọi API khi bài toán đã hoàn thành.

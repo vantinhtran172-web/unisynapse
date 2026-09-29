@@ -32,11 +32,16 @@ export default function DataLabeling() {
 
   const safeIndex = currentTaskIndex < tasks.length ? currentTaskIndex : 0;
   const activeTask = tasks[safeIndex];
+  const completedTasksCount = tasks.filter((t) => t.user_submitted).length;
 
   const handleSelectLabel = async (label: string) => {
     if (!activeTask) return;
     if (!user) {
       setErrorMessage("Vui lòng đăng nhập để gửi nhãn và nhận thưởng UniPoints!");
+      return;
+    }
+    if (activeTask.user_submitted) {
+      setErrorMessage("Bạn đã gửi nhãn cho bài toán này rồi. Mỗi tài khoản chỉ được thực hiện 1 lần duy nhất!");
       return;
     }
     setIsSubmitting(true);
@@ -71,6 +76,9 @@ export default function DataLabeling() {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-bold text-slate-900 dark:text-white">Nhiệm Vụ Gán Nhãn Dữ Liệu</h2>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-300 dark:border-emerald-700/50">
+              Đã làm: {completedTasksCount}/{tasks.length}
+            </span>
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -147,6 +155,10 @@ export default function DataLabeling() {
 
           {activeTask.user_submitted && !result && (
             <div className="mt-3 space-y-2.5">
+              <div className="p-2.5 bg-amber-500/10 dark:bg-amber-950/30 border border-amber-500/30 rounded-xl text-[11px] text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                <span>🔒</span>
+                <span>Mỗi tài khoản chỉ được thực hiện nhiệm vụ này 1 lần duy nhất để bảo đảm tính khách quan đồng thuận.</span>
+              </div>
               <div className="p-3 bg-emerald-500/10 dark:bg-emerald-950/40 border border-emerald-500/30 rounded-xl space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1.5">

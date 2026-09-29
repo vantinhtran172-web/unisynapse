@@ -164,3 +164,9 @@ Tài liệu này vạch rõ 4 giai đoạn phát triển của dự án UniSynap
   - [x] Đồng bộ song song toàn diện giữa `ui-preview` và `frontend`, vượt qua 100% build Next.js (Exit code 0) và test suite nghiêm ngặt.
 
 
+- [x] **Nạp Toàn Bộ 44 Nhiệm Vụ Gán Nhãn Chuẩn CSDL Local & Thiết Lập Rào Chắn Chống Trùng Lặp (Anti-Duplicate)** (Hoàn thành 30/09/2026):
+  - [x] Trích xuất 44 bài toán gán nhãn thực tế từ `data/unisynapse.db` (CS101, Data Structures, Algorithms, OOP, AI Concepts, VHU Exam) vào `sampleTasks.ts` (cả `ui-preview` và `frontend`).
+  - [x] Cung cấp đầy đủ danh mục 44 bài toán cho cả Trang Quản trị Admin (`/admin`) và Giao diện Học viên (`/?tab=labeling`).
+  - [x] Xây dựng cơ chế Anti-Duplicate định danh duy nhất theo `${user.id}:${taskId}`: Nếu tài khoản đã gửi nhãn cho bài toán, máy chủ lập tức từ chối với HTTP 400.
+  - [x] Cải tiến giao diện Client (`DataLabeling.tsx`): Khóa cứng nút gán nhãn khi đã hoàn thành, hiển thị thông báo hổ phách `🔒 Mỗi tài khoản chỉ được thực hiện 1 lần duy nhất` và bộ đếm tiến độ `Đã làm: X/44`.
+  - [x] Vượt qua 100% kiểm thử kịch bản tự động `test_tasks_and_anti_duplicate.py` và biên dịch Next.js (Code 0).

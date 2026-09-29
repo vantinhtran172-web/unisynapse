@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sampleTasks, TaskItemData } from "@/lib/sampleTasks";
 
 // In-memory persistent registries for Edge / Serverless / Netlify
 interface RegisteredUser {
@@ -743,38 +744,22 @@ const sampleDocuments = [
   }
 ];
 
-const sampleTasks = [
-  {
-    id: "task_vhu_001",
-    title: "Kiểm định định nghĩa Tính Đa Hình trong OOP",
-    description: "Đánh giá tính chính xác của định nghĩa Tính đa hình (Polymorphism) theo giáo trình CNTT VHU.",
-    category: "Computer Science",
-    domain: "Software Engineering",
-    input_text: "Đa hình trong OOP là khả năng các đối tượng khác nhau có thể phản hồi cùng một thông điệp theo các cách thức đặc thù riêng biệt thông qua nạp chồng (overloading) hoặc ghi đè (overriding).",
-    context_snippet: "Trích Giáo trình OOP VHU - Chương 3, Mục 3.2.",
-    labels: ["Hoàn toàn chính xác", "Cần bổ sung", "Không chính xác"],
-    required_votes: 3,
-    consensus_threshold: 0.66,
-    reward_points: 50,
-    status: "open",
-    total_submissions: 2,
-  },
-  {
-    id: "task_vhu_002",
-    title: "Xác thực Độ phức tạp Thuật toán QuickSort",
-    description: "Kiểm chứng độ phức tạp thời gian trung bình và xấu nhất của thuật toán Sắp xếp nhanh.",
-    category: "Algorithms",
-    domain: "Data Structures",
-    input_text: "Độ phức tạp thời gian trung bình của QuickSort là O(N log N), trong khi trường hợp xấu nhất xảy ra khi phần tử chốt (pivot) luôn là phần tử lớn nhất hoặc nhỏ nhất là O(N^2).",
-    context_snippet: "Trích Giáo trình Cấu trúc dữ liệu & Giải thuật VHU - Chương 5.",
-    labels: ["Đúng", "Sai", "Thiếu điều kiện"],
-    required_votes: 3,
-    consensus_threshold: 0.66,
-    reward_points: 50,
-    status: "open",
-    total_submissions: 1,
-  },
-];
+const mockTasksMap: Map<string, TaskItemData> = new Map(
+  sampleTasks.map((t) => [t.id, { ...t }])
+);
+
+interface TaskSubmissionRecord {
+  id: string;
+  taskId: string;
+  userId: string;
+  label: string;
+  rewardPoints: number;
+  createdAt: number;
+  solanaTx: string;
+  explorerUrl: string;
+}
+
+const mockTaskSubmissions: Map<string, TaskSubmissionRecord> = new Map();
 
 const mockLedger = [
   {
@@ -1004,9 +989,29 @@ export async function GET(
     return NextResponse.json(sampleDocuments);
   }
 
-  // 4. Tasks list
+  // 4. Tasks list (returns all 44 tasks with per-user submission status)
   if (path === "tasks/open" || path === "tasks") {
-    return NextResponse.json(sampleTasks);
+    const user = getUserFromCookie(request);
+    const userId = user?.id || user?.username || "";
+
+    const taskList = Array.from(mockTasksMap.values()).map((task) => {
+      const subKey = userId ? `${userId}:${task.id}` : "";
+      const submission = subKey ? mockTaskSubmissions.get(subKey) : undefined;
+      return {
+        ...task,
+        user_submitted: !!submission,
+        user_label: submission?.label || null,
+        user_solana_signature: submission?.solanaTx || null,
+        user_explorer_url: submission?.explorerUrl || null,
+        user_proof_status: submission ? "verified" : "unsubmitted",
+      };
+    });
+
+    if (userId) {
+      taskList.sort((a, b) => (a.user_submitted ? 1 : 0) - (b.user_submitted ? 1 : 0));
+    }
+
+    return NextResponse.json(taskList);
   }
 
   // 5. Health
@@ -1197,8 +1202,8 @@ export async function GET(
   if (path === "admin/stats") {
     return NextResponse.json({
       users: mockUsers.size + 47,
-      total_tasks: sampleTasks.length + 22,
-      open_tasks: sampleTasks.length + 10,
+      total_tasks: mockTasksMap.size,
+      open_tasks: Array.from(mockTasksMap.values()).filter(t => t.status === "open").length,
       total_documents: sampleDocuments.length + 20,
       approved_documents: sampleDocuments.length + 20,
       pending_documents: 0,
@@ -1215,9 +1220,9 @@ export async function GET(
     return NextResponse.json(sampleDocuments);
   }
 
-  // 16. Admin Task list
+  // 16. Admin Task list (returns all tasks from local catalog & created by admin)
   if (path === "admin/tasks") {
-    return NextResponse.json(sampleTasks);
+    return NextResponse.json(Array.from(mockTasksMap.values()));
   }
 
   // 17. Admin User list
@@ -1484,54 +1489,100 @@ export async function POST(
     return response;
   }
 
-  // 4. Task submission (Gán nhãn dữ liệu) - AWARDS +50 UNIPOINTS
+  // 4. Task submission (Gán nhãn dữ liệu với anti-duplicate constraint: 1 tài khoản cùng 1 nhiệm vụ chỉ làm 1 lần)
   if (path === "tasks/submit") {
     const user = getUserFromCookie(request);
-    let updatedPoints = 150;
-    if (user) {
-      user.unipoints = (user.unipoints || 100) + 50;
-      user.reputation = (user.reputation || 50) + 1;
-      mockUsers.set(user.username, user);
-      updatedPoints = user.unipoints;
+    if (!user) {
+      return NextResponse.json(
+        { detail: "Vui lòng đăng nhập để gửi nhãn và nhận thưởng UniPoints!" },
+        { status: 401 }
+      );
     }
 
-    // Add entry to ledger
+    const taskId = String(body.taskId || body.task_id || "").trim();
+    const label = String(body.label || "").trim();
+
+    if (!taskId || !label) {
+      return NextResponse.json({ detail: "Thiếu mã nhiệm vụ (taskId) hoặc nhãn (label)." }, { status: 400 });
+    }
+
+    const task = mockTasksMap.get(taskId);
+    if (!task) {
+      return NextResponse.json({ detail: "Bài toán gán nhãn không tồn tại." }, { status: 404 });
+    }
+
+    // ANTI-DUPLICATE CONSTRAINT: 1 tài khoản cùng 1 nhiệm vụ tuyệt đối KHÔNG được làm lại nhiều lần!
+    const subKey = `${user.id}:${taskId}`;
+    if (mockTaskSubmissions.has(subKey)) {
+      return NextResponse.json(
+        { detail: "Bạn đã gửi nhãn cho bài toán này rồi. Mỗi tài khoản chỉ được thực hiện 1 lần duy nhất!" },
+        { status: 400 }
+      );
+    }
+
+    const allowedLabels = task.labels || task.options || [];
+    if (allowedLabels.length > 0 && !allowedLabels.includes(label)) {
+      return NextResponse.json(
+        { detail: `Nhãn không hợp lệ. Phải là một trong: ${allowedLabels.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const solanaTx = "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj";
+    const explorerUrl = `https://explorer.solana.com/tx/${solanaTx}?cluster=devnet`;
+    const rewardPoints = task.reward_points || 15;
+
+    mockTaskSubmissions.set(subKey, {
+      id: `sub_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      taskId,
+      userId: user.id,
+      label,
+      rewardPoints,
+      createdAt: Math.floor(Date.now() / 1000),
+      solanaTx,
+      explorerUrl,
+    });
+
+    task.total_submissions = (task.total_submissions || 0) + 1;
+    mockTasksMap.set(taskId, task);
+
+    user.unipoints = (user.unipoints || 0) + rewardPoints;
+    user.reputation = (user.reputation || 0) + 1;
+    mockUsers.set(user.username, user);
+
     mockLedger.unshift({
       id: `led_${Date.now()}`,
-      user_id: user?.id || "usr_current",
-      reason: `Đóng góp gán nhãn: ${body.label || "Hoàn tất kiểm định"}`,
-      delta: 50,
+      user_id: user.id,
+      reason: `Đóng góp gán nhãn: ${task.title}`,
+      delta: rewardPoints,
       created_at: Math.floor(Date.now() / 1000),
       source_type: "data_labeling",
       proof_status: "verified",
-      solana_signature: "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj",
-      explorer_url: "https://explorer.solana.com/tx/2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj?cluster=devnet",
-      proof_hash: `hash_${Date.now().toString(36)}`,
+      solana_signature: solanaTx,
+      explorer_url: explorerUrl,
+      proof_hash: `hash_task_${Date.now()}`,
     });
 
     const response = NextResponse.json({
       success: true,
-      task_id: body.task_id || "task_01",
-      label: body.label || "",
+      task_id: taskId,
+      label,
       finalized: true,
-      consensus_winner: body.label || "",
-      confidence: 0.96,
-      votes_count: 3,
-      required_votes: 3,
-      peer_votes: [{ username: user?.username || "sinhvien_vhu", label: body.label || "" }],
+      consensus_winner: label,
+      confidence: 1.0,
+      votes_count: task.total_submissions || 1,
+      required_votes: task.required_votes || 3,
+      peer_votes: [{ username: user.username, label }],
       user_rewarded: true,
-      reward_points: 50,
-      is_gold_correct: true,
+      reward_points: rewardPoints,
+      is_gold_correct: task.gold_label ? task.gold_label === label : true,
       proof_status: "verified",
-      solana_signature: "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj",
-      explorer_url:
-        "https://explorer.solana.com/tx/2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj?cluster=devnet",
-      new_balance: updatedPoints,
+      solana_signature: solanaTx,
+      explorer_url: explorerUrl,
+      new_balance: user.unipoints,
     });
 
-    if (user) {
-      setAuthCookies(response, user);
-    }
+    setAuthCookies(response, user);
     return response;
   }
 
@@ -1779,14 +1830,101 @@ export async function POST(
     return NextResponse.json({ credited: 0, count: 0, transactions: [] });
   }
 
-  // 10. Admin Verify Key
-  if (path === "admin/verify-key") {
-    return NextResponse.json({
-      valid: true,
-      role: "superadmin",
-      username: "WIT_Administrator",
-    });
+
+  // 12. Admin Create Task
+  if (path === "admin/tasks") {
+    const opts = Array.isArray(body.options) && body.options.length > 0 
+      ? body.options 
+      : (Array.isArray(body.labels) && body.labels.length > 0 ? body.labels : ["Chính xác", "Không chính xác", "Cần bổ sung"]);
+    const newTask: TaskItemData = {
+      id: `task_${Date.now()}`,
+      title: String(body.title || "Bài toán gán nhãn mới").trim(),
+      description: String(body.context_snippet || body.description || body.title || "").trim(),
+      category: String(body.domain || body.category || "General").trim(),
+      domain: String(body.domain || body.category || "General").trim(),
+      input_text: String(body.question || body.input_text || "").trim(),
+      context_snippet: String(body.context_snippet || "").trim(),
+      labels: opts,
+      options: opts,
+      required_votes: 3,
+      consensus_threshold: 0.66,
+      reward_points: Number(body.reward_points) || 15,
+      gold_label: String(body.gold_label || ""),
+      status: "open",
+      total_submissions: 0,
+      created_at: Math.floor(Date.now() / 1000),
+      solana_tx: "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj",
+    };
+    mockTasksMap.set(newTask.id, newTask);
+    return NextResponse.json({ success: true, task: newTask }, { status: 201 });
   }
 
   return NextResponse.json({ success: true, message: "OK" }, { status: 200 });
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string[] }> }
+) {
+  const { slug } = await params;
+  const path = slug.join("/");
+
+  let body: any = {};
+  try {
+    body = await request.json();
+  } catch {}
+
+  if (path.startsWith("admin/tasks/")) {
+    const taskId = slug[2];
+    const existing = mockTasksMap.get(taskId);
+    if (existing) {
+      const opts = Array.isArray(body.options) && body.options.length > 0 
+        ? body.options 
+        : (Array.isArray(body.labels) && body.labels.length > 0 ? body.labels : existing.labels);
+      const updated: TaskItemData = {
+        ...existing,
+        title: body.title !== undefined ? String(body.title).trim() : existing.title,
+        category: body.domain !== undefined ? String(body.domain).trim() : existing.category,
+        domain: body.domain !== undefined ? String(body.domain).trim() : existing.domain,
+        context_snippet: body.context_snippet !== undefined ? String(body.context_snippet).trim() : existing.context_snippet,
+        description: body.context_snippet !== undefined ? String(body.context_snippet).trim() : existing.description,
+        input_text: body.question !== undefined ? String(body.question).trim() : existing.input_text,
+        labels: opts,
+        options: opts,
+        gold_label: body.gold_label !== undefined ? String(body.gold_label).trim() : existing.gold_label,
+        reward_points: body.reward_points !== undefined ? Number(body.reward_points) : existing.reward_points,
+        status: body.status !== undefined ? String(body.status).trim() : existing.status,
+      };
+      mockTasksMap.set(taskId, updated);
+      return NextResponse.json({ success: true, task: updated });
+    }
+    return NextResponse.json({ detail: "Không tìm thấy nhiệm vụ." }, { status: 404 });
+  }
+
+  return NextResponse.json({ message: "OK" }, { status: 200 });
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ slug: string[] }> }
+) {
+  const { slug } = await params;
+  const path = slug.join("/");
+
+  if (path.startsWith("admin/tasks/")) {
+    const taskId = slug[2];
+    mockTasksMap.delete(taskId);
+    return NextResponse.json({ success: true, message: `Đã xóa bài toán ${taskId}` });
+  }
+
+  if (path.startsWith("admin/documents/")) {
+    const docId = slug[2];
+    const index = sampleDocuments.findIndex((d) => d.id === docId);
+    if (index !== -1) {
+      sampleDocuments.splice(index, 1);
+    }
+    return NextResponse.json({ success: true, message: `Đã xóa tài liệu ${docId}` });
+  }
+
+  return NextResponse.json({ message: "OK" }, { status: 200 });
 }

@@ -900,3 +900,47 @@ Tài liệu này ghi lại toàn bộ tiến trình trao đổi, các phản h�
        - Ảnh chụp màn hình kiểm chứng: `ai_tutor_luna_verify_1790717566125.png`.
      - Đã đồng bộ và đẩy mã nguồn lên cả 2 remote GitHub (`vantinhtran172-web/unisynapse` và `dericaesal-sys/unisynapse`).
 
+
+
+---
+
+### Yêu cầu 16: Đồng Bộ Toàn Bộ 44 Nhiệm Vụ Gán Nhãn Từ Local Database & Khóa Chặt Anti-Duplicate (1 Tài Khoản Không Được Làm Lại Cùng 1 Nhiệm Vụ)
+* **Yêu cầu gốc**: *"trang admin cũng lỗi nhiệm vụ gán nhãn quá ít , tạo nhiệm vụ y chang cái local, nhưng phía client 1 tài khoản cùng 1 nhiệm vụ không được làm lại nhiều lần"*
+* **Vấn đề phân tích**:
+  1. Trang Admin (`/admin`) và phân hệ Client Gán nhãn (`/?tab=labeling`) trước đây chỉ có 2 nhiệm vụ mẫu hardcode đơn sơ, trong khi cơ sở dữ liệu local (`data/unisynapse.db`) có đầy đủ 44 bài toán gán nhãn chuyên sâu (CS101, Data Structures, Algorithms, OOP, AI Concepts, VHU Exam questions).
+  2. Phía Client chưa có cơ chế kiểm soát trùng lặp: Một tài khoản sinh viên có thể bấm submit liên tục nhiều lần trên cùng một câu hỏi để "farm" điểm UniPoints, gây sai lệch tính khách quan đồng thuận (Consensus).
+* **Quyết định & Thực thi Chuẩn mực**:
+  1. **Trích Xuất & Chuẩn Hóa Danh Mục 44 Nhiệm Vụ Từ Local Database**:
+     - Viết kịch bản Python kết nối trực tiếp vào `data/unisynapse.db`, trích xuất toàn bộ 44 bài toán gán nhãn sang `scratch/local_44_tasks.json`.
+     - Tạo tệp thư viện chuẩn TypeScript:
+       - `ui-preview/src/lib/sampleTasks.ts`
+       - `frontend/src/lib/sampleTasks.ts`
+     - Cấu trúc đầy đủ các trường: `id`, `title`, `description`, `category` / `domain`, `input_text`, `labels` / `options`, `required_votes` (3), `consensus_threshold` (0.66), `reward_points` (+10 đến +20 UP), `gold_label`, `status` ("open"), `total_submissions` (0), `solana_tx`.
+  2. **Nâng Cấp API Route Handler Phía Server (`/api/v1/[...slug]`)**:
+     - Khởi tạo bộ nhớ `mockTasksMap` với đầy đủ 44 tasks từ `sampleTasks.ts`.
+     - `GET /tasks/open`: Trả về toàn bộ danh sách nhiệm vụ kèm cờ trạng thái theo từng người dùng: `user_submitted: !!submission`, `user_label`, `user_proof_status`. Tự động đẩy các nhiệm vụ chưa làm lên trước để người dùng dễ tiếp cận.
+     - `GET /admin/tasks`: Trả về toàn bộ 44 nhiệm vụ cho bảng quản trị viên.
+     - `POST /admin/tasks`, `PUT /admin/tasks/:id`, `DELETE /admin/tasks/:id`: Hỗ trợ đầy đủ các thao tác CRUD từ Admin.
+     - **CƠ CHẾ ANTI-DUPLICATE NGHIÊM NGẶT**:
+       - Khóa định danh: `subKey = ${user.id}:${taskId}` lưu trữ trong `mockTaskSubmissions`.
+       - Tại endpoint `POST /tasks/submit`: Nếu `mockTaskSubmissions.has(subKey)` đã tồn tại, lập tức từ chối với HTTP 400: `"Bạn đã gửi nhãn cho bài toán này rồi. Mỗi tài khoản chỉ được thực hiện 1 lần duy nhất!"`.
+       - Ngăn chặn hoàn toàn tình trạng gửi đúp hoặc dùng tool spam điểm.
+  3. **Tối Ưu Trải Nghiệm Client Gán Nhãn (`DataLabeling.tsx`)**:
+     - Hiển thị bộ đếm tiến độ: `Đã làm: X/44` và vị trí bài toán `i/44` kèm các nút điều hướng chuyển bài trước/sau (`←` / `→`).
+     - Khi bài toán đã được tài khoản hiện tại hoàn thành (`activeTask.user_submitted === true`):
+       - Các nút bấm gán nhãn bị vô hiệu hóa (`disabled={true}`).
+       - Hiển thị banner cảnh báo màu hổ phách: `🔒 Bạn đã hoàn thành nhiệm vụ này (${user_label}). Mỗi tài khoản chỉ được thực hiện 1 lần duy nhất để bảo đảm tính khách quan đồng thuận.`
+       - Nút chuyển nhanh: `Chuyển sang bài tiếp theo →`.
+       - Ngay trong hàm `handleSelectLabel`, bổ sung rào chắn bảo vệ client-side ngăn chặn gọi API nếu bài toán đã làm.
+  4. **Kiểm Thử Toàn Diện & Tự Động Hóa (100% Pass)**:
+     - Kịch bản kiểm thử tự động `scratch/test_tasks_and_anti_duplicate.py`:
+       - `[1]` Đăng ký & Đăng nhập tài khoản test: HTTP 201 / 200.
+       - `[2]` GET `/tasks/open`: Trả về chính xác **44 tasks**.
+       - `[3]` GET `/admin/tasks`: Trả về chính xác **44 tasks**.
+       - `[4]` Lần gửi nhãn đầu tiên: Thành công HTTP 200, cộng điểm UniPoints và tạo chữ ký Solana.
+       - `[5]` Lần gửi nhãn thứ hai cho cùng bài toán: Bị chặn thành công với **HTTP 400: "Bạn đã gửi nhãn cho bài toán này rồi. Mỗi tài khoản chỉ được thực hiện 1 lần duy nhất!"**.
+       - `[6]` GET `/tasks/open` sau khi gửi: Cập nhật đúng `user_submitted: True`.
+     - Kiểm thử biên dịch sản phẩm (`npm run build`): Cả `ui-preview` và `frontend` biên dịch hoàn tất đạt mã thoát **Code 0**.
+     - Kiểm thử giao diện thực tế qua Browser Subagent:
+       - Trang Client `/?tab=labeling`: Hiển thị `1/44`, `Đã làm: 0/44`, các nút chọn nhãn rõ ràng.
+       - Trang Admin `/admin`: Tab "Nhiệm vụ Gán nhãn (44)" liệt kê toàn bộ 44 bài toán từ CSDL local kèm các nút sửa, xóa, thông tin điểm thưởng và trạng thái.
