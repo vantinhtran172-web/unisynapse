@@ -128,3 +128,12 @@ Tài liệu này vạch rõ 4 giai đoạn phát triển của dự án UniSynap
   - [x] Thiết kế 3 vòng quỹ đạo đồng tâm (Cyan, Indigo, Amber) chuyển động 360° đồng quy quanh logo emblem trung tâm.
   - [x] Định vị cân bằng `top: 50%; transform: translateY(-46%);` hài hòa tuyệt đối với văn bản giới thiệu bên trái.
   - [x] Tối ưu hiển thị thạch anh phát quang đồng thời cho cả Dark Mode và Light Mode.
+
+- [x] **Triển Khai Bản Mobile Port 3001 Lên Netlify, Sửa Triệt Để Lỗi 404 Auth & Tối Ưu Nút Đăng Nhập/Đăng Xuất Góc Phải Mobile** (Hoàn thành 29/09/2026):
+  - [x] Gỡ bỏ rewrite mù sang Render trong `next.config.ts`, tạo Resilient Next.js Route Handler tại `ui-preview/src/app/api/v1/[...slug]/route.ts`.
+  - [x] Bổ sung nút `.preview-mobile-top-auth` (`[Đăng nhập]` / `[Thoát]`) trên góc phải thanh header điện thoại.
+  - [x] Ẩn triệt để desktop clutter trên mobile, triệt tiêu 100% lỗi cắt góc biểu tượng ⚡.
+  - [x] Giảm độ dài mật khẩu tối thiểu xuống 6 ký tự (`backend/` và `ui-preview/`).
+  - [x] Bổ sung 301 redirects cho lỗi gõ nhầm URL (`/dant-ky` ➔ `/dang-ky`).
+  - [x] Đẩy thành công commit `fed6ae1` & `baeaa4b` lên `origin/master`, xuất bản Netlify thành công.
+  - [x] Kiểm thử tự động E2E trên trình duyệt mobile thành công 100%: Đăng ký tài khoản mới, chuyển hướng mượt mà, hiển thị phiên đăng nhập chuẩn mực.

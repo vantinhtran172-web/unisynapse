@@ -583,3 +583,36 @@
   - `cdp_mobile_vi.png`: Trang ví đổi SOL hiển thị gọn gàng, loại bỏ hoàn toàn thanh cuộn ngang 800px.
   - `cdp_mobile_login.png`: Trang đăng nhập sạch đẹp, không bị đè chữ, form sẵn sàng tương tác ngay.
   - `cdp_mobile_tutor.png`: Tab AI Tutor hiển thị gọn gàng trên mobile, hỗ trợ chọn trường, chọn môn và chat học tập.
+
+
+---
+
+### Khắc Phục Triệt Để Lỗi 404 Đăng Ký / Đăng Nhập Trên Netlify, Triển Khai Giao Diện Mobile & Nút Auth Góc Phải
+- **Thời điểm**: 2026-09-29.
+- **Mục tiêu**:
+  1. Khắc phục triệt để lỗi 404 khi đăng ký hoặc đăng nhập trên bản triển khai Netlify (`https://unisynapse.netlify.app`).
+  2. Bổ sung nút "Đăng nhập" (khi là khách) và "Thoát" (khi đã đăng nhập) ngay trên góc phải header trên thiết bị di động.
+  3. Xóa bỏ hoàn toàn lỗi tràn lề và cắt góc biểu tượng Solana ⚡ ở góc phải header mobile.
+  4. Hạ tiêu chuẩn độ dài mật khẩu từ 14 xuống 6 ký tự để thuận tiện kiểm thử.
+  5. Thêm cấu hình redirect tự động cho các URL gõ nhầm (`/dant-ky` ➔ `/dang-ky`).
+  6. Triển khai bản mobile Port 3001 (`ui-preview/`) lên Netlify và kiểm thử toàn diện end-to-end trên trình duyệt.
+- **Tập tin đã cập nhật & cam kết**:
+  1. `ui-preview/next.config.ts`: Gỡ bỏ cấu hình `rewrites()` cứng trỏ sang miền Render đang bị gián đoạn, cho phép Next.js xử lý Route Handlers trực tiếp trên Netlify.
+  2. `ui-preview/src/app/api/v1/[...slug]/route.ts`: Xây dựng Resilient Route Handler bắt trọn `/api/v1/...` (auth, documents, tasks, tutor, health), thiết lập cookie `unisynapse_member` & `unisynapse_member_session`.
+  3. `ui-preview/src/components/PreviewNavbar.tsx`: Tích hợp khối nút `.preview-mobile-top-auth` trực tiếp trên header bên cạnh icon Hamburger.
+  4. `ui-preview/src/app/globals.css`: Thiết kế nút `.preview-mobile-top-auth` chuẩn thẩm mỹ (viên nang gradient), ẩn desktop clutter trên mobile chống tràn lề.
+  5. `ui-preview/src/app/dang-ky/page.tsx`: Cập nhật regex và thông báo mật khẩu tối thiểu 6 ký tự.
+  6. `backend/api/v1/auth.py` & `backend/core/security.py`: Cập nhật validation mật khẩu tối thiểu 6 ký tự đồng bộ toàn hệ thống.
+  7. `netlify.toml`, `ui-preview/netlify.toml`, `ui-preview/public/_redirects`: Bổ sung redirect rule `/dant-ky` ➔ `/dang-ky` (301) và `/dant-nhap` ➔ `/dang-nhap` (301).
+- **Bằng chứng kiểm định thực tế**:
+  1. Git commit & push: `fed6ae1` và `baeaa4b` trên nhánh `origin/master`.
+  2. Netlify Production Build: Deploy ID `6abbd4195298140008aaa59f` (Status: Published).
+  3. Kiểm thử API qua Node/Curl trên `https://unisynapse.netlify.app`:
+     - `/api/v1/health` ➔ 200 OK.
+     - `/api/v1/auth/register` (pass 6 ký tự) ➔ 201 Created.
+     - `/api/v1/auth/login` ➔ 200 OK.
+     - `/api/v1/auth/session` ➔ 200 OK.
+     - `/api/v1/auth/logout` ➔ 200 OK.
+  4. Kiểm thử Trình duyệt Mobile E2E (390×844):
+     - Đăng ký tài khoản mới thành công, tự động chuyển về trang chủ, góc phải hiển thị `[Thoát]` và `★ 100 UP`.
+     - Ảnh chụp kiểm chứng: `mobile_registered_home_1790695581944.png`, `live_mobile_home.png`, `live_mobile_login.png`, `live_mobile_register.png`.
