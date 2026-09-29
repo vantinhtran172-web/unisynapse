@@ -1019,3 +1019,34 @@ Tài liệu này ghi lại toàn bộ tiến trình trao đổi, các phản h�
      - Commit `604e8e0`: revert frontend strictly restore local reference frontend to commit 2d36342.
      - Commit `b0b0f32`: fix ui-preview restore authentic step timers in DocumentUpload.
      - Đã đẩy thành công lên cả `origin/master` và `dericaesal/main`.
+
+---
+
+### Yêu cầu 19: Thay Thế Cổng Nạp ACB Port 3001 Bằng Bản Chuẩn Của Port 3000 (Khôi Phục Giao Diện Nạp ACB & Đổi SOL Chuẩn Mực)
+* **Yêu cầu gốc**: *"cổng nạp acb chuẩn là cổng của port 3000 , port 3001 mày lấy bản cũ rồi mau thay thế"*
+* **Phân tích Thực trạng**:
+  - Người dùng phát hiện cổng nạp `/vi` trên Port 3001 (`ui-preview` và triển khai trên Vercel) đang chạy phiên bản bị sửa đổi từ đợt trước (`commit 56aa6d3`), có giao diện shell bao bọc khác biệt và thiếu đi trải nghiệm nạp chuẩn ACB / Đổi SOL Devnet của Port 3000 (`frontend`).
+  - Bản Port 3000 (`frontend/src/app/vi/page.tsx` và `frontend/src/app/vi/wallet.module.css`) là **bản chuẩn gốc (authentic on-ramp portal)**, sở hữu:
+    1. Bộ chuyển chế độ kép linh hoạt: `⚡ Đổi VNĐ Lấy SOL Devnet` (*Khuyên dùng - Nhận SOL trực tiếp vào ví Phantom on-chain*) và `🎓 Nạp Điểm UniPoints (AI Luna)`.
+    2. Ô nhập địa chỉ ví Solana nhận SOL với nút "Lấy địa chỉ ví đang kết nối" hoặc tự động điền ví Phantom.
+    3. Các thẻ định mức preset tiện lợi: 10.000đ, 20.000đ, 50.000đ, 100.000đ với tính toán tự động số SOL và điểm thưởng tương ứng.
+    4. Trình tạo mã VietQR động trực quan kèm mã QR ngân hàng ACB chuẩn (STK `38038627` - TRAN VAN TINH), bộ đếm ngược 10 phút, và cơ chế tự động quét kiểm tra giao dịch (Polling radar 3s/lần).
+* **Quyết định & Thực thi Chuẩn mực**:
+  1. **Sao chép Nguyên bản Chuẩn từ Port 3000 sang Port 3001**:
+     - Đồng bộ chính xác `frontend/src/app/vi/page.tsx` ➔ `ui-preview/src/app/vi/page.tsx`.
+     - Đồng bộ chính xác `frontend/src/app/vi/wallet.module.css` ➔ `ui-preview/src/app/vi/wallet.module.css`.
+     - Giữ nguyên tắc vàng: Tuyệt đối không can thiệp hay làm biến đổi thư mục `frontend/` (Port 3000 tham chiếu).
+  2. **Kiểm Tra Biên Dịch Sản Phẩm (Production Build)**:
+     - Thực thi `npm run build` trong thư mục `ui-preview`:
+     - Kết quả: **Exit Code 0 (thành công 100%)** trong 16.6s, tất cả 10 routes (bao gồm `/vi` kích thước 6.01 kB) được tạo thành công không có lỗi lint hay type error.
+  3. **Đồng Bộ Git & Kích Hoạt Triển Khai Tự Động Vercel**:
+     - Tạo commit: `df9781b` (*"feat(vi): replace ui-preview /vi page and styles with standard port 3000 ACB on-ramp portal"*).
+     - Đẩy mã nguồn đồng bộ lên cả 2 remote repository:
+       - `origin/master`: `https://github.com/vantinhtran172-web/unisynapse`
+       - `dericaesal/main`: `https://github.com/dericaesal-sys/unisynapse` (kích hoạt Vercel tự động build & deploy).
+  4. **Kiểm Thử Thực Tế Trực Quan Trên Trình Duyệt (Browser Subagent)**:
+     - Truy cập `http://localhost:3001/vi` và xác thực qua các ảnh chụp màn hình:
+       - Chế độ Đổi VNĐ Lấy SOL Devnet: Nhập số tiền, kết nối ví Phantom nhận SOL (`localhost_3001_vi_1790725043314.png`).
+       - Bật modal thanh toán VietQR ACB: Mã QR ACB hiển thị sắc nét, đếm ngược 10:00, nội dung đơn rõ ràng (`vietqr_modal_3001_1790725094278.png`).
+       - Chế độ Nạp UniPoints: Chuyển đổi mượt mà sang giao diện nạp điểm (`mode_unipoints_3001_1790725119943.png`).
+     - Xác nhận giao diện Port 3001 hiện tại đã hoàn toàn đồng nhất 100% với bản chuẩn của Port 3000.

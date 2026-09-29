@@ -185,3 +185,11 @@ Tài liệu này vạch rõ 4 giai đoạn phát triển của dự án UniSynap
   - [x] Khởi động song song dịch vụ FastAPI Backend (Port 8000) và Production Frontend (Port 3000).
   - [x] Kiểm tra xác nhận 100% các API `/api/v1/tasks/open`, `/api/v1/oracle/registry`, `/api/v1/admin/ledger` và `/api/v1/admin/audit-events` trên port 3000 gọi thẳng và lấy dữ liệu thật trực tiếp từ CSDL SQLite `data/unisynapse.db`.
   - [x] Khôi phục component `DocumentUpload.tsx` trong `ui-preview` loại bỏ các hàm sleep giả mạo.
+
+- [x] **Thay Thế Cổng Nạp ACB Port 3001 Bằng Bản Chuẩn Của Port 3000 (Khôi Phục Giao Diện Nạp ACB & Đổi SOL Chuẩn Mực)** (Hoàn thành 30/09/2026):
+  - [x] Sao chép toàn bộ trang `/vi` chuẩn từ `frontend/src/app/vi/page.tsx` và `frontend/src/app/vi/wallet.module.css` sang `ui-preview/src/app/vi/`.
+  - [x] Khôi phục trải nghiệm on-ramp nguyên bản: Chuyển đổi 2 chế độ (`⚡ Đổi VNĐ Lấy SOL Devnet` & `🎓 Nạp Điểm UniPoints`), ô nhập ví Phantom nhận SOL, preset 10k-100k, VietQR ACB STK 38038627 - TRAN VAN TINH đếm ngược 10:00 và radar quét giao dịch tự động.
+  - [x] Vượt qua kiểm thử biên dịch `npm run build` trên `ui-preview/` với Exit Code 0 (0 lỗi lint / TypeScript).
+  - [x] Đồng bộ commit `df9781b` lên cả 2 remote `origin/master` và `dericaesal/main` để Vercel tự động build & deploy.
+  - [x] Kiểm tra trực quan bằng Browser Subagent xác nhận giao diện hoạt động hoàn hảo trên trình duyệt.
+

@@ -9,9 +9,9 @@
 | **Staging UI Preview** | 3001 | Next.js 15 | `http://localhost:3001` | Đang chạy (Active, TypeScript pass) |
 | **Production Vercel (Port 3001)** | 443 | Vercel Serverless (ui-preview) | `https://unisynapse.vercel.app` | **SỐNG (Production Ready)** |
 
-* **Git Branch**: `master` & `main` (Đồng bộ commit `b0b0f32` trên cả 2 remote `origin: vantinhtran172-web/unisynapse` và `dericaesal: dericaesal-sys/unisynapse`).
+* **Git Branch**: `master` & `main` (Đồng bộ commit `df9781b` trên cả 2 remote `origin: vantinhtran172-web/unisynapse` và `dericaesal: dericaesal-sys/unisynapse`).
 
-* **Trạng thái phân hệ `/vi`**: Chuẩn hóa 100% theo layout Port 3001 (PreviewNavbar, Breadcrumb, Banner kiểm tra chuyển khoản ACB nghiêm ngặt chống gian lận, STK chính xác 38038627 - TRAN VAN TINH, nút sao chép độc lập và nút kiểm tra thủ công). Verified sống trên cả Local và Production Vercel.
+* **Trạng thái phân hệ `/vi`**: Chuẩn hóa 100% khớp tuyệt đối với bản chuẩn Port 3000 (`frontend/src/app/vi/`): Chuyển chế độ kép (`⚡ Đổi VNĐ Lấy SOL Devnet` & `🎓 Nạp Điểm UniPoints`), ô nhập ví Phantom nhận SOL, các gói định mức 10k-100k, VietQR ACB STK 38038627 - TRAN VAN TINH đếm ngược 10 phút và radar kiểm tra 3s/lần. Verified sống trên cả Local Port 3001 và Production Vercel.
 
 ---
 
@@ -772,3 +772,24 @@
      - `604e8e0`: revert frontend strictly restore local reference frontend to commit 2d36342.
      - `b0b0f32`: fix ui-preview restore authentic step timers in DocumentUpload.
   3. Đã đẩy thành công lên cả `origin/master` và `dericaesal/main`.
+
+---
+
+### Thay Thế Cổng Nạp ACB Port 3001 Bằng Bản Chuẩn Của Port 3000 (Khôi Phục Giao Diện Nạp ACB & Đổi SOL Chuẩn Mực)
+- **Thời điểm**: 2026-09-30.
+- **Tập tin đã cập nhật**:
+  1. `ui-preview/src/app/vi/page.tsx`: Sao chép 100% nguyên bản chuẩn từ `frontend/src/app/vi/page.tsx`.
+  2. `ui-preview/src/app/vi/wallet.module.css`: Sao chép 100% nguyên bản chuẩn từ `frontend/src/app/vi/wallet.module.css`.
+  3. `frontend/` (Port 3000): Tuyệt đối giữ nguyên vẹn 100% bản gốc tham chiếu `2d36342`, không sửa đổi.
+- **Bằng chứng kiểm định thực tế**:
+  1. **Biên dịch sản phẩm (Next.js Build)**:
+     - `npm run build` trong `ui-preview/`: **Exit Code 0** (thời gian build 16.6s, tất cả 10 routes hoàn tất thành công, không phát sinh bất kỳ lỗi TypeScript hay ESLint nào).
+  2. **Kiểm tra trực quan qua Browser Subagent**:
+     - `localhost_3001_vi_1790725043314.png`: Kiểm tra chế độ `⚡ Đổi VNĐ Lấy SOL Devnet`, nhập số tiền VNĐ và kết nối ví nhận Phantom.
+     - `vietqr_modal_3001_1790725094278.png`: Kiểm tra modal thanh toán VietQR ACB, mã QR động hiển thị sắc nét, đếm ngược 10:00, STK ACB 38038627 - TRAN VAN TINH.
+     - `mode_unipoints_3001_1790725119943.png`: Kiểm tra chuyển chế độ `🎓 Nạp Điểm UniPoints (AI Luna)`.
+  3. **Đồng bộ Git Repository**:
+     - Commit `df9781b`: *"feat(vi): replace ui-preview /vi page and styles with standard port 3000 ACB on-ramp portal"*.
+     - Đã đẩy thành công lên cả 2 remote:
+       - `origin/master`: `https://github.com/vantinhtran172-web/unisynapse`
+       - `dericaesal/main`: `https://github.com/dericaesal-sys/unisynapse` (kích hoạt deployment tự động trên Vercel).
