@@ -10,7 +10,19 @@
   package = "@netlify/plugin-nextjs"
 
 [[redirects]]
+  from = "/dant-ky"
+  to = "/dang-ky"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/dant-nhap"
+  to = "/dang-nhap"
+  status = 301
+  force = true
+
+[[redirects]]
   from = "https://unihackfest-web.netlify.app/*"
-  to = "https://unisynapse-web.netlify.app/:splat"
+  to = "https://unisynapse.netlify.app/:splat"
   status = 301
   force = true
