@@ -178,3 +178,10 @@ Tài liệu này vạch rõ 4 giai đoạn phát triển của dự án UniSynap
   - [x] Kết nối dữ liệu sống động cho Trang Admin `/admin`: Tab Sổ cái hiển thị đầy đủ 88+ bút toán, Tab Nhật ký kiểm toán hiển thị 76+ sự kiện an ninh; tự động tăng số lượng khi có tương tác mới.
   - [x] Vượt qua 100% kịch bản kiểm thử tự động `test_6gates_and_admin_ledger_audit.py` và biên dịch Next.js 16.3.4 (Code 0) trên cả hai cổng.
 
+
+- [x] **Khôi Phục Tuyệt Đối Bản Local Tham Chiếu (frontend/ & backend/) Chuẩn 100% Gốc 2d36342, Triệt Tiêu Toàn Bộ Mã Mock Xâm Lấn & Kích Hoạt Đấu Nối Thực Tế Port 3000 ➔ 8000** (Hoàn thành 30/09/2026):
+  - [x] Khôi phục toàn bộ thư mục `frontend/` về commit gốc `2d36342`, xóa sạch toàn bộ 7 tệp mock (`sampleTasks.ts`, `sampleLedger.ts`, `sampleAudit.ts`, `[...slug]/route.ts`, v.v.).
+  - [x] `git diff 2d36342 frontend/` đạt 0 dòng khác biệt, bảo toàn tuyệt đối vai trò tham chiếu chuẩn mực cho bản local.
+  - [x] Khởi động song song dịch vụ FastAPI Backend (Port 8000) và Production Frontend (Port 3000).
+  - [x] Kiểm tra xác nhận 100% các API `/api/v1/tasks/open`, `/api/v1/oracle/registry`, `/api/v1/admin/ledger` và `/api/v1/admin/audit-events` trên port 3000 gọi thẳng và lấy dữ liệu thật trực tiếp từ CSDL SQLite `data/unisynapse.db`.
+  - [x] Khôi phục component `DocumentUpload.tsx` trong `ui-preview` loại bỏ các hàm sleep giả mạo.

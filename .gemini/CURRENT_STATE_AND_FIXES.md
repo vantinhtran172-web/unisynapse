@@ -5,11 +5,12 @@
 | Dịch vụ | Cổng (Port) | Công nghệ | URL Truy cập | Trạng thái |
 | :--- | :--- | :--- | :--- | :--- |
 | **Backend API** | 8000 | FastAPI / Python 3.12 (Uvicorn) | `http://127.0.0.1:8000` | Đang chạy (Active) |
-| **Production Frontend** | 3000 | Next.js 15 (Turbopack) | `http://localhost:3000` | Đang chạy (Active, TypeScript pass) |
+| **Production Frontend** | 3000 | Next.js 15 (Turbopack) | `http://localhost:3000` | **Đang chạy (Bản Local tham chiếu sạch 100% gốc 2d36342, kết nối trực tiếp backend 8000)** |
 | **Staging UI Preview** | 3001 | Next.js 15 | `http://localhost:3001` | Đang chạy (Active, TypeScript pass) |
-| **Production Vercel (Port 3001)** | 443 | Vercel Serverless (ui-preview) | `https://unisynapse.vercel.app` | **SỐNG (Production Ready, 0 Lỗi - Commit 56aa6d3)** |
+| **Production Vercel (Port 3001)** | 443 | Vercel Serverless (ui-preview) | `https://unisynapse.vercel.app` | **SỐNG (Production Ready)** |
 
-* **Git Branch**: `master` & `main` (Đồng bộ commit `56aa6d3` trên cả 2 remote `origin: vantinhtran172-web/unisynapse` và `dericaesal: dericaesal-sys/unisynapse`).
+* **Git Branch**: `master` & `main` (Đồng bộ commit `b0b0f32` trên cả 2 remote `origin: vantinhtran172-web/unisynapse` và `dericaesal: dericaesal-sys/unisynapse`).
+
 * **Trạng thái phân hệ `/vi`**: Chuẩn hóa 100% theo layout Port 3001 (PreviewNavbar, Breadcrumb, Banner kiểm tra chuyển khoản ACB nghiêm ngặt chống gian lận, STK chính xác 38038627 - TRAN VAN TINH, nút sao chép độc lập và nút kiểm tra thủ công). Verified sống trên cả Local và Production Vercel.
 
 ---
@@ -745,3 +746,29 @@
   2. `npm run build` trên `ui-preview`: **Exit Code 0 (0 lỗi TypeScript)**.
   3. `npm run build` trên `frontend`: **Exit Code 0 (0 lỗi TypeScript)**.
 
+
+
+---
+
+### Khôi Phục Tuyệt Đối Bản Local Tham Chiếu (frontend/ & backend/) Về Nguyên Bản Gốc 2d36342 & Kích Hoạt Đấu Nối Thực Tế Port 3000 ➔ 8000
+- **Thời điểm**: 2026-09-30.
+- **Cam kết & Thực thi**:
+  1. `frontend/` (Port 3000):
+     - Khôi phục 100% về commit gốc `2d36342` qua lệnh `git checkout 2d36342 -- frontend/`.
+     - Xóa bỏ hoàn toàn toàn bộ tệp mock xâm lấn: `frontend/src/app/api/v1/[...slug]/route.ts`, `frontend/src/lib/sampleTasks.ts`, `frontend/src/lib/sampleLedger.ts`, `frontend/src/lib/sampleAudit.ts`, `frontend/src/app/dant-ky/`, `frontend/src/app/dant-nhap/`, `frontend/src/components/PreviewNavbar.tsx`.
+     - Kiểm tra `git diff 2d36342 frontend/` đạt **0 dòng khác biệt (clean 100%)**.
+  2. `backend/` (Port 8000):
+     - Khởi động lại tiến trình FastAPI nền Uvicorn trên port 8000.
+     - Endpoint `http://127.0.0.1:8000/health` phản hồi **200 OK**.
+  3. `ui-preview/src/components/DocumentUpload.tsx`:
+     - Khôi phục bộ timer tuần tự ban đầu, loại bỏ các hàm `sleep(500)` nhân tạo.
+- **Bằng chứng kiểm định thực tế**:
+  1. Kiểm tra proxy Port 3000 ➔ Port 8000:
+     - `http://localhost:3000/api/v1/tasks/open` ➔ 200 OK (38 tasks từ SQLite `data/unisynapse.db`).
+     - `http://localhost:3000/api/v1/oracle/registry` ➔ 200 OK (On-chain Oracle Registry PDA).
+     - `http://localhost:3000/api/v1/admin/ledger` (với `X-Admin-Security-Key`) ➔ 200 OK (88 bút toán kinh tế thật từ CSDL).
+     - `http://localhost:3000/api/v1/admin/audit-events` (với `X-Admin-Security-Key`) ➔ 200 OK (76 sự kiện kiểm toán thật từ CSDL).
+  2. Commit Git:
+     - `604e8e0`: revert frontend strictly restore local reference frontend to commit 2d36342.
+     - `b0b0f32`: fix ui-preview restore authentic step timers in DocumentUpload.
+  3. Đã đẩy thành công lên cả `origin/master` và `dericaesal/main`.
