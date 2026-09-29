@@ -1,4 +1,4 @@
-const configuredApiBase = (process.env.API_UPSTREAM_URL || process.env.NEXT_PUBLIC_API_URL || "https://cybercore-backend-cprt.onrender.com").replace(/\/+$/, "");
+const configuredApiBase = (process.env.API_UPSTREAM_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const API_BASE = typeof window !== "undefined"
   ? "/api/v1"
   : (configuredApiBase.endsWith("/api/v1") ? configuredApiBase : `${configuredApiBase}/api/v1`);
@@ -78,7 +78,11 @@ export interface TaskItem {
   consensus?: string;
   user_submitted?: boolean;
   user_label?: string;
+  user_solana_signature?: string | null;
+  user_explorer_url?: string | null;
+  user_proof_status?: "verified" | "unsubmitted";
 }
+
 
 export interface PeerVote {
   username: string;
@@ -98,8 +102,9 @@ export interface TaskSubmissionResult {
   user_rewarded: boolean;
   reward_points: number;
   is_gold_correct: boolean;
-  solana_signature?: string;
-  explorer_url?: string;
+  proof_status?: "verified" | "unsubmitted";
+  solana_signature?: string | null;
+  explorer_url?: string | null;
 }
 
 
@@ -328,15 +333,40 @@ export const api = {
     }),
   logout: () =>
     request<{ authenticated: false }>("/auth/logout", { method: "POST" }),
-  async getMe(): Promise<UserProfile> {
-    const profile = await request<UserProfile>("/auth/me");
-    if (!profile || typeof profile.id !== "string" ||
-        typeof profile.username !== "string" || typeof profile.role !== "string" ||
-        typeof profile.unipoints !== "number" || !Number.isFinite(profile.unipoints) ||
-        typeof profile.reputation !== "number" || !Number.isFinite(profile.reputation)) {
-      throw new Error("Hồ sơ trả về không hợp lệ. Không thể xác định số dư điểm.");
+  async getSession(): Promise<{ authenticated: boolean; user: UserProfile | null }> {
+    try {
+      const res = await fetch(`${API_BASE}/auth/session`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        return { authenticated: false, user: null };
+      }
+      const data = await res.json().catch(() => null);
+      if (data && data.authenticated && data.user) {
+        const u = data.user;
+        return {
+          authenticated: true,
+          user: {
+            id: String(u.id),
+            username: String(u.username),
+            role: String(u.role),
+            unipoints: typeof u.unipoints === "number" && Number.isFinite(u.unipoints) ? u.unipoints : 0,
+            reputation: typeof u.reputation === "number" && Number.isFinite(u.reputation) ? u.reputation : 0,
+            address: typeof u.address === "string" ? u.address : "",
+          },
+        };
+      }
+      return { authenticated: false, user: null };
+    } catch {
+      return { authenticated: false, user: null };
     }
-    return { ...profile, address: typeof profile.address === "string" ? profile.address : "" };
+  },
+  async getMe(): Promise<UserProfile> {
+    const session = await this.getSession();
+    if (!session.authenticated || !session.user) {
+      throw new ApiError(401, "Phiên đăng nhập đã kết thúc hoặc chưa đăng nhập.");
+    }
+    return session.user;
   },
 
   async challengeWallet(publicKey: string): Promise<WalletChallengeResponse> {
