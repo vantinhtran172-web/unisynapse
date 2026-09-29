@@ -7,9 +7,10 @@
 | **Backend API** | 8000 | FastAPI / Python 3.12 (Uvicorn) | `http://127.0.0.1:8000` | Đang chạy (Active) |
 | **Production Frontend** | 3000 | Next.js 15 (Turbopack) | `http://localhost:3000` | Đang chạy (Active, TypeScript pass) |
 | **Staging UI Preview** | 3001 | Next.js 15 | `http://localhost:3001` | Đang chạy (Active, TypeScript pass) |
-| **Production Vercel (Port 3001)** | 443 | Vercel Serverless (ui-preview) | `https://unisynapse.vercel.app` | **SỐNG (Production Ready, 0 Lỗi)** |
+| **Production Vercel (Port 3001)** | 443 | Vercel Serverless (ui-preview) | `https://unisynapse.vercel.app` | **SỐNG (Production Ready, 0 Lỗi - Commit 56aa6d3)** |
 
-* **Git Branch**: `master` & `main` (Đồng bộ commit `4cf0482` - Full port 3001 ui-preview đã deploy lên Vercel Production).
+* **Git Branch**: `master` & `main` (Đồng bộ commit `56aa6d3` trên cả 2 remote `origin: vantinhtran172-web/unisynapse` và `dericaesal: dericaesal-sys/unisynapse`).
+* **Trạng thái phân hệ `/vi`**: Chuẩn hóa 100% theo layout Port 3001 (PreviewNavbar, Breadcrumb, Banner kiểm tra chuyển khoản ACB nghiêm ngặt chống gian lận, STK chính xác 38038627 - TRAN VAN TINH, nút sao chép độc lập và nút kiểm tra thủ công). Verified sống trên cả Local và Production Vercel.
 
 ---
 
