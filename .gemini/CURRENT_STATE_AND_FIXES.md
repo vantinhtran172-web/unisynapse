@@ -7,8 +7,9 @@
 | **Backend API** | 8000 | FastAPI / Python 3.12 (Uvicorn) | `http://127.0.0.1:8000` | Đang chạy (Active) |
 | **Production Frontend** | 3000 | Next.js 15 (Turbopack) | `http://localhost:3000` | Đang chạy (Active, TypeScript pass) |
 | **Staging UI Preview** | 3001 | Next.js 15 | `http://localhost:3001` | Đang chạy (Active, TypeScript pass) |
+| **Production Vercel (Port 3001)** | 443 | Vercel Serverless (ui-preview) | `https://unisynapse.vercel.app` | **SỐNG (Production Ready, 0 Lỗi)** |
 
-* **Git Branch**: `master` (Đã cập nhật đầy đủ mã nguồn cổng thanh toán ngân hàng ACB, bộ đối soát, chữ ký Solana và các bản vá giao diện mới nhất).
+* **Git Branch**: `master` & `main` (Đồng bộ commit `4cf0482` - Full port 3001 ui-preview đã deploy lên Vercel Production).
 
 ---
 
