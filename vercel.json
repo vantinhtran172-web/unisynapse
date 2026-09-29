@@ -1,0 +1,6 @@
+{
+  "redirects": [
+    { "source": "/dant-ky", "destination": "/dang-ky", "permanent": true },
+    { "source": "/dant-nhap", "destination": "/dang-nhap", "permanent": true }
+  ]
+}
