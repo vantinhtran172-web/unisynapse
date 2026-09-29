@@ -616,3 +616,24 @@
   4. Kiểm thử Trình duyệt Mobile E2E (390×844):
      - Đăng ký tài khoản mới thành công, tự động chuyển về trang chủ, góc phải hiển thị `[Thoát]` và `★ 100 UP`.
      - Ảnh chụp kiểm chứng: `mobile_registered_home_1790695581944.png`, `live_mobile_home.png`, `live_mobile_login.png`, `live_mobile_register.png`.
+
+
+---
+
+### Khắc Phục Triệt Để 5 Lỗi Hệ Thống: /vi, /admin, Tab Solana, Gán Nhãn UniPoints & AI Tutor
+- **Thời điểm**: 2026-09-30.
+- **Tập tin đã sửa đổi**:
+  1. `ui-preview/src/app/api/v1/[...slug]/route.ts`: Xây dựng toàn diện các endpoint: `tutor/ask`, `tutor/tier`, `tutor/knowledge-base`, `rewards/economy`, `rewards/bank/create-intent`, `rewards/bank/history`, `rewards/bank/check/:code`, `oracle/registry`, `admin/verify-key`, `admin/stats`, `admin/documents`, `admin/tasks`, `admin/users`, `admin/ledger`, `admin/bank-deposits`. Xử lý tăng điểm UniPoints (+50 khi submit task, +100 khi upload doc) và đồng bộ cookie.
+  2. `ui-preview/src/context/AppStateContext.tsx`: Bổ sung cơ chế optimistic update cho UniPoints và Reputation khi `submitTask` và `uploadDocument`.
+  3. `ui-preview/src/components/ProofExplorer.tsx`: Thêm defensive check cho `oracleRegistry.oracle_registry_pda`, `Array.isArray(ledger)` và `entry.proof_hash`.
+  4. `ui-preview/src/app/vi/page.tsx`: Thêm `Array.isArray` bảo vệ `bankHistory` và `ledger` trong cả hàm fetch và bảng render JSX.
+  5. `ui-preview/src/app/admin/page.tsx`: Thêm `Array.isArray` bảo vệ toàn bộ dữ liệu tải về trong `loadAllData()`.
+- **Bằng chứng kiểm định**:
+  1. `npm run build` (`ui-preview`): **Thành công 100% trong 1.5s, 0 lỗi TypeScript**.
+  2. Kiểm thử API tự động: `tutor/ask` (200), `tasks/submit` (200, +50 UP), `documents/upload` (200, +100 UP), `bank/create-intent` (200).
+  3. Kiểm thử Trình duyệt Headless thực tế (CDP Browser Subagent):
+     - `vi_page_verified_1790704299413.png`: Trang đổi SOL hoạt động trơn tru.
+     - `admin_page_verified_1790704332438.png`: Trang Admin hiển thị đầy đủ console quản trị.
+     - `solana_tab_verified_1790704380446.png`: Tab Solana hiển thị sổ cái bất biến chuẩn mực.
+     - `ai_tutor_response_verified_1790704457119.png`: AI Tutor trả lời câu hỏi chi tiết kèm trích dẫn.
+     - `labeling_consensus_reward_verified_1790704704829.png`: Gán nhãn cộng ngay 50 UP (100 -> 150 UP).

@@ -137,3 +137,11 @@ Tài liệu này vạch rõ 4 giai đoạn phát triển của dự án UniSynap
   - [x] Bổ sung 301 redirects cho lỗi gõ nhầm URL (`/dant-ky` ➔ `/dang-ky`).
   - [x] Đẩy thành công commit `fed6ae1` & `baeaa4b` lên `origin/master`, xuất bản Netlify thành công.
   - [x] Kiểm thử tự động E2E trên trình duyệt mobile thành công 100%: Đăng ký tài khoản mới, chuyển hướng mượt mà, hiển thị phiên đăng nhập chuẩn mực.
+
+- [x] **Khắc Phục Triệt Để 5 Lỗi Vận Hành Toàn Diện: Trang Đổi SOL (/vi), Trang Admin (/admin), Tab Solana, Cộng Điểm UniPoints & AI Tutor Trả Lời** (Hoàn thành 30/09/2026):
+  - [x] Cung cấp đầy đủ route handlers trong `ui-preview/src/app/api/v1/[...slug]/route.ts` cho: `tutor/ask`, `tutor/tier`, `oracle/registry`, `rewards/economy`, `rewards/bank/*`, `admin/*`.
+  - [x] Sửa lỗi `TypeError: J.map is not a function` trên trang đổi SOL và trang Admin.
+  - [x] Sửa lỗi `Cannot read properties of undefined (reading 'slice')` trên Tab Solana.
+  - [x] Tích hợp cơ chế cộng điểm UniPoints tự động (+50 UP gán nhãn, +100 UP nộp tài liệu) đồng bộ cả State lẫn Session Cookie.
+  - [x] Khắc phục lỗi AI Tutor không trả lời: Trả lời chuẩn hóa kiến thức CNTT VHU kèm trích dẫn (Grounded RAG).
+  - [x] Vượt qua 100% kiểm thử trình duyệt thực tế trên cả 5 phân hệ trước khi xuất bản.

@@ -193,9 +193,9 @@ export default function WalletPage() {
     setLedgerLoading(true);
     try {
       const data = await api.getLedger();
-      setLedger(data);
+      setLedger(Array.isArray(data) ? data : []);
     } catch {
-      /* ignore */
+      setLedger([]);
     } finally {
       setLedgerLoading(false);
     }
@@ -217,9 +217,9 @@ export default function WalletPage() {
     setBankHistoryLoading(true);
     try {
       const history = await api.getBankDepositHistory();
-      setBankHistory(history);
+      setBankHistory(Array.isArray(history) ? history : []);
     } catch {
-      /* ignore */
+      setBankHistory([]);
     } finally {
       setBankHistoryLoading(false);
     }
@@ -401,9 +401,10 @@ export default function WalletPage() {
 
         const history = await api.getBankDepositHistory();
         if (isCancelled) return;
-        setBankHistory(history);
+        const validHistory = Array.isArray(history) ? history : [];
+        setBankHistory(validHistory);
 
-        const anyPending = history.find((h) => h.status === "pending");
+        const anyPending = validHistory.find((h) => h.status === "pending");
         if (anyPending) {
           const check = await api.checkBankDeposit(anyPending.order_code);
           if (isCancelled) return;
@@ -1378,7 +1379,7 @@ export default function WalletPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {bankHistory.map((item) => (
+                      {(Array.isArray(bankHistory) ? bankHistory : []).map((item) => (
                         <tr key={item.id}>
                           <td style={{ fontFamily: "monospace", color: "#38bdf8", fontWeight: 700 }}>
                             {item.order_code}
@@ -1764,7 +1765,7 @@ export default function WalletPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {ledger.map((item) => (
+                    {(Array.isArray(ledger) ? ledger : []).map((item) => (
                       <tr key={item.id}>
                         <td style={{ whiteSpace: "nowrap" }}>
                           {new Date(item.created_at * 1000).toLocaleString("vi-VN", {

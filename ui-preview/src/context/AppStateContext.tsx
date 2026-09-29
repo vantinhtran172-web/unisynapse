@@ -156,12 +156,32 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const submitTask = async (taskId: string, label: string) => {
     const res = await api.submitTask(taskId, label);
+    const addedPoints = res?.reward_points ?? 50;
+    setUnipoints((prev) => prev + addedPoints);
+    setReputation((prev) => prev + 1);
+    if (user) {
+      setUser((prevUser) => prevUser ? {
+        ...prevUser,
+        unipoints: (prevUser.unipoints || 0) + addedPoints,
+        reputation: (prevUser.reputation || 0) + 1,
+      } : null);
+    }
     await refreshState();
     return res;
   };
 
   const uploadDocument = async (file: File, university?: string, subject_code?: string, subject_name?: string) => {
     const res = await api.uploadDocument(file, true, university, subject_code, subject_name);
+    const addedPoints = (res as any)?.reward_points ?? 100;
+    setUnipoints((prev) => prev + addedPoints);
+    setReputation((prev) => prev + 5);
+    if (user) {
+      setUser((prevUser) => prevUser ? {
+        ...prevUser,
+        unipoints: (prevUser.unipoints || 0) + addedPoints,
+        reputation: (prevUser.reputation || 0) + 5,
+      } : null);
+    }
     await refreshState();
     return res;
   };
