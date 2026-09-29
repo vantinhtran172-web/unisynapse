@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 logger = logging.getLogger("backend.main")
 
-from .core.config import COOKIE_SECURE, CORS_ORIGINS, DATABASE_URL, validate_runtime_config
+from .core.config import COOKIE_SECURE, CORS_ORIGINS, DATABASE_URL, ENVIRONMENT, validate_runtime_config
 from .core.database import get_db, init_db
 from .core.csrf import CSRF_COOKIE_NAME, CSRF_HEADER_NAME, generate_csrf_token, token_matches
 from .core.rate_limit import LOGIN_LIMITER
@@ -29,9 +29,15 @@ from .services.oracle_service import OracleService
 async def lifespan(app: FastAPI):
     # Startup
     validate_runtime_config()
-    if not DATABASE_URL.startswith(("postgresql://", "postgresql+psycopg://")):
-        init_db()
-    if os.getenv("SEED_PUBLIC_DEMO", "1") == "1":
+    init_db()
+    try:
+        from .services.vhu_resource_service import ensure_vhu_resources
+        ensure_vhu_resources()
+    except Exception as err:
+        import logging
+        logging.getLogger("uvicorn.error").warning("VHU resource bundle setup: %s", err)
+
+    if os.getenv("SEED_PUBLIC_DEMO", "0" if ENVIRONMENT == "production" else "1") == "1":
         try:
             from .scripts.seed_demo_public import ensure_demo_user, main as seed_public_demo
             ensure_demo_user()
@@ -59,10 +65,14 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
 
+is_prod = ENVIRONMENT == "production"
 app = FastAPI(
     title="UniSynapse Backend API",
     description="Backend API cho mạng lưới đóng góp dữ liệu và tri thức học thuật UniSynapse",
     version="1.0.0",
+    docs_url=None if is_prod else "/docs",
+    redoc_url=None if is_prod else "/redoc",
+    openapi_url=None if is_prod else "/openapi.json",
     lifespan=lifespan
 )
 
@@ -82,13 +92,15 @@ async def add_request_id(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
     response = None
     try:
-        if request.url.path in {"/api/v1/auth/login", "/api/v1/auth/admin/login"}:
+        if request.url.path in {"/api/v1/auth/login", "/api/v1/auth/admin/login", "/api/v1/auth/register"}:
             client_key = request.client.host if request.client else "unknown"
-            allowed, retry_after = LOGIN_LIMITER.allow(f"{client_key}:{request.url.path}")
+            # Support Cloudflare CF-Connecting-IP & X-Forwarded-For
+            real_ip = request.headers.get("cf-connecting-ip") or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() or client_key
+            allowed, retry_after = LOGIN_LIMITER.allow(f"{real_ip}:{request.url.path}")
             if not allowed:
                 response = JSONResponse(
                     status_code=429,
-                    content={"detail": "Too many login attempts", "request_id": request_id},
+                    content={"detail": "Too many attempts. Please try again later.", "request_id": request_id},
                     headers={"Retry-After": str(retry_after)},
                 )
 
@@ -129,11 +141,19 @@ async def add_request_id(request: Request, call_next):
             CSRF_COOKIE_NAME,
             generate_csrf_token(),
             httponly=False,
-            secure=COOKIE_SECURE,
+            secure=COOKIE_SECURE or is_prod,
             samesite="lax",
             path="/",
         )
     response.headers["X-Request-ID"] = request_id
+    # 20 Checklist Security Headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if request.url.scheme == "https" or is_prod:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
     return response
 
 

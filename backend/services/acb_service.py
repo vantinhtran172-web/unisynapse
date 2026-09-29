@@ -304,11 +304,21 @@ class ACBService:
                     "message": f"Tìm thấy giao dịch nạp tiền hợp lệ khớp mã '{code_upper}' (+{amt:,.0f} VNĐ).",
                 }
 
+        # An account-level balance change does not identify the paying order. In
+        # particular, two pending orders with the same initial balance would both
+        # match a single incoming payment. Never settle or send SOL without a
+        # unique bank transaction whose memo matches this order.
         return {
             "matched": False,
             "transaction": None,
             "tx_ref": None,
-            "api_available": True,
-            "message": f"Chưa phát hiện giao dịch có nội dung chuyển khoản chứa mã '{code_upper}' với số tiền tối thiểu {amount_vnd:,.0f} đ.",
+            "api_available": transactions is not None,
+            "message": (
+                "ACB tạm thời không cung cấp sao kê để xác minh mã chuyển khoản. "
+                "Đơn vẫn đang chờ đối soát thủ công; vui lòng giữ biên lai và không chuyển tiền lần nữa."
+                if transactions is None else
+                f"Chưa phát hiện giao dịch có nội dung chuyển khoản chứa mã '{code_upper}' "
+                f"với số tiền tối thiểu {amount_vnd:,.0f} đ."
+            ),
         }
 

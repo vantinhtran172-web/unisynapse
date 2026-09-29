@@ -280,6 +280,23 @@ def member_logout(
     return {"authenticated": False}
 
 
+@router.get("/session")
+def get_session_status(session_user: Optional[dict] = Depends(get_optional_member_session)):
+    if not session_user:
+        return {"authenticated": False, "user": None}
+    from ...core.database import get_db
+
+    with get_db() as conn:
+        profile = conn.execute(
+            "SELECT id, username, role, address, unipoints, reputation "
+            "FROM users WHERE id = ? AND disabled = 0",
+            (session_user["id"],),
+        ).fetchone()
+    if profile is None:
+        return {"authenticated": False, "user": None}
+    return {"authenticated": True, "user": dict(profile)}
+
+
 @router.get("/me")
 def get_current_user(session_user: dict = Depends(require_member_session)):
     from ...core.database import get_db

@@ -84,14 +84,24 @@ class ConsensusService:
             finalized = False
             user_rewarded = False
 
-            # Award instant UniPoints reward for completing and submitting the labeling task
+            # Award instant UniPoints reward and generate Solana Devnet proof
             reward_event_key = f"task-submission:{task_id}:user:{user_id}"
             proof_hash = SolanaService.create_proof_hash(
                 f"TASK_REWARD:{reward_event_key}:{reward_points}"
             )
-            solana_signature = SolanaService.generate_devnet_signature(
-                proof_hash
+            from .solana_onramp_service import SolanaOnRampService
+            user_row = cursor.execute("SELECT address FROM users WHERE id = ?", (user_id,)).fetchone()
+            user_wallet = user_row["address"] if user_row and user_row["address"] else None
+
+            sub_proof = SolanaOnRampService.record_label_submission_proof_onchain(
+                task_id=task_id,
+                user_id=user_id,
+                label=normalized_label,
+                recipient_pubkey=user_wallet,
             )
+            solana_signature = sub_proof.get("signature") if sub_proof.get("onchain_confirmed") else None
+            submission_proof_status = "verified" if solana_signature else "unsubmitted"
+
             submission_settlement = settle_reward(
                 conn,
                 user_id=user_id,
@@ -100,12 +110,18 @@ class ConsensusService:
                 source_type="task",
                 source_id=task_id,
                 reward_event_key=reward_event_key,
-                proof_status="unsubmitted",
+                proof_status=submission_proof_status,
                 solana_signature=solana_signature,
                 proof_hash=proof_hash,
                 created_at=now,
             )
             user_rewarded = submission_settlement["created"]
+            if solana_signature:
+                cursor.execute(
+                    "UPDATE reward_ledger SET proof_verified_at = ? WHERE reward_event_key = ? AND solana_signature = ?",
+                    (now, reward_event_key, solana_signature),
+                )
+
 
             consensus_sig = None
             if total_votes >= required_votes and confidence >= threshold:
@@ -127,7 +143,7 @@ class ConsensusService:
                         confidence=confidence,
                         total_votes=total_votes,
                     )
-                    consensus_sig = consensus_proof.get("signature")
+                    consensus_sig = consensus_proof.get("signature") if consensus_proof.get("onchain_confirmed") else None
                     cursor.execute(
                         "UPDATE tasks SET solana_tx = ? WHERE id = ?",
                         (consensus_sig, task_id)
@@ -149,14 +165,14 @@ class ConsensusService:
                             source_type="task",
                             source_id=task_id,
                             reward_event_key=consensus_event_key,
-                            proof_status="submitted",
+                            proof_status="verified" if consensus_sig else "unsubmitted",
                             solana_signature=consensus_sig,
                             proof_hash=consensus_proof_hash,
                             created_at=now,
                         )
 
             conn.commit()
-            active_sig = consensus_sig if (finalized and consensus_sig) else solana_signature
+            active_sig = solana_signature
             return {
                 "success": True,
                 "task_id": task_id,
@@ -173,9 +189,10 @@ class ConsensusService:
                     }
                     for row in rows
                 ],
-                "user_rewarded": True,
+                "user_rewarded": user_rewarded,
                 "reward_points": reward_points,
                 "is_gold_correct": bool(is_gold_correct),
+                "proof_status": submission_proof_status,
                 "solana_signature": active_sig,
-                "explorer_url": f"https://explorer.solana.com/tx/{active_sig}?cluster=devnet" if active_sig else None,
+                "explorer_url": SolanaService.get_explorer_url(active_sig),
             }

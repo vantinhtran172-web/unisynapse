@@ -1175,7 +1175,8 @@ def seed_full_vhu_sources():
         existing_vhu_count = row[0] if row else 0
         if existing_vhu_count >= len(FULL_VHU_SOURCES):
             print(f"ℹ️ Đã có đủ {existing_vhu_count} tài liệu giáo trình VHU toàn văn trong CSDL.")
-            return
+        cursor.execute("INSERT OR IGNORE INTO users (id, username, role) VALUES ('usr_demo', 'vhu_curriculum_bot', 'student')")
+        conn.commit()
 
         for course in FULL_VHU_SOURCES:
             code = course["code"]

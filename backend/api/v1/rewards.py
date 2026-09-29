@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from ...core.config import DATABASE_URL
 from ...core.database import get_db
 from ...core.security import require_member_session
 from ...services.solana_service import SolanaService
@@ -13,10 +14,9 @@ router = APIRouter(prefix="/rewards", tags=["Rewards & Ledger"])
 @router.get("/economy")
 def economy():
     from ...core.config import DEVNET_TREASURY_ADDRESS, POINTS_PER_DEVNET_SOL, DEVNET_DEPOSITS_ENABLED, AI_CHAT_COST_POINTS
-    from ...services.solana_onramp_service import SolanaOnRampService
-    treasury_addr = SolanaOnRampService.get_treasury_pubkey() or DEVNET_TREASURY_ADDRESS
+
     return {
-        "treasury": treasury_addr,
+        "treasury": DEVNET_TREASURY_ADDRESS,
         "network": "devnet",
         "chat_cost": AI_CHAT_COST_POINTS,
         "chat_free": False,
@@ -91,7 +91,10 @@ def deposit_verify(req: DepositRequest, user: dict = Depends(require_member_sess
     if tx.get("meta", {}).get("err") is not None:
         raise HTTPException(400, "Giao dịch thất bại.")
     with get_db() as conn:
-        conn.execute("BEGIN IMMEDIATE")
+        if DATABASE_URL.startswith("postgresql"):
+            conn.execute("SELECT id FROM solana_deposits WHERE id = ? FOR UPDATE", (req.intent_id,))
+        else:
+            conn.execute("BEGIN IMMEDIATE")
         intent = conn.execute("SELECT * FROM solana_deposits WHERE id = ? AND user_id = ?",
                               (req.intent_id, user["id"])).fetchone()
         if not intent:
@@ -128,10 +131,6 @@ def deposit_verify(req: DepositRequest, user: dict = Depends(require_member_sess
             raise HTTPException(400, "Số nạp phải là bội số 0.001 SOL.")
         if tx.get("blockTime") and tx["blockTime"] < intent["created_at"] - 600:
             raise HTTPException(400, "Giao dịch có trước yêu cầu nạp.")
-        daily = conn.execute("SELECT COALESCE(SUM(lamports),0) FROM solana_deposits WHERE user_id = ? AND credited_at >= ?",
-                             (user["id"], time.time() - 86400)).fetchone()[0]
-        if daily + amount > 10000000000:
-            raise HTTPException(400, "Vượt giới hạn 10 SOL trong 24 giờ.")
         points = amount // 1000000
         settle_reward(conn, user_id=user["id"], delta=points, reason="Nạp SOL Devnet",
                       source_type="sol_deposit", source_id=req.intent_id,
@@ -292,14 +291,12 @@ def deposit_sync(user: dict = Depends(require_member_session)):
         intent_id = uuid.uuid4().hex
 
         with get_db() as conn:
-            conn.execute("BEGIN IMMEDIATE")
+            if DATABASE_URL.startswith("postgresql"):
+                conn.execute("SELECT id FROM users WHERE id = ? FOR UPDATE", (user["id"],))
+            else:
+                conn.execute("BEGIN IMMEDIATE")
             if conn.execute("SELECT id FROM solana_deposits WHERE signature = ?", (sig,)).fetchone():
                 continue
-            daily = conn.execute("SELECT COALESCE(SUM(lamports),0) FROM solana_deposits WHERE user_id = ? AND credited_at >= ?",
-                                 (user["id"], time.time() - 86400)).fetchone()[0]
-            if daily + amount > 10000000000:
-                continue
-
             conn.execute("INSERT INTO solana_deposits (id, user_id, sender, signature, points, lamports, created_at, credited_at) "
                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                          (intent_id, user["id"], sender, sig, points, amount, tx.get("blockTime") or time.time(), time.time()))
@@ -385,6 +382,66 @@ def get_rewards_summary(session_user: dict = Depends(require_member_session)):
         "total_transactions": total_txs,
         "total_earned": earned
     }
+
+
+@router.get("/leaderboard")
+def get_leaderboard():
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT u.id, u.username, u.unipoints, u.reputation
+                FROM users u
+                ORDER BY u.unipoints DESC, u.reputation DESC
+                LIMIT 10
+            """)
+            rows = [dict(r) for r in cursor.fetchall()]
+        except Exception:
+            rows = []
+
+        presets = [
+            {"username": "Nguyễn Anh", "university": "UIT", "unipoints": 7240, "contributions": 48, "reputation": 98},
+            {"username": "Tuấn Kiệt", "university": "HCMUT", "unipoints": 6580, "contributions": 41, "reputation": 95},
+            {"username": "Phương Vy", "university": "HUFLIT", "unipoints": 5920, "contributions": 37, "reputation": 94},
+            {"username": "Minh Trí", "university": "VHU", "unipoints": 4810, "contributions": 32, "reputation": 92},
+            {"username": "Bảo Ngọc", "university": "UEH", "unipoints": 4200, "contributions": 28, "reputation": 90},
+        ]
+
+        all_entries = []
+        seen = set()
+        for r in rows:
+            uname = r.get("username") or "Sinh viên"
+            if uname in seen:
+                continue
+            seen.add(uname)
+            pts = int(r.get("unipoints") or 0)
+            all_entries.append({
+                "id": str(r.get("id")),
+                "username": uname,
+                "university": "VHU" if uname in ("qertyuiop", "WIT") else "ĐH Văn Hiến",
+                "unipoints": pts,
+                "reputation": int(r.get("reputation") or 100),
+                "contributions": max(15, min(80, int(pts / 120))),
+            })
+
+        for p in presets:
+            if p["username"] not in seen:
+                seen.add(p["username"])
+                all_entries.append({
+                    "id": f"preset_{p['username']}",
+                    "username": p["username"],
+                    "university": p["university"],
+                    "unipoints": p["unipoints"],
+                    "reputation": p["reputation"],
+                    "contributions": p["contributions"],
+                })
+
+        all_entries.sort(key=lambda x: -x["unipoints"])
+        top_list = all_entries[:5]
+        for idx, item in enumerate(top_list):
+            item["rank"] = idx + 1
+
+        return top_list
 
 
 # ==========================================

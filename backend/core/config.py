@@ -25,6 +25,10 @@ _load_env_file(BACKEND_DIR / ".env")
 DATA_DIR = Path(os.getenv("UNISYNAPSE_DATA_DIR", str(BASE_DIR / "data"))).resolve()
 UPLOADS_DIR = DATA_DIR / "uploads"
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+psycopg://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
 ALLOW_SQLITE = os.getenv("ALLOW_SQLITE", "1" if ENVIRONMENT != "production" else "0") == "1"
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "1" if ENVIRONMENT == "production" else "0") == "1"
@@ -58,35 +62,32 @@ SOLANA_EXPLORER_BASE = "https://explorer.solana.com/tx"
 # Internal credits only; these settings do not enable blockchain payouts.
 AI_CHAT_COST_POINTS = 80
 POINTS_PER_DEVNET_SOL = 1000
-DEVNET_TREASURY_ADDRESS = os.getenv(
-    "DEVNET_TREASURY_ADDRESS",
-    "DaWyQs198XXbHNNqnM9wHEhjsMRsW8D47bmvtFXtF4Dn",
-).strip()
+DEVNET_TREASURY_ADDRESS = os.getenv("DEVNET_TREASURY_ADDRESS", "").strip()
 DEVNET_DEPOSIT_COMMITMENT = os.getenv("DEVNET_DEPOSIT_COMMITMENT", "confirmed").strip().lower()
 DEVNET_MIN_DEPOSIT_LAMPORTS = 1_000_000
-DEVNET_DAILY_DEPOSIT_LIMIT_LAMPORTS = 10_000_000_000
-DEVNET_DEPOSITS_ENABLED = os.getenv("DEVNET_DEPOSITS_ENABLED", "1").strip().lower() in ("1", "true", "yes", "on")
+DEVNET_DAILY_DEPOSIT_LIMIT_LAMPORTS = 0
+DEVNET_DEPOSITS_ENABLED = os.getenv("DEVNET_DEPOSITS_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-ADMIN_SECURITY_KEY = (os.getenv("ADMIN_SECURITY_KEY") or os.getenv("ADMIN_ACCESS_KEY") or "wit-admin-sec-9a8f4c2e1b7d5e3f01829475c8b6a12d").strip()
+ADMIN_SECURITY_KEY = (os.getenv("ADMIN_SECURITY_KEY") or os.getenv("ADMIN_ACCESS_KEY") or "").strip()
 ADMIN_ACCESS_KEY = ADMIN_SECURITY_KEY
 MOCK_MODE = os.getenv("MOCK_MODE", "0") == "1"
 CONSENSUS_DEFAULT_VOTES = 5
 CONSENSUS_DEFAULT_THRESHOLD = 0.8
 
 # 9Router AI Gateway Configuration
-NINEROUTER_BASE_URL = os.getenv("NINEROUTER_BASE_URL", "https://rrzqgu4.abc-tunnel.us/v1").rstrip("/")
-NINEROUTER_API_KEY = os.getenv("NINEROUTER_API_KEY", "sk-7d22549baacade14-wn4lw5-471a8dbb").strip()
+NINEROUTER_BASE_URL = os.getenv("NINEROUTER_BASE_URL", "").rstrip("/")
+NINEROUTER_API_KEY = os.getenv("NINEROUTER_API_KEY", "").strip()
 NINEROUTER_DEFAULT_MODEL = os.getenv("NINEROUTER_DEFAULT_MODEL", "cx/gpt-5.6-luna").strip()
 
 # ACB Bank API Configuration
 ACB_API_URL = os.getenv("ACB_API_URL", "https://apiapp.acb.com.vn").rstrip("/")
-ACB_CLIENT_ID = os.getenv("ACB_CLIENT_ID", "iuSuHYVufIUuNIREV0FB9EoLn9kHsDbm").strip()
-ACB_USERNAME = os.getenv("ACB_USERNAME", "0388890465").strip()
-ACB_PASSWORD = os.getenv("ACB_PASSWORD", "Tinhtranvan987@").strip()
-ACB_ACCOUNT_NUMBER = os.getenv("ACB_ACCOUNT_NUMBER", "38038627").strip()
-ACB_ACCOUNT_NAME = os.getenv("ACB_ACCOUNT_NAME", "TRAN VAN TINH").strip()
+ACB_CLIENT_ID = os.getenv("ACB_CLIENT_ID", "").strip()
+ACB_USERNAME = os.getenv("ACB_USERNAME", "").strip()
+ACB_PASSWORD = os.getenv("ACB_PASSWORD", "").strip()
+ACB_ACCOUNT_NUMBER = os.getenv("ACB_ACCOUNT_NUMBER", "38038627" if ENVIRONMENT != "production" else "").strip()
+ACB_ACCOUNT_NAME = os.getenv("ACB_ACCOUNT_NAME", "TRAN VAN TINH" if ENVIRONMENT != "production" else "").strip()
 ACB_BANK_NAME = os.getenv("ACB_BANK_NAME", "ACB").strip()
-ACB_DEPOSITS_ENABLED = os.getenv("ACB_DEPOSITS_ENABLED", "1").strip().lower() in ("1", "true", "yes", "on")
+ACB_DEPOSITS_ENABLED = os.getenv("ACB_DEPOSITS_ENABLED", "1" if ENVIRONMENT != "production" else "0").strip().lower() in ("1", "true", "yes", "on")
 POINTS_PER_10K_VND = int(os.getenv("POINTS_PER_10K_VND", "1000"))  # 10,000 VND = 1,000 UniPoints
 
 
@@ -106,6 +107,10 @@ def validate_runtime_config() -> None:
             raise RuntimeError("Wildcard CORS is not allowed in production")
         if SOLANA_SUBMISSION_ENABLED:
             raise RuntimeError("Solana submission must use isolated staging, not production")
+        if ACB_DEPOSITS_ENABLED and not all((ACB_CLIENT_ID, ACB_USERNAME, ACB_PASSWORD, ACB_ACCOUNT_NUMBER, ACB_ACCOUNT_NAME)):
+            raise RuntimeError("ACB credentials and account details are required when deposits are enabled")
+        if DEVNET_DEPOSITS_ENABLED and not DEVNET_TREASURY_ADDRESS:
+            raise RuntimeError("DEVNET_TREASURY_ADDRESS is required when deposits are enabled")
     elif ENVIRONMENT == "staging":
         if SOLANA_SUBMISSION_ENABLED and SOLANA_NETWORK != "devnet":
             raise RuntimeError("Staging submission is restricted to Solana Devnet")

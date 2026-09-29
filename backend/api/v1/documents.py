@@ -330,6 +330,21 @@ def download_document_source(
             media_type=media_type
         )
 
+@router.get("/vhu-bundle")
+@router.get("/resources/tai-lieu-trac-nghiem-VHU.zip")
+def download_vhu_bundle():
+    """Download the authentic VHU exam and academic practice bundle."""
+    from ...services.vhu_resource_service import find_vhu_zip_path
+    from fastapi.responses import FileResponse
+    zip_path = find_vhu_zip_path()
+    if not zip_path or not zip_path.exists():
+        raise HTTPException(status_code=404, detail="Bộ tài nguyên trắc nghiệm VHU không tìm thấy trên máy chủ.")
+    return FileResponse(
+        path=str(zip_path),
+        filename="tai-lieu-trac-nghiem-VHU.zip",
+        media_type="application/zip"
+    )
+
 @router.get("/{document_id}")
 def get_document_details(
     document_id: str,

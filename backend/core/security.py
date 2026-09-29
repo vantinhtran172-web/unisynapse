@@ -241,24 +241,28 @@ def get_optional_member_session(session: Optional[str] = Cookie(None, alias=_MEM
 
 
 def set_session_cookie(response: Response, token: str) -> None:
+    from .config import COOKIE_SECURE, ENVIRONMENT
+    is_secure = COOKIE_SECURE or ENVIRONMENT == "production"
     response.set_cookie(
         _ADMIN_SESSION_COOKIE,
         token,
         max_age=_SESSION_TTL,
         httponly=True,
-        secure=os.getenv("COOKIE_SECURE", "0") == "1",
+        secure=is_secure,
         samesite="lax",
         path="/",
     )
 
 
 def set_member_session_cookie(response: Response, token: str) -> None:
+    from .config import COOKIE_SECURE, ENVIRONMENT
+    is_secure = COOKIE_SECURE or ENVIRONMENT == "production"
     response.set_cookie(
         _MEMBER_SESSION_COOKIE,
         token,
         max_age=_SESSION_TTL,
         httponly=True,
-        secure=os.getenv("COOKIE_SECURE", "0") == "1",
+        secure=is_secure,
         samesite="lax",
         path="/",
     )

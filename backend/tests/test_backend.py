@@ -203,8 +203,9 @@ from fastapi.testclient import TestClient
 from backend.main import app
 with TestClient(app) as client:
     from backend.services.solana_service import SolanaService
-    assert SolanaService.generate_devnet_signature('test-proof') is None
+    assert not hasattr(SolanaService, 'generate_devnet_signature')
     assert SolanaService.get_explorer_url(None) is None
+    assert SolanaService.get_explorer_url('invalid') is None
     assert client.post('/api/v1/rewards/record-onchain', json={
         'signature': 'invalid', 'memo': 'test', 'delta': 10
     }).status_code == 410

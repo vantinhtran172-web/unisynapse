@@ -13,6 +13,10 @@ target_metadata = metadata
 
 def _database_url():
     url = os.getenv("DATABASE_URL", "").strip()
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+psycopg://", 1)
+    elif url.startswith("postgresql://") and not url.startswith("postgresql+psycopg://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
     environment = os.getenv("ENVIRONMENT", "development").strip().lower()
     if environment == "production" and not url.startswith(("postgresql://", "postgresql+psycopg://")):
         raise RuntimeError("Alembic production migrations require a PostgreSQL DATABASE_URL")

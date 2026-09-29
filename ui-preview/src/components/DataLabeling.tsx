@@ -1,0 +1,263 @@
+"use client";
+
+import { useState } from "react";
+import { useAppState } from "../context/AppStateContext";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { TaskSubmissionResult } from "../lib/api";
+
+export default function DataLabeling() {
+  const { tasks, submitTask, user } = useAppState();
+  const { publicKey } = useWallet();
+
+  const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [result, setResult] = useState<TaskSubmissionResult | null>(null);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  if (tasks.length === 0) {
+    return (
+      <div className="glass-panel p-8 flex flex-col items-center justify-center min-h-[320px] text-center">
+        <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-2xl mb-3 shadow-lg shadow-emerald-500/10">
+          🎉
+        </div>
+        <h3 className="text-base font-bold text-slate-800 dark:text-white mb-1">
+          Tất cả nhiệm vụ đã hoàn thành!
+        </h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
+          Các bài toán gán nhãn hiện có đều đã đạt đồng thuận hoặc hoàn tất. Vui lòng quay lại sau khi giảng viên hoặc quản trị viên mở thêm nhiệm vụ mới!
+        </p>
+      </div>
+    );
+  }
+
+  const safeIndex = currentTaskIndex < tasks.length ? currentTaskIndex : 0;
+  const activeTask = tasks[safeIndex];
+
+  const handleSelectLabel = async (label: string) => {
+    if (!activeTask) return;
+    if (!user) {
+      setErrorMessage("Vui lòng đăng nhập để gửi nhãn và nhận thưởng UniPoints!");
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage("");
+    setResult(null);
+
+    try {
+      const res = await submitTask(activeTask.id, label);
+      setResult(res);
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "Lỗi khi gửi kết quả gán nhãn");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleNextTask = () => {
+    setResult(null);
+    setErrorMessage("");
+    setCurrentTaskIndex((prev) => (prev + 1) % tasks.length);
+  };
+
+  const handlePrevTask = () => {
+    setResult(null);
+    setErrorMessage("");
+    setCurrentTaskIndex((prev) => (prev - 1 + tasks.length) % tasks.length);
+  };
+
+  return (
+    <div className="glass-panel p-6 flex flex-col h-full">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Nhiệm Vụ Gán Nhãn Dữ Liệu</h2>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handlePrevTask}
+                className="px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs text-slate-600 dark:text-slate-300 transition"
+                title="Bài trước"
+              >
+                ←
+              </button>
+              <span className="text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded border border-slate-200 dark:border-white/5 font-mono">
+                {safeIndex + 1}/{tasks.length}
+              </span>
+              <button
+                type="button"
+                onClick={handleNextTask}
+                className="px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs text-slate-600 dark:text-slate-300 transition"
+                title="Bài tiếp theo"
+              >
+                →
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{activeTask.title}</p>
+        </div>
+        <span className="bg-blue-500/15 text-blue-700 dark:text-blue-300 text-xs px-2.5 py-1 rounded-full border border-blue-500/30 font-semibold">
+          +{activeTask.reward_points} UniPoints
+        </span>
+      </div>
+
+      <div className="bg-slate-100 dark:bg-slate-800/95 p-4 rounded-xl border border-slate-300/80 dark:border-slate-700/70 mb-5 flex-grow">
+        <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider block mb-1">
+          {activeTask.category}
+        </span>
+        <p className="text-slate-900 dark:text-slate-100 text-sm leading-relaxed italic font-medium">
+          &quot;{activeTask.input_text}&quot;
+        </p>
+      </div>
+
+      {errorMessage && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-600 dark:text-red-400 text-xs flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span>{errorMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleNextTask}
+            className="underline hover:text-red-300 text-[11px] whitespace-nowrap cursor-pointer font-semibold"
+          >
+            Bỏ qua bài này →
+          </button>
+        </div>
+      )}
+
+      {!result ? (
+        <div className="space-y-3 mt-auto">
+          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">Chọn phân loại của bạn:</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {activeTask.labels.map((lbl) => (
+              <button
+                key={lbl}
+                onClick={() => handleSelectLabel(lbl)}
+                disabled={isSubmitting || activeTask.user_submitted}
+                className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all duration-200 capitalize flex items-center justify-center gap-1.5 ${
+                  activeTask.user_label === lbl
+                    ? "bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-500/25"
+                    : "bg-white text-slate-900 border-slate-300 hover:bg-slate-100 hover:text-blue-600 dark:bg-slate-800/95 dark:text-slate-100 dark:border-slate-700/80 dark:hover:bg-slate-700 dark:hover:text-blue-300 dark:hover:border-blue-500 shadow-xs"
+                } disabled:opacity-50`}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
+
+          {activeTask.user_submitted && !result && (
+            <div className="mt-3 space-y-2.5">
+              <div className="p-3 bg-emerald-500/10 dark:bg-emerald-950/40 border border-emerald-500/30 rounded-xl space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>✓ Đã đóng góp nhãn: &quot;{activeTask.user_label}&quot;</span>
+                  </span>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded font-mono font-semibold">
+                    +{activeTask.reward_points} UP
+                  </span>
+                </div>
+                {activeTask.user_proof_status === "verified" && activeTask.user_explorer_url && activeTask.user_solana_signature ? (
+                  <div className="flex items-center justify-between pt-2 border-t border-emerald-500/20 text-[11px]">
+                    <span className="text-emerald-800 dark:text-emerald-300 font-semibold font-mono">Bằng chứng Solana Devnet:</span>
+                    <a
+                      href={activeTask.user_explorer_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-mono text-[11px] font-semibold transition-all shadow-xs"
+                    >
+                      <span>Tx: {activeTask.user_solana_signature.slice(0, 8)}...</span>
+                      <span>↗</span>
+                    </a>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between pt-2 border-t border-emerald-500/20 text-[11px] text-slate-500 dark:text-slate-400">
+                    <span>Trạng thái:</span>
+                    <span className="font-semibold text-amber-700 dark:text-amber-300 font-mono">Đã ghi nhận điểm nội bộ · Chưa có bằng chứng on-chain</span>
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleNextTask}
+                className="btn-cyber-secondary w-full py-2 text-xs font-semibold flex items-center justify-center gap-1 shadow-sm"
+              >
+                Chuyển bài toán tiếp theo →
+              </button>
+            </div>
+          )}
+
+          {isSubmitting && (
+            <div className="flex items-center justify-center gap-2 text-xs text-blue-600 dark:text-blue-400 mt-2">
+              <div className="w-3.5 h-3.5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin"></div>
+              Đang ghi nhận nhãn và kiểm tra xác nhận Solana Devnet...
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3 mt-auto">
+          <div className="p-3.5 bg-slate-50 dark:bg-slate-800/90 rounded-xl border border-emerald-500/30">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                {result.finalized ? "Xác Thực Đối Chiếu Chéo Hoàn Tất" : "Hoàn Thành Gán Nhãn Nhiệm Vụ"}
+              </h4>
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded font-mono font-semibold">
+                +{((result.reward_points && result.reward_points > 0) ? result.reward_points : (activeTask?.reward_points || 10))} UniPoints
+              </span>
+            </div>
+
+            <div className="text-[11px] text-slate-700 dark:text-slate-300 space-y-1 bg-white/80 dark:bg-slate-900/60 p-2.5 rounded-lg mb-2.5 border border-slate-200/60 dark:border-transparent">
+              <p className="text-slate-500 dark:text-slate-400 font-semibold mb-1">Kết quả từ các sinh viên đối chiếu:</p>
+              {result.peer_votes.map((pv, idx) => (
+                <div key={idx} className="flex justify-between text-slate-700 dark:text-slate-300 font-mono text-[10px]">
+                  <span>{pv.username}:</span>
+                  <span className={pv.label === result.label ? "text-blue-600 dark:text-blue-400 font-bold" : "text-slate-500 dark:text-slate-400"}>
+                    {pv.label}
+                  </span>
+                </div>
+              ))}
+              <div className="mt-2 pt-1.5 border-t border-slate-200 dark:border-slate-700/60 flex justify-between font-bold text-emerald-700 dark:text-emerald-400">
+                <span>Tỷ lệ đồng thuận:</span>
+                <span>{(result.confidence * 100).toFixed(0)}% Majority Vote</span>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-slate-600 dark:text-slate-400 font-mono space-y-1.5 pt-2 border-t border-slate-200 dark:border-white/10">
+              <div className="flex justify-between items-center text-[10px]">
+                <span><b className="text-slate-500 dark:text-slate-400">Mã nhiệm vụ:</b> #{result.task_id}</span>
+                <span><b className="text-slate-500 dark:text-slate-400">Người đóng góp:</b> {publicKey ? publicKey.toBase58().slice(0, 8) + "..." : user?.id?.slice(0, 10)}</span>
+              </div>
+              
+              {result.proof_status === "verified" && result.solana_signature && result.explorer_url ? (
+                <div className="mt-2 p-2.5 rounded-lg bg-emerald-500/10 dark:bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between gap-2">
+                  <span className="text-emerald-800 dark:text-emerald-300 font-bold text-xs">Bằng chứng Solana Devnet:</span>
+                  <a
+                    href={result.explorer_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-mono text-[11px] font-semibold transition-all"
+                  >Tx: {result.solana_signature.slice(0, 8)}... ↗</a>
+                </div>
+              ) : (
+                <div className="mt-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs text-amber-800 dark:text-amber-300">
+                  <span>Bằng chứng:</span>
+                  <span className="font-semibold">Đã ghi nhận điểm nội bộ · Chưa có bằng chứng on-chain</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleNextTask}
+            className="btn-cyber-secondary w-full py-2.5 text-xs font-semibold flex items-center justify-center gap-1 shadow-sm"
+          >
+            Chuyển Bài Toán Tiếp Theo →
+          </button>
+        </div>
+      )}
+
+    </div>
+  );
+}

@@ -11,7 +11,6 @@ import json
 import logging
 import nacl.signing
 import os
-import time
 import urllib.request
 from typing import Any, Dict, Optional
 
@@ -45,58 +44,42 @@ class SolanaOnRampService:
         if cls._keypair is not None:
             return cls._keypair
 
-        # 1. Check environment variable SOLANA_TREASURY_SECRET_KEY or SOLANA_SIGNER_SECRET_KEY (from Phantom export)
-        env_secret = (os.getenv("SOLANA_TREASURY_SECRET_KEY") or os.getenv("SOLANA_SIGNER_SECRET_KEY") or "").strip()
-        if env_secret:
-            try:
-                secret_bytes = base58.b58decode(env_secret)
-                seed = secret_bytes[:32] if len(secret_bytes) >= 32 else secret_bytes
-                cls._keypair = nacl.signing.SigningKey(seed)
-                cls._pubkey = base58.b58encode(bytes(cls._keypair.verify_key)).decode()
-                logger.info("Loaded Solana Treasury from ENV: %s", cls._pubkey)
-                return cls._keypair
-            except Exception as e:
-                logger.warning("Could not parse SOLANA_TREASURY_SECRET_KEY from env: %s", e)
-
-        os.makedirs(os.path.dirname(TREASURY_KEYPAIR_FILE), exist_ok=True)
-        if os.path.exists(TREASURY_KEYPAIR_FILE):
-            try:
+        secret = (os.getenv("SOLANA_TREASURY_SECRET_KEY") or os.getenv("SOLANA_SIGNER_SECRET_KEY") or "").strip()
+        configured_pubkey = None
+        if not secret and os.getenv("ENVIRONMENT", "development").lower() != "production":
+            if os.path.exists(TREASURY_KEYPAIR_FILE):
                 with open(TREASURY_KEYPAIR_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    raw_key = data.get("seed") or data.get("secret_key")
-                    seed_bytes = base58.b58decode(raw_key)
-                    seed = seed_bytes[:32] if len(seed_bytes) >= 32 else seed_bytes
-                    cls._keypair = nacl.signing.SigningKey(seed)
-                    cls._pubkey = data.get("pubkey") or base58.b58encode(bytes(cls._keypair.verify_key)).decode()
-                    logger.info("Loaded Solana Treasury Keypair: %s", cls._pubkey)
-                    return cls._keypair
-            except Exception as e:
-                logger.warning("Could not load treasury keypair, generating new: %s", e)
-
-        # 3. Default to official UniSynapse Treasury Keypair (DaWyQs... with 46+ SOL Devnet)
-        DEFAULT_TREASURY_SEED = "28o4PBzRozr8BEa4FKwxJmqWMen1HPWBwidfFtQrQwaN"
+                secret = data.get("seed") or data.get("secret_key") or ""
+                configured_pubkey = data.get("pubkey")
+        if not secret:
+            raise RuntimeError("Solana Treasury secret is not configured")
         try:
-            seed_bytes = base58.b58decode(DEFAULT_TREASURY_SEED)
-            seed = seed_bytes[:32] if len(seed_bytes) >= 32 else seed_bytes
-            cls._keypair = nacl.signing.SigningKey(seed)
-            cls._pubkey = "DaWyQs198XXbHNNqnM9wHEhjsMRsW8D47bmvtFXtF4Dn"
-            logger.info("Loaded Default Solana Treasury Keypair: %s", cls._pubkey)
-            return cls._keypair
-        except Exception as e:
-            logger.error("Could not load default treasury seed: %s", e)
-
-        # Fallback only if decoding failed
-        key = nacl.signing.SigningKey.generate()
+            secret_bytes = base58.b58decode(secret)
+            if len(secret_bytes) not in (32, 64):
+                raise ValueError("invalid secret length")
+            key = nacl.signing.SigningKey(secret_bytes[:32])
+            derived_pubkey = base58.b58encode(bytes(key.verify_key)).decode("ascii")
+            if len(secret_bytes) == 64 and secret_bytes[32:] != bytes(key.verify_key):
+                raise ValueError("secret public key does not match seed")
+            if configured_pubkey and configured_pubkey != derived_pubkey:
+                raise ValueError("keypair file public key does not match seed")
+            expected_pubkey = os.getenv("DEVNET_TREASURY_ADDRESS", "").strip()
+            if expected_pubkey and expected_pubkey != derived_pubkey:
+                raise ValueError("DEVNET_TREASURY_ADDRESS does not match signing key")
+        except Exception as exc:
+            raise RuntimeError("Invalid Solana Treasury signing key configuration") from exc
         cls._keypair = key
-        cls._pubkey = base58.b58encode(bytes(key.verify_key)).decode()
-        return cls._keypair
+        cls._pubkey = derived_pubkey
+        logger.info("Loaded configured Solana Treasury: %s", derived_pubkey)
+        return key
 
     @classmethod
     def get_treasury_pubkey(cls) -> str:
         if cls._pubkey:
             return cls._pubkey
         cls.get_keypair()
-        return cls._pubkey or "DaWyQs198XXbHNNqnM9wHEhjsMRsW8D47bmvtFXtF4Dn"
+        return cls._pubkey
 
     @classmethod
     def rpc(cls, method: str, params: list) -> Any:
@@ -219,31 +202,36 @@ class SolanaOnRampService:
         wire_tx = compact_u16(1) + signed_obj.signature + message
         signature_b58 = base58.b58encode(signed_obj.signature).decode()
 
-        # Submit to Solana Devnet RPC
+        # A sendTransaction response only means accepted; verify before exposing a proof.
         b64_tx = base64.b64encode(wire_tx).decode("ascii")
-        onchain_confirmed = False
         rpc_error = None
         signature = None
-        explorer_url = None
-
+        confirmed = False
         try:
             tx_sig = cls.rpc("sendTransaction", [b64_tx, {"encoding": "base64", "preflightCommitment": "confirmed"}])
-            if isinstance(tx_sig, str) and len(tx_sig) >= 32:
+            if not isinstance(tx_sig, str) or tx_sig != signature_b58:
+                raise ValueError("Invalid Solana sendTransaction signature")
+            status_result = cls.rpc("getSignatureStatuses", [[tx_sig], {"searchTransactionHistory": True}])
+            statuses = status_result.get("value") if isinstance(status_result, dict) else None
+            status = statuses[0] if isinstance(statuses, list) and statuses else None
+            confirmed = bool(
+                isinstance(status, dict)
+                and status.get("err") is None
+                and status.get("confirmationStatus") in ("confirmed", "finalized")
+            )
+            if confirmed:
                 signature = tx_sig
-                onchain_confirmed = True
-                explorer_url = f"{SOLANA_EXPLORER_BASE}/{signature}?cluster={SOLANA_NETWORK}"
             else:
-                rpc_error = f"Phản hồi RPC không hợp lệ: {tx_sig}"
+                rpc_error = "Solana transaction is not yet confirmed"
         except Exception as err:
-            logger.warning("Solana sendTransaction failed on Devnet: %s", err)
+            logger.warning("Solana transaction confirmation unavailable: %s", err)
             rpc_error = str(err)
 
         return {
-            "ok": onchain_confirmed,
-            "onchain_confirmed": onchain_confirmed,
+            "ok": confirmed,
+            "onchain_confirmed": confirmed,
             "signature": signature,
-            "offline_signature": signature_b58,
-            "explorer_url": explorer_url,
+            "explorer_url": f"{SOLANA_EXPLORER_BASE}/{signature}?cluster={SOLANA_NETWORK}" if confirmed else None,
             "amount_sol": amount_sol,
             "recipient": recipient_pubkey,
             "memo": memo or "",
@@ -276,18 +264,8 @@ class SolanaOnRampService:
             )
         except Exception as err:
             logger.warning("Failed to record document proof on Solana: %s", err)
-            # Fallback to local signed proof
-            keypair = cls.get_keypair()
-            raw = f"UniSynapse:DocProof:v1:{doc_id}:{checksum}:{quality_score}".encode()
-            sig = base58.b58encode(keypair.sign(raw).signature).decode()
-            return {
-                "ok": True,
-                "signature": sig,
-                "explorer_url": f"{SOLANA_EXPLORER_BASE}/{sig}?cluster={SOLANA_NETWORK}",
-                "amount_sol": 0.0,
-                "recipient": cls.get_treasury_pubkey(),
-                "memo": f"UniSynapse:DocProof:v1:{doc_id}:{checksum[:16]}",
-            }
+            return {"ok": False, "onchain_confirmed": False, "signature": None,
+                    "explorer_url": None, "error": "Solana proof unavailable"}
 
     @classmethod
     def record_consensus_proof_onchain(
@@ -314,15 +292,35 @@ class SolanaOnRampService:
             )
         except Exception as err:
             logger.warning("Failed to record consensus proof on Solana: %s", err)
-            keypair = cls.get_keypair()
-            raw = f"UniSynapse:Consensus:v1:{task_id}:{winning_label}:{confidence}".encode()
-            sig = base58.b58encode(keypair.sign(raw).signature).decode()
-            return {
-                "ok": True,
-                "signature": sig,
-                "explorer_url": f"{SOLANA_EXPLORER_BASE}/{sig}?cluster={SOLANA_NETWORK}",
-                "amount_sol": 0.0,
-                "recipient": cls.get_treasury_pubkey(),
-                "memo": f"UniSynapse:Consensus:v1:{task_id[:12]}",
-            }
+            return {"ok": False, "onchain_confirmed": False, "signature": None,
+                    "explorer_url": None, "error": "Solana proof unavailable"}
+
+    @classmethod
+    def record_label_submission_proof_onchain(
+        cls,
+        task_id: str,
+        user_id: str,
+        label: str,
+        recipient_pubkey: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Records student data labeling submission proof on Solana Devnet.
+        Creates a Memo payload: UniSynapse:LabelSub:v1:{task_id[:12]}:{label}:{user_id[:8]}
+        Dispatches an on-chain transaction signed by Treasury Keypair.
+        Returns base58 signature and Solana Explorer Devnet URL.
+        """
+        memo = f"UniSynapse:LabelSub:v1:{task_id[:12]}:{label[:10]}:{user_id[:8]}"
+        try:
+            recipient = recipient_pubkey if (recipient_pubkey and len(recipient_pubkey) >= 32) else cls.get_treasury_pubkey()
+            res = cls.transfer_sol_to_student(
+                recipient_pubkey=recipient,
+                amount_sol=0.000001,
+                memo=memo
+            )
+            return res
+        except Exception as err:
+            logger.warning("Failed to dispatch label submission transaction to Solana Devnet: %s", err)
+            return {"ok": False, "onchain_confirmed": False, "signature": None,
+                    "explorer_url": None, "error": "Solana proof unavailable"}
+
 

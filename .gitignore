@@ -17,6 +17,10 @@ frontend/node_modules/
 frontend/.next/
 frontend/out/
 frontend/*.tsbuildinfo
+ui-preview/node_modules/
+ui-preview/.next/
+ui-preview/out/
+ui-preview/*.tsbuildinfo
 
 # IDE/OS
 .vscode/
@@ -29,9 +33,9 @@ cloudflared.exe
 
 data/
 .m1-validation-data/
-scratch*.sql
 *.zip
-temp_recordings/
+!tai-lieu-trac-nghiem-VHU.zip
+!backend/resources/tai-lieu-trac-nghiem-VHU.zip
 record_demo.js
 
 # Local temp and databases
@@ -54,6 +58,15 @@ program/cargo-build-bpf.sh
 *.mkv
 *.avi
 *.mov
+
+# Local mockups, recordings and scratch files
+giaodientest/
+UniSynapse_ChuaCoChucNang/
+temp_recordings/
+assets/
+scratch_*.sql
+*.bak
+index.html
 
 # Security and secret files
 *.pem

@@ -47,6 +47,11 @@ def _compile_sql(sql: str, params: Optional[Iterable[Any]]):
 
 def _translate_postgres_sql(sql: str) -> str:
     """Translate only audited SQLite constructs used by the legacy runtime."""
+    pragma_match = re.match(r"^\s*PRAGMA\s+table_info\((\w+)\)", sql, re.IGNORECASE)
+    if pragma_match:
+        table_name = pragma_match.group(1).lower()
+        return f"SELECT column_name AS name FROM information_schema.columns WHERE lower(table_name) = '{table_name}'"
+
     translated = re.sub(
         r"INSERT\s+OR\s+IGNORE\s+INTO",
         "INSERT INTO",
@@ -70,6 +75,13 @@ def _translate_postgres_sql(sql: str) -> str:
     translated = re.sub(
         r"\bis_gold_correct\s*=\s*1\b",
         "is_gold_correct = true",
+        translated,
+        flags=re.IGNORECASE,
+    )
+
+    translated = re.sub(
+        r"ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(?!IF\s+NOT\s+EXISTS)",
+        r"ALTER TABLE \1 ADD COLUMN IF NOT EXISTS ",
         translated,
         flags=re.IGNORECASE,
     )
@@ -409,8 +421,8 @@ def init_db():
             status TEXT NOT NULL DEFAULT 'pending',
             qr_url TEXT,
             bank_name TEXT DEFAULT 'ACB',
-            account_number TEXT DEFAULT '38038627',
-            account_name TEXT DEFAULT 'TRAN VAN TINH',
+            account_number TEXT,
+            account_name TEXT,
             created_at REAL NOT NULL,
             credited_at REAL
         )
@@ -418,6 +430,7 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bank_deposits_user ON bank_deposits(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bank_deposits_code ON bank_deposits(order_code)")
 
+        bank_columns = {row["name"] for row in cursor.execute("PRAGMA table_info(bank_deposits)").fetchall()}
         for col_def in [
             "initial_balance REAL",
             "final_balance REAL",
@@ -427,16 +440,13 @@ def init_db():
             "solana_signature TEXT",
             "bank_tx_ref TEXT",
         ]:
-            try:
+            if col_def.split()[0] not in bank_columns:
                 cursor.execute(f"ALTER TABLE bank_deposits ADD COLUMN {col_def}")
-            except Exception:
-                pass
 
-        try:
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bank_deposits_tx_ref ON bank_deposits(bank_tx_ref)")
-        except Exception:
-            pass
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_bank_deposits_tx_ref ON bank_deposits(bank_tx_ref)")
 
+        document_columns = {row["name"] for row in cursor.execute("PRAGMA table_info(documents)").fetchall()}
+        task_columns = {row["name"] for row in cursor.execute("PRAGMA table_info(tasks)").fetchall()}
         for tbl, col_def in [
             ("documents", "solana_tx TEXT"),
             ("documents", "attestation_pda TEXT"),
@@ -445,10 +455,8 @@ def init_db():
             ("documents", "subject_name TEXT DEFAULT 'Lập trình C & Cấu trúc Dữ liệu'"),
             ("tasks", "solana_tx TEXT"),
         ]:
-            try:
+            if col_def.split()[0] not in (document_columns if tbl == "documents" else task_columns):
                 cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN {col_def}")
-            except Exception:
-                pass
 
         # 7.5. Autonomous On-Chain Oracle Jobs
         cursor.execute("""

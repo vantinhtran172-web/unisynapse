@@ -21,10 +21,8 @@ class SolanaService:
         digest = cls.create_proof_hash(f"{source_type}:{source_id}:{user_id}:{delta}")
         return f"UniSynapse:v1:{digest}"
 
-    @staticmethod
-    def generate_devnet_signature(proof_hash: str) -> Optional[str]:
-        """Legacy compatibility: submission is intentionally not implicit."""
-        return None
+    # Proof hashes remain local until an RPC-confirmed transaction exists.
+
 
     @classmethod
     def get_explorer_url(cls, signature: Optional[str]) -> Optional[str]:
