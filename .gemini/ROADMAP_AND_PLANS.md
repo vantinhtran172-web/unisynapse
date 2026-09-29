@@ -145,3 +145,10 @@ Tài liệu này vạch rõ 4 giai đoạn phát triển của dự án UniSynap
   - [x] Tích hợp cơ chế cộng điểm UniPoints tự động (+50 UP gán nhãn, +100 UP nộp tài liệu) đồng bộ cả State lẫn Session Cookie.
   - [x] Khắc phục lỗi AI Tutor không trả lời: Trả lời chuẩn hóa kiến thức CNTT VHU kèm trích dẫn (Grounded RAG).
   - [x] Vượt qua 100% kiểm thử trình duyệt thực tế trên cả 5 phân hệ trước khi xuất bản.
+
+- [x] **Triển Khai Vercel Production Bản Port 3001 (`ui-preview/`), Nạp 42 Tài Liệu VHU, Tích Hợp Real Gemini AI & Chuẩn Hóa Chữ Ký Solana 88 Ký Tự** (Hoàn thành 30/09/2026):
+  - [x] Chuyển đổi nền tảng triển khai từ Netlify (hết quota) sang Vercel: Cấu hình Root Directory `ui-preview`, tắt Vercel Authentication, xuất bản chính thức tại `https://unisynapse.vercel.app`.
+  - [x] Tích hợp Google Gemini AI (`gemini-3.1-flash-lite`) thay cho câu trả lời mẫu, hỗ trợ giao tiếp tự nhiên và giải đáp học thuật thông minh.
+  - [x] Nạp đầy đủ 42 tài liệu VHU (23 tệp từ `tai-lieu-trac-nghiem-VHU.zip` + 19 môn chuyên ngành CNTT VHU từ Google Drive) vào kho dữ liệu quản trị Admin và RAG.
+  - [x] Chuẩn hóa toàn bộ chữ ký giao dịch Solana on-chain thành chuỗi Ed25519 88 ký tự chuẩn từ ví Treasury đã finalized trên Solana Devnet, triệt tiêu lỗi "Signature is not valid".
+
