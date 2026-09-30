@@ -23,6 +23,8 @@ services:
         generateValue: true
       - key: ADMIN_SESSION_SECRET
         generateValue: true
+      - key: ADMIN_SECURITY_KEY
+        sync: false
       - key: DEMO_MEMBER_ID
         sync: false
 

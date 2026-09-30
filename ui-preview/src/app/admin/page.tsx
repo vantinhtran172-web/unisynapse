@@ -1329,7 +1329,7 @@ export default function OnlineAdminPage() {
                             <td className="py-3 px-4">
                               <div className="font-medium text-slate-800 dark:text-slate-200">{doc.owner_name || "Admin"}</div>
                               <div className="font-mono text-[10px] text-slate-400">
-                                {doc.owner_wallet ? `${doc.owner_wallet.substring(0, 6)}...` : "--"}
+                                {doc.owner_wallet ? `${String(doc.owner_wallet).substring(0, 6)}...` : "--"}
                               </div>
                             </td>
                             <td className="py-3 px-4">
@@ -1551,7 +1551,7 @@ export default function OnlineAdminPage() {
                               <div className="text-[10px] text-slate-400">Vai trò: <strong>{u.role || "student"}</strong></div>
                             </td>
                             <td className="py-3 px-4 font-mono text-[11px] text-blue-500">
-                              {addr ? `${addr.substring(0, 6)}...${addr.slice(-4)}` : "Chưa kết nối"}
+                              {addr ? `${String(addr).substring(0, 6)}...${String(addr).slice(-4)}` : "Chưa kết nối"}
                             </td>
                             <td className="py-3 px-4 font-bold text-amber-500">
                               ★ {u.reputation ?? 100}
@@ -1778,7 +1778,7 @@ export default function OnlineAdminPage() {
                                   title={`Xem chi tiết giao dịch trên Solana Explorer Devnet: ${entry.solana_signature}`}
                                 >
                                   <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
-                                  <span className="group-hover:underline">⛓️ {entry.solana_signature.substring(0, 8)}...</span>
+                                  <span className="group-hover:underline">⛓️ {String(entry.solana_signature).substring(0, 8)}...</span>
                                   <span className="text-[10px] opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition-transform">↗</span>
                                 </a>
                               ) : (
@@ -1862,7 +1862,7 @@ export default function OnlineAdminPage() {
                             <td className="py-3 px-4 text-slate-500 max-w-[140px] truncate" title={dep.target_wallet || dep.wallet_address || ""}>
                               {(dep.target_wallet || dep.wallet_address) ? (
                                 <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400">
-                                  {(dep.target_wallet || dep.wallet_address)!.substring(0, 6)}...{(dep.target_wallet || dep.wallet_address)!.slice(-4)}
+                                  {String(dep.target_wallet || dep.wallet_address).substring(0, 6)}...{String(dep.target_wallet || dep.wallet_address).slice(-4)}
                                 </span>
                               ) : (
                                 <span className="text-slate-400 italic font-sans text-[11px]">Ví hệ thống</span>
@@ -1895,7 +1895,7 @@ export default function OnlineAdminPage() {
                                   title={`Xem chi tiết trên Solana Explorer: ${dep.solana_signature}`}
                                 >
                                   <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
-                                  <span className="group-hover:underline">⛓️ {dep.solana_signature.substring(0, 8)}...</span>
+                                  <span className="group-hover:underline">⛓️ {String(dep.solana_signature).substring(0, 8)}...</span>
                                   <span className="text-[10px] opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition-transform">↗</span>
                                 </a>
                               ) : (
