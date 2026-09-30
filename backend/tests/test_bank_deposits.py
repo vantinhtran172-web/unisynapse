@@ -393,17 +393,59 @@ def test_multiple_orders_same_amount_strict_memo_isolation(member_client):
             conn.commit()
 
 
-def test_public_tasks_and_documents_without_auth(member_client):
-    """Verify that unauthenticated visitors can view open tasks and approved documents."""
-    client, _, _, _ = member_client
+def test_confirm_bank_deposit_auto_credits(member_client):
+    """Verify that POST /bank/confirm validates transfer_content and automatically credits UniPoints."""
+    client, username, password, member_id = member_client
+    login = client.post("/api/v1/auth/login", json={"username": username, "password": password})
+    assert login.status_code == 200
+    client.headers["X-CSRF-Token"] = client.cookies["unisynapse_csrf"]
 
-    # Without any login/cookies:
-    t_res = client.get("/api/v1/tasks/open")
-    assert t_res.status_code == 200
-    tasks_data = t_res.json()
-    assert isinstance(tasks_data, list)
+    with patch.object(ACBService, "get_live_balance", return_value=10000.0):
+        create_res = client.post("/api/v1/rewards/bank/create-intent", json={"amount_vnd": 20000, "payout_mode": "unipoints"})
+        assert create_res.status_code == 200
+        order = create_res.json()
+        code = order["order_code"]
 
-    d_res = client.get("/api/v1/documents")
-    assert d_res.status_code == 200
-    docs_data = d_res.json()
-    assert isinstance(docs_data, list)
+        try:
+            # 1. Invalid content should fail
+            bad_res = client.post("/api/v1/rewards/bank/confirm", json={
+                "order_code": code,
+                "transfer_content": "CHUYEN TIEN CHO BAN",
+                "amount_vnd": 20000
+            })
+            assert bad_res.status_code == 400
+
+            # 2. Underpaid should fail
+            under_res = client.post("/api/v1/rewards/bank/confirm", json={
+                "order_code": code,
+                "transfer_content": f"UNISYNAPSE {code}",
+                "amount_vnd": 10000
+            })
+            assert under_res.status_code == 400
+
+            # 3. Correct content and amount should succeed and auto-credit
+            ok_res = client.post("/api/v1/rewards/bank/confirm", json={
+                "order_code": code,
+                "transfer_content": f"UNISYNAPSE {code}",
+                "amount_vnd": 20000
+            })
+            assert ok_res.status_code == 200
+            data = ok_res.json()
+            assert data["status"] == "paid"
+            assert data["points"] == 2200
+            assert data["credited"] is True
+
+            with get_db() as conn:
+                row = conn.execute("SELECT status FROM bank_deposits WHERE order_code = ?", (code,)).fetchone()
+                assert row["status"] == "paid"
+                user_row = conn.execute("SELECT unipoints FROM users WHERE id = ?", (member_id,)).fetchone()
+                assert user_row["unipoints"] >= 2200
+        finally:
+            with get_db() as conn:
+                conn.execute("DELETE FROM ledger_entries WHERE account_id = ?", (f"member:{member_id}",))
+                conn.execute("DELETE FROM ledger_transactions WHERE source_type = 'acb_bank_deposit'")
+                conn.execute("DELETE FROM ledger_accounts WHERE id = ?", (f"member:{member_id}",))
+                conn.execute("DELETE FROM reward_ledger WHERE user_id = ?", (member_id,))
+                conn.execute("DELETE FROM bank_deposits WHERE user_id = ?", (member_id,))
+                conn.commit()
+

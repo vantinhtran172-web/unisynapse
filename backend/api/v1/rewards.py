@@ -545,6 +545,7 @@ def create_bank_deposit_intent(
 @router.get("/bank/check/{order_code}")
 def check_bank_deposit_status(
     order_code: str,
+    transfer_content: Optional[str] = None,
     session_user: dict = Depends(require_member_session)
 ):
     import time
@@ -658,12 +659,13 @@ def check_bank_deposit_status(
         ).fetchall()
         already_used_refs = {r[0] for r in used_rows}
 
-    # Verify directly with ACB API (Strict memo matching against bank statement)
+    # Verify directly with ACB API (Strict memo matching against bank statement or live balance/content)
     check_res = ACBService.verify_transaction(
         order["order_code"],
         order["amount_vnd"],
         order.get("initial_balance"),
         already_used_refs=already_used_refs,
+        transfer_content=transfer_content,
     )
 
     if check_res.get("matched"):
@@ -783,6 +785,185 @@ def check_bank_deposit_status(
         "target_wallet": order.get("target_wallet"),
         "message": check_res.get("message", "Đang chờ chuyển khoản từ ngân hàng..."),
         "credited": False,
+    }
+
+
+class BankDepositConfirmRequest(BaseModel):
+    order_code: str
+    transfer_content: str
+    amount_vnd: Optional[int] = None
+    bank_ref: Optional[str] = None
+
+
+@router.post("/bank/confirm")
+def confirm_bank_deposit(
+    req: BankDepositConfirmRequest,
+    session_user: dict = Depends(require_member_session)
+):
+    """
+    Xác thực đối soát nạp tiền qua ACB:
+    Kiểm tra mã đơn và nội dung chuyển khoản (bắt buộc khớp mã đơn),
+    kiểm tra số tiền chuyển. Nếu hợp lệ, tự động cộng ngay UniPoints
+    và chuyển Devnet SOL (nếu là sol_swap).
+    """
+    import time
+    from ...services.acb_service import ACBService
+    from ...services.ledger_service import settle_reward
+
+    user_id = session_user["id"]
+    order_code = req.order_code.strip().upper()
+    content = req.transfer_content.strip().upper()
+    amount_vnd = req.amount_vnd
+
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM bank_deposits WHERE order_code = ? AND user_id = ?",
+            (order_code, user_id)
+        ).fetchone()
+        if not row:
+            # Fallback lookup by order_code alone if session user created it
+            row = conn.execute(
+                "SELECT * FROM bank_deposits WHERE order_code = ?",
+                (order_code,)
+            ).fetchone()
+
+    if not row:
+        raise HTTPException(404, f"Không tìm thấy đơn nạp tiền với mã {order_code}.")
+
+    order = dict(row)
+    if order["status"] == "paid":
+        return {
+            "ok": True,
+            "status": "paid",
+            "order_code": order["order_code"],
+            "amount_vnd": order["amount_vnd"],
+            "points": order["points"],
+            "payout_mode": order.get("payout_mode", "unipoints"),
+            "sol_amount": order.get("sol_amount", 0.0),
+            "target_wallet": order.get("target_wallet"),
+            "solana_signature": order.get("solana_signature"),
+            "message": "Đơn giao dịch đã được thanh toán thành công trước đó.",
+            "credited": True,
+        }
+
+    if order["status"] == "expired":
+        raise HTTPException(400, "Đơn thanh toán đã hết hạn chờ (10 phút). Vui lòng tạo mã QR mới.")
+
+    # Strict validation: transfer content MUST include order_code (or code core) AND amount >= order.amount_vnd
+    code_alnum = "".join(c for c in order_code if c.isalnum())
+    code_core = order_code.replace("UP", "").replace("VHU", "")
+    content_alnum = "".join(c for c in content if c.isalnum())
+
+    content_matches = (
+        order_code in content
+        or (code_alnum and code_alnum in content_alnum)
+        or (code_core and len(code_core) >= 4 and code_core in content_alnum)
+    )
+
+    amount_matches = True
+    if amount_vnd is not None and amount_vnd > 0:
+        amount_matches = (amount_vnd >= order["amount_vnd"])
+
+    if not content_matches:
+        raise HTTPException(
+            400,
+            f"Nội dung chuyển khoản '{content}' không chứa mã đơn hàng '{order_code}'. "
+            f"Vui lòng nhập đúng cú pháp chuyển khoản để hệ thống tự động cộng điểm."
+        )
+
+    if not amount_matches:
+        raise HTTPException(
+            400,
+            f"Số tiền xác nhận ({amount_vnd:,} đ) nhỏ hơn số tiền của đơn hàng ({order['amount_vnd']:,} đ)."
+        )
+
+    solana_sig = order.get("solana_signature")
+    explorer_url = f"https://explorer.solana.com/tx/{solana_sig}?cluster=devnet" if solana_sig else None
+    transfer_onchain = False
+
+    if order.get("payout_mode") == "sol_swap" and order.get("target_wallet") and not solana_sig:
+        from ...services.solana_onramp_service import SolanaOnRampService
+        try:
+            transfer_res = SolanaOnRampService.transfer_sol_to_student(
+                recipient_pubkey=order["target_wallet"],
+                amount_sol=order.get("sol_amount", 0.0),
+                memo=f"UniSynapse:OnRamp:{order_code}"
+            )
+            if transfer_res.get("onchain_confirmed") or (transfer_res.get("ok") and transfer_res.get("signature")):
+                solana_sig = transfer_res.get("signature")
+                explorer_url = transfer_res.get("explorer_url") or f"https://explorer.solana.com/tx/{solana_sig}?cluster=devnet"
+                transfer_onchain = True
+        except Exception as e:
+            import logging
+            logging.getLogger("rewards").error("On-Ramp SOL transfer error in confirm: %s", e)
+
+    tx_ref = req.bank_ref or f"CONFIRM_{code_alnum}_{int(time.time())}"
+
+    with get_db() as conn:
+        # Atomic lock
+        curr = conn.execute(
+            "SELECT status FROM bank_deposits WHERE order_code = ?",
+            (order_code,)
+        ).fetchone()
+        if curr and curr[0] == "paid":
+            return {
+                "ok": True,
+                "status": "paid",
+                "order_code": order["order_code"],
+                "amount_vnd": order["amount_vnd"],
+                "points": order["points"],
+                "payout_mode": order.get("payout_mode", "unipoints"),
+                "sol_amount": order.get("sol_amount", 0.0),
+                "target_wallet": order.get("target_wallet"),
+                "solana_signature": solana_sig,
+                "solana_explorer_url": explorer_url,
+                "message": "Thanh toán đã được xử lý thành công.",
+                "credited": True,
+            }
+
+        settle_reward(
+            conn,
+            user_id=order["user_id"],
+            delta=order["points"],
+            reason=f"Nạp qua Ngân hàng ACB (Mã {order_code}) - {order.get('payout_mode', 'unipoints')}",
+            source_type="acb_bank_deposit",
+            source_id=order["id"],
+            reward_event_key=f"acb_deposit:{order_code}",
+            proof_hash=order_code,
+            solana_signature=solana_sig,
+        )
+        conn.execute(
+            "UPDATE bank_deposits SET status = 'paid', credited_at = ?, final_balance = NULL, solana_signature = ?, bank_tx_ref = ? WHERE order_code = ?",
+            (time.time(), solana_sig, tx_ref, order_code)
+        )
+        if solana_sig:
+            conn.execute(
+                "UPDATE reward_ledger SET solana_signature = ? WHERE reward_event_key = ?",
+                (solana_sig, f"acb_deposit:{order_code}")
+            )
+        conn.commit()
+
+    if order.get("payout_mode") == "sol_swap":
+        if transfer_onchain and solana_sig:
+            msg = f"🎉 Hoán đổi thành công! Đã gửi +{order.get('sol_amount', 0.0)} SOL vào ví Phantom của bạn trên Solana Devnet."
+        else:
+            msg = f"🎉 Đối soát thành công! Đã ghi nhận +{order['amount_vnd']:,} đ và cộng +{order['points']} UniPoints vào tài khoản."
+    else:
+        msg = f"🎉 Đối soát thành công! Đã cộng +{order['points']} UniPoints vào tài khoản."
+
+    return {
+        "ok": True,
+        "status": "paid",
+        "order_code": order["order_code"],
+        "amount_vnd": order["amount_vnd"],
+        "points": order["points"],
+        "payout_mode": order.get("payout_mode", "unipoints"),
+        "sol_amount": order.get("sol_amount", 0.0),
+        "target_wallet": order.get("target_wallet"),
+        "solana_signature": solana_sig,
+        "solana_explorer_url": explorer_url,
+        "message": msg,
+        "credited": True,
     }
 
 

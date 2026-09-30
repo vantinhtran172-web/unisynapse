@@ -2195,11 +2195,14 @@ export async function POST(
     });
 
     return NextResponse.json({
+      ok: true,
       success: true,
       order_code: order.order_code,
       status: "paid",
+      points: order.points,
       points_awarded: order.points,
       sol_amount: order.sol_amount,
+      credited: true,
       message: `✓ Đối soát thành công: Khớp nội dung '${orderCode}' và đủ ${amount.toLocaleString(
         "vi-VN"
       )} đ. Đã cộng +${order.points} UP!`,

@@ -317,8 +317,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ amount_vnd, payout_mode, target_wallet }),
     }),
-  checkBankDeposit: (order_code: string) =>
-    request<BankDepositCheckResponse>(`/rewards/bank/check/${order_code}`),
+  checkBankDeposit: (order_code: string, transfer_content?: string) =>
+    request<BankDepositCheckResponse>(`/rewards/bank/check/${order_code}${transfer_content ? `?transfer_content=${encodeURIComponent(transfer_content)}` : ""}`),
+  confirmBankDeposit: (order_code: string, transfer_content: string, amount_vnd?: number) =>
+    request<BankDepositCheckResponse>("/rewards/bank/confirm", {
+      method: "POST",
+      body: JSON.stringify({ order_code, transfer_content, amount_vnd }),
+    }),
   getBankDepositHistory: () =>
     request<BankDepositRecord[]>("/rewards/bank/history"),
   register: (username: string, password: string) =>

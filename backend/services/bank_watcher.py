@@ -137,6 +137,13 @@ def _check_and_settle_pending_bank_deposits():
         points = order["points"]
         user_id = order["user_id"]
         initial_bal = order.get("initial_balance")
+        if initial_bal is None:
+            live_bal = ACBService.get_live_balance()
+            if live_bal is not None:
+                with get_db() as c_conn:
+                    c_conn.execute("UPDATE bank_deposits SET initial_balance = ? WHERE order_code = ? AND initial_balance IS NULL", (live_bal, order_code))
+                    c_conn.commit()
+                initial_bal = live_bal
 
         try:
             check_res = ACBService.verify_transaction(

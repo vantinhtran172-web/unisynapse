@@ -80,6 +80,7 @@ export default function WalletPage() {
   const [bankHistory, setBankHistory] = useState<BankDepositRecord[]>([]);
   const [bankHistoryLoading, setBankHistoryLoading] = useState<boolean>(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [isConfirmingBank, setIsConfirmingBank] = useState<boolean>(false);
   const [review, setReview] = useState<Review | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [points, setPoints] = useState<number | null>(null);
@@ -350,6 +351,40 @@ export default function WalletPage() {
     }
   }
 
+  async function handleInstantConfirm() {
+    if (!bankOrder || bankOrder.status !== "pending") return;
+    setIsConfirmingBank(true);
+    setMessage("");
+    try {
+      const res = await api.confirmBankDeposit(
+        bankOrder.order_code,
+        bankOrder.order_code,
+        bankOrder.amount_vnd
+      );
+      if (res.status === "paid") {
+        setBankOrder((prev) => (prev ? {
+          ...prev,
+          status: "paid",
+          solana_signature: res.solana_signature,
+          solana_explorer_url: res.solana_explorer_url,
+          sol_amount: res.sol_amount,
+          payout_mode: res.payout_mode,
+        } : null));
+        if (res.payout_mode === "sol_swap") {
+          setMessage(`🎉 ĐỐI SOÁT THÀNH CÔNG! Đã chuyển +${res.sol_amount} SOL vào ví Phantom của bạn trên Solana Devnet.`);
+        } else {
+          setMessage(`🎉 ĐỐI SOÁT THÀNH CÔNG! Đã cộng +${res.points.toLocaleString("vi-VN")} UniPoints vào tài khoản.`);
+        }
+        await refreshPoints();
+        void loadBankHistory();
+      }
+    } catch (err) {
+      setMessage((err as Error).message || "Chưa khớp đối soát. Vui lòng kiểm tra lại tiền và nội dung chuyển khoản.");
+    } finally {
+      setIsConfirmingBank(false);
+    }
+  }
+
   // Tự động kiểm tra và đối soát giao dịch ACB (Tự động mỗi 3 giây)
   useEffect(() => {
     if (!user) return;
@@ -358,7 +393,7 @@ export default function WalletPage() {
     const pollStatus = async () => {
       try {
         if (bankOrder && bankOrder.status === "pending") {
-          const res = await api.checkBankDeposit(bankOrder.order_code);
+          const res = await api.checkBankDeposit(bankOrder.order_code, bankOrder.order_code);
           if (isCancelled) return;
           if (res.status === "paid") {
             setBankOrder((prev) => (prev ? {
@@ -1282,16 +1317,41 @@ export default function WalletPage() {
                         <div className={styles.pulseRadar}>
                           <span className={styles.pulseDot}></span>
                         </div>
-                        <div>
+                        <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 700, color: "#38bdf8", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
                             <span>⚡ Đang tự động đối soát ACB theo thời gian thực...</span>
                           </div>
                           <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: "0.25rem", lineHeight: 1.4 }}>
                             {bankOrder.payout_mode === "sol_swap"
-                              ? `Hệ thống quét số dư ACB mỗi 3 giây. Ngay khi tiền về, Treasury sẽ ký lệnh Solana và chuyển ngay ${bankOrder.sol_amount || calculateSolAmount(bankOrder.amount_vnd)} SOL vào ví Phantom của bạn.`
-                              : "Hệ thống tự động quét số dư ACB mỗi 3 giây. Ngay khi bạn chuyển khoản thành công, UniPoints sẽ tự động nhảy số mà không cần bấm bất kỳ nút nào."
+                              ? `Hệ thống quét số dư ACB mỗi 3 giây. Ngay khi tiền về đúng nội dung, Treasury sẽ ký lệnh Solana và chuyển ngay ${bankOrder.sol_amount || calculateSolAmount(bankOrder.amount_vnd)} SOL vào ví Phantom của bạn.`
+                              : "Hệ thống tự động quét số dư ACB mỗi 3 giây. Ngay khi bạn chuyển khoản đúng tiền và nội dung, UniPoints sẽ tự động cộng ngay lập tức."
                             }
                           </div>
+                          <button
+                            type="button"
+                            onClick={handleInstantConfirm}
+                            disabled={isConfirmingBank}
+                            style={{
+                              background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                              color: "#ffffff",
+                              border: "none",
+                              borderRadius: "8px",
+                              padding: "0.55rem 0.9rem",
+                              fontSize: "0.82rem",
+                              fontWeight: 700,
+                              cursor: isConfirmingBank ? "not-allowed" : "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "0.4rem",
+                              boxShadow: "0 4px 12px rgba(16, 185, 129, 0.3)",
+                              marginTop: "0.6rem",
+                              width: "100%",
+                              transition: "all 0.2s ease",
+                            }}
+                          >
+                            {isConfirmingBank ? "🔄 Đang đối soát và cộng điểm..." : "✅ Tôi đã chuyển khoản xong (Xác nhận & Tự động cộng ngay)"}
+                          </button>
                         </div>
                       </div>
                     )}

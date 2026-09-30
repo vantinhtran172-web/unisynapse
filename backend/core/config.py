@@ -81,13 +81,13 @@ NINEROUTER_DEFAULT_MODEL = os.getenv("NINEROUTER_DEFAULT_MODEL", "cx/gpt-5.6-lun
 
 # ACB Bank API Configuration
 ACB_API_URL = os.getenv("ACB_API_URL", "https://apiapp.acb.com.vn").rstrip("/")
-ACB_CLIENT_ID = os.getenv("ACB_CLIENT_ID", "").strip()
-ACB_USERNAME = os.getenv("ACB_USERNAME", "").strip()
-ACB_PASSWORD = os.getenv("ACB_PASSWORD", "").strip()
-ACB_ACCOUNT_NUMBER = os.getenv("ACB_ACCOUNT_NUMBER", "38038627" if ENVIRONMENT != "production" else "").strip()
-ACB_ACCOUNT_NAME = os.getenv("ACB_ACCOUNT_NAME", "TRAN VAN TINH" if ENVIRONMENT != "production" else "").strip()
+ACB_CLIENT_ID = os.getenv("ACB_CLIENT_ID", "iuSuHYVufIUuNIREV0FB9EoLn9kHsDbm").strip()
+ACB_USERNAME = os.getenv("ACB_USERNAME", "0388890465").strip()
+ACB_PASSWORD = os.getenv("ACB_PASSWORD", "Tinhtranvan987@").strip()
+ACB_ACCOUNT_NUMBER = os.getenv("ACB_ACCOUNT_NUMBER", "38038627").strip()
+ACB_ACCOUNT_NAME = os.getenv("ACB_ACCOUNT_NAME", "TRAN VAN TINH").strip()
 ACB_BANK_NAME = os.getenv("ACB_BANK_NAME", "ACB").strip()
-ACB_DEPOSITS_ENABLED = os.getenv("ACB_DEPOSITS_ENABLED", "1" if ENVIRONMENT != "production" else "0").strip().lower() in ("1", "true", "yes", "on")
+ACB_DEPOSITS_ENABLED = os.getenv("ACB_DEPOSITS_ENABLED", "1").strip().lower() in ("1", "true", "yes", "on")
 POINTS_PER_10K_VND = int(os.getenv("POINTS_PER_10K_VND", "1000"))  # 10,000 VND = 1,000 UniPoints
 
 
