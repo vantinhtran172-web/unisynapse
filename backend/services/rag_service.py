@@ -322,9 +322,9 @@ class RAGService:
                     "answer": ans_text,
                     "citations": citations if has_grounded_context else [],
                     "grounded": has_grounded_context,
-                    "engine": "GPT-5.6 Luna",
+                    "engine": "GPT-6.0 Sol",
                     "source_type": "approved_documents" if has_grounded_context else "ai_outside_knowledge_base",
-                    "source_label": "Tài liệu UniSynapse đã kiểm định (GPT-5.6 Luna)" if has_grounded_context else "Nguồn từ GPT-5.6 Luna — Kiến thức mở rộng",
+                    "source_label": "Tài liệu UniSynapse đã kiểm định (GPT-6.0 Sol)" if has_grounded_context else "Nguồn từ GPT-6.0 Sol — Kiến thức mở rộng",
                 }
             except Exception as err:
                 safe_msg = str(err).encode("ascii", "backslashreplace").decode("ascii")
