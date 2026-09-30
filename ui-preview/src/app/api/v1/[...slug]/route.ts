@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sampleTasks, TaskItemData } from "@/lib/sampleTasks";
 import { sampleLedger, LedgerItemData } from "@/lib/sampleLedger";
 import { sampleAuditEvents, AuditItemData } from "@/lib/sampleAudit";
+import tutorKnowledge from "@/lib/tutorKnowledge.json";
 
 // Payment destination must never be confused with the Devnet genesis hash.
 const UNISYNAPSE_DEVNET_TREASURY = "DaWyQs198XXbHNNqnM9wHEhjsMRsW8D47bmvtFXtF4Dn";
@@ -1272,7 +1273,8 @@ export async function GET(
   if (path === "tutor/knowledge-base") {
     return NextResponse.json({
       status: "ready",
-      indexed_documents: 23,
+      indexed_documents: new Set(tutorKnowledge.map((chunk) => chunk.document_id)).size,
+      indexed_chunks: tutorKnowledge.length,
       university: "Đại học Văn Hiến (VHU)",
       courses: [
         { code: "VHU_IT101", name: "Nhập môn Công nghệ Thông tin" },
@@ -1346,117 +1348,164 @@ const NINEROUTER_API_KEY = process.env.NINEROUTER_API_KEY || "sk-7d22549baacade1
 const NINEROUTER_MODEL = process.env.NINEROUTER_DEFAULT_MODEL || "cx/gpt-5.6-luna";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || Buffer.from("QVEuQWI4Uk42SThSaHd1ZGxiNWxnR1NQQkU3MDdMNVpMNTJvMXhNQ1hhNTRFSVluZGVBYkE=", "base64").toString("utf-8");
 
+interface TutorKnowledgeChunk {
+  document_id: string;
+  document_name: string;
+  chunk_index: number;
+  page_number: number | null;
+  content: string;
+  subject_code: string | null;
+  university: string | null;
+  solana_tx: string | null;
+}
+
+interface RankedKnowledgeChunk extends TutorKnowledgeChunk {
+  score: number;
+}
+
+const TUTOR_STOP_WORDS = new Set([
+  "ai", "anh", "ban", "bi", "cac", "cai", "cho", "co", "cua", "duoc", "gi", "hay",
+  "khi", "la", "lam", "mot", "nao", "nhung", "noi", "ra", "sao", "the", "thi", "trong",
+  "tu", "va", "ve", "voi", "a", "an", "and", "are", "how", "in", "is", "of", "or", "the", "to", "what",
+]);
+
+function normalizeTutorText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .toLowerCase();
+}
+
+function tutorTermFrequency(value: string): Map<string, number> {
+  const counts = new Map<string, number>();
+  const words = normalizeTutorText(value).match(/[a-z0-9_]+/g) || [];
+  for (const word of words) {
+    if (word.length > 1 && !TUTOR_STOP_WORDS.has(word)) {
+      counts.set(word, (counts.get(word) || 0) + 1);
+    }
+  }
+  const norm = Math.sqrt([...counts.values()].reduce((sum, count) => sum + count * count, 0));
+  if (norm > 0) counts.forEach((count, word) => counts.set(word, count / norm));
+  return counts;
+}
+
+function tutorCosine(left: Map<string, number>, right: Map<string, number>): number {
+  let score = 0;
+  left.forEach((weight, term) => { score += weight * (right.get(term) || 0); });
+  return score;
+}
+
+function retrieveTutorKnowledge(question: string, subjectCode?: string, university?: string): RankedKnowledgeChunk[] {
+  const questionTf = tutorTermFrequency(question);
+  if (questionTf.size === 0) return [];
+
+  const requestedUniversity = normalizeTutorText(university || "");
+  const requestedSubject = (subjectCode || "").trim().toUpperCase();
+  const corpus = (tutorKnowledge as TutorKnowledgeChunk[]).filter((chunk) => {
+    if (!requestedUniversity || !chunk.university) return true;
+    const chunkUniversity = normalizeTutorText(chunk.university);
+    return chunkUniversity.includes(requestedUniversity) || requestedUniversity.includes(chunkUniversity);
+  });
+
+  const rank = (chunks: TutorKnowledgeChunk[]) => chunks
+    .map((chunk) => ({ ...chunk, score: tutorCosine(questionTf, tutorTermFrequency(chunk.content)) }))
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 3);
+
+  const subjectCorpus = requestedSubject && !["ALL", "ALL_SUBJECTS"].includes(requestedSubject)
+    ? corpus.filter((chunk) => (chunk.subject_code || "").toUpperCase() === requestedSubject)
+    : corpus;
+  const scoped = rank(subjectCorpus);
+  const global = subjectCorpus === corpus ? scoped : rank(corpus);
+  const bestScoped = scoped[0]?.score || 0;
+  const selected = bestScoped >= 0.15 ? scoped : global;
+  return selected.filter((chunk) => chunk.score >= 0.15);
+}
+
 async function queryGPT56LunaTutor(
   question: string,
   subjectCode: string,
-  requestedModel?: string
+  requestedModel: string | undefined,
+  contextChunks: RankedKnowledgeChunk[]
 ): Promise<{ answer: string; engine: string }> {
   const activeModel = requestedModel && requestedModel.includes("gemini")
     ? requestedModel
     : (requestedModel && requestedModel.startsWith("cx/") ? requestedModel : NINEROUTER_MODEL);
+  const grounded = contextChunks.length > 0;
+  const context = contextChunks.map((chunk, index) =>
+    `[HỌC LIỆU ${index + 1}] ${chunk.document_name} — ${chunk.page_number ? `Trang ${chunk.page_number}` : `Đoạn ${chunk.chunk_index + 1}`}\n${chunk.content}`
+  ).join("\n\n");
+  const systemPrompt = grounded
+    ? `Bạn là UniSynapse AI Tutor (GPT-5.6 Luna) của Đại học Văn Hiến. Chỉ trả lời dựa trên HỌC LIỆU ĐÃ KIỂM ĐỊNH bên dưới. Không thêm dữ kiện ngoài học liệu. Nếu học liệu không đủ để kết luận, nói rõ giới hạn. Trả lời tiếng Việt, mạch lạc, kèm dẫn nguồn [Tên tài liệu, Trang/Đoạn].\n\nMôn: ${subjectCode}\n\n${context}`
+    : "Bạn là UniSynapse AI Tutor (GPT-5.6 Luna). Không tìm thấy đoạn tương thích trong kho học liệu UniSynapse cho câu hỏi này. Có thể trả lời bằng kiến thức chung bằng tiếng Việt, nhưng phải mở đầu bằng: ⚠️ Nội dung sau nằm ngoài kho tài liệu UniSynapse và cần được kiểm chứng thêm.";
 
-  // 1. Primary: Call GPT-5.6 Luna via 9Router
   if (!activeModel.includes("gemini")) {
     try {
-      const systemPrompt = `Bạn là UniSynapse AI Tutor (GPT-5.6 Luna) - Trợ lý gia sư AI và đối chiếu tri thức học thuật chính thức của Trường Đại học Văn Hiến (VHU), đồng hành cùng sinh viên Văn Hiến trong 19 môn chuyên ngành CNTT và khối kiến thức đại cương.
-
-Môn học liên quan: ${subjectCode}
-Câu hỏi từ sinh viên: "${question}"
-
-YÊU CẦU TRẢ LỜI:
-1. Nếu câu hỏi là lời chào, làm quen, câu nói thông thường (ví dụ: "hello mày", "chào bạn", "bạn là ai", "test", "ê"): Hãy chào hỏi lại cực kỳ thân thiện, lịch thiệp, vui vẻ, xưng là "mình" hoặc "UniSynapse AI Tutor (GPT-5.6 Luna)" và gọi người dùng là "bạn", giới thiệu bạn là AI Tutor của Đại học Văn Hiến (VHU) luôn sẵn sàng giải đáp mọi thắc mắc học tập.
-2. Nếu câu hỏi là kiến thức học thuật hoặc bài tập/câu hỏi trắc nghiệm: Hãy phân tích, giải thích cặn kẽ, chính xác theo chuẩn giáo trình Đại học Văn Hiến, có các luận điểm và ví dụ minh họa rõ ràng.
-3. Luôn trả lời bằng tiếng Việt tự nhiên, mạch lạc, đúng chất trợ lý học thuật thông minh vận hành bởi GPT-5.6 Luna.`;
-
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 25000);
-
       const res = await fetch(`${NINEROUTER_BASE_URL.replace(/\/+$/, "")}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${NINEROUTER_API_KEY}`,
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 UniSynapse/1.0",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 UniSynapse/1.0",
         },
         body: JSON.stringify({
           model: activeModel,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: question },
-          ],
-          temperature: 0.7,
+          messages: [{ role: "system", content: systemPrompt }, { role: "user", content: question }],
+          temperature: grounded ? 0.35 : 0.7,
           max_tokens: 3000,
         }),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
-
       if (res.ok) {
         const data = await res.json();
         const text = data?.choices?.[0]?.message?.content;
-        if (text && text.trim().length > 0) {
-          return {
-            answer: text.trim(),
-            engine: "GPT-5.6 Luna",
-          };
-        }
+        if (text?.trim()) return { answer: text.trim(), engine: "GPT-5.6 Luna" };
       }
     } catch (err) {
       console.warn("9Router GPT-5.6 Luna API call notice, attempting fallback:", err);
     }
   }
 
-  // 2. Fallback: Google Gemini API
   try {
-    const prompt = `Bạn là UniSynapse AI Tutor (GPT-5.6 Luna) - Trợ lý gia sư AI và đối chiếu tri thức học thuật chính thức của Trường Đại học Văn Hiến (VHU), đồng hành cùng sinh viên Văn Hiến trong 19 môn chuyên ngành CNTT và khối kiến thức đại cương.
-
-Môn học liên quan: ${subjectCode}
-Câu hỏi từ sinh viên: "${question}"
-
-YÊU CẦU TRẢ LỜI:
-1. Nếu câu hỏi là lời chào, làm quen, câu nói thông thường (ví dụ: "hello mày", "chào bạn", "bạn là ai", "test", "ê"): Hãy chào hỏi lại cực kỳ thân thiện, lịch thiệp, vui vẻ, xưng là "mình" hoặc "UniSynapse AI Tutor (GPT-5.6 Luna)" và gọi người dùng là "bạn", giới thiệu bạn là AI Tutor của Đại học Văn Hiến (VHU) luôn sẵn sàng giải đáp mọi thắc mắc học tập.
-2. Nếu câu hỏi là kiến thức học thuật hoặc bài tập/câu hỏi trắc nghiệm: Hãy phân tích, giải thích cặn kẽ, chính xác theo chuẩn giáo trình Đại học Văn Hiến, có các luận điểm và ví dụ minh họa rõ ràng.
-3. Luôn trả lời bằng tiếng Việt tự nhiên, mạch lạc, đúng chất trợ lý học thuật thông minh.`;
-
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 9000);
-
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2048,
-          },
+          contents: [{ parts: [{ text: `${systemPrompt}\n\nCÂU HỎI:\n${question}` }] }],
+          generationConfig: { temperature: grounded ? 0.35 : 0.7, maxOutputTokens: 2048 },
         }),
         signal: controller.signal,
       }
     );
     clearTimeout(timeoutId);
-
     if (res.ok) {
       const data = await res.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text && text.trim().length > 0) {
-        return {
-          answer: text.trim(),
-          engine: activeModel.includes("gemini") ? "Google Gemini Flash" : "GPT-5.6 Luna (Hybrid)",
-        };
+      if (text?.trim()) {
+        return { answer: text.trim(), engine: activeModel.includes("gemini") ? "Google Gemini Flash" : "GPT-5.6 Luna (Hybrid)" };
       }
     }
   } catch (err) {
     console.warn("Gemini fallback notice:", err);
   }
 
-  // 3. Graceful offline fallback
-  return {
-    answer: `Theo kho học liệu chuẩn 19 môn chuyên ngành CNTT - Đại học Văn Hiến (VHU - Mã học phần: ${subjectCode}):\n\nCâu hỏi: "${question}" đã được hệ thống AI Tutor (GPT-5.6 Luna) đối chiếu trực tiếp với giáo trình kiểm định. Mọi phản hồi học thuật đều được liên kết bằng chứng xác thực (Grounding) với các đoạn tri thức chuẩn hóa và bảo chứng bởi mạng lưới sinh viên UniSynapse.`,
-    engine: "GPT-5.6 Luna",
-  };
+  return grounded
+    ? {
+        answer: `Theo đoạn học liệu tìm thấy:\n\n${contextChunks.map((chunk) => `• ${chunk.content}\n[${chunk.document_name}, ${chunk.page_number ? `Trang ${chunk.page_number}` : `Đoạn ${chunk.chunk_index + 1}`}]`).join("\n\n")}`,
+        engine: "Extractive RAG",
+      }
+    : {
+        answer: "⚠️ Nội dung này nằm ngoài kho tài liệu UniSynapse. Máy chủ AI hiện chưa thể cung cấp câu trả lời mở rộng; bạn cần kiểm chứng bằng nguồn học thuật khác.",
+        engine: "GPT-5.6 Luna",
+      };
 }
 
 
@@ -1468,9 +1517,9 @@ export async function POST(
   const path = slug.join("/");
 
   // Parse body
-  let body: any = {};
+  let body: Record<string, unknown> = {};
   try {
-    body = await request.json();
+    body = await request.json() as Record<string, unknown>;
   } catch {}
 
   // 1. Register
@@ -1909,42 +1958,51 @@ export async function POST(
   // 6. AI Tutor (Ask & Query)
   if (path === "tutor/ask" || path === "tutor/query" || path === "tutor/ninerouter/chat") {
     const question = String(body.question || body.query || body.prompt || "").trim();
-    const subject = String(body.subject_code || "VHU_IT101");
-
+    if (question.length < 2 || question.length > 12000) {
+      return NextResponse.json({ detail: "Câu hỏi cần từ 2 đến 12000 ký tự." }, { status: 400 });
+    }
+    const subject = String(body.subject_code || "ALL");
+    const university = body.university ? String(body.university) : undefined;
     const requestedModel = String(body.model || "cx/gpt-5.6-luna");
-
-    // Call real GPT-5.6 Luna AI Tutor via 9Router
-    const { answer: answerText, engine: engineUsed } = await queryGPT56LunaTutor(question, subject, requestedModel);
+    const contextChunks = retrieveTutorKnowledge(question, subject, university);
+    const grounded = contextChunks.length > 0;
+    const { answer: answerText, engine: engineUsed } = await queryGPT56LunaTutor(
+      question,
+      subject,
+      requestedModel,
+      contextChunks
+    );
+    const citations = contextChunks.map((chunk) => ({
+      document_id: chunk.document_id,
+      document_name: chunk.document_name,
+      page: chunk.page_number ? `Trang ${chunk.page_number}` : `Đoạn ${chunk.chunk_index + 1}`,
+      chunk_index: chunk.chunk_index,
+      score: Number(chunk.score.toFixed(4)),
+      excerpt: `${chunk.content.slice(0, 220)}${chunk.content.length > 220 ? "…" : ""}`,
+      solana_tx: chunk.solana_tx,
+      explorer_url: chunk.solana_tx
+        ? `https://explorer.solana.com/tx/${chunk.solana_tx}?cluster=devnet`
+        : null,
+    }));
 
     return NextResponse.json({
       answer: answerText,
-      grounded: true,
+      grounded,
       engine: engineUsed,
       points_cost: 0,
       points_debited: false,
-      source_type: "VHU Certified Curriculum",
-      source_label: "Giáo trình Công nghệ Thông tin - Đại học Văn Hiến (VHU) (GPT-5.6 Luna)",
-      citations: [
-        {
-          document_id: "doc_vhu_01",
-          document_name: "Giáo trình Nhập môn CNTT & Lộ trình đào tạo VHU",
-          page: "Chương 2, Mục 2.3",
-          chunk_index: 3,
-          score: 0.98,
-          excerpt:
-            "Khung chương trình đào tạo chuẩn Đại học Văn Hiến định hướng chuẩn kỹ sư công nghệ phần mềm và hệ thống thông minh.",
-          solana_tx: "2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj",
-          explorer_url:
-            "https://explorer.solana.com/tx/2TXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurVMAKRDirxpfKiSM8LMiXm7DnBULpoy8HQ5wvB4fNtXHZgj?cluster=devnet",
-        },
-      ],
+      source_type: grounded ? "approved_documents" : "ai_outside_knowledge_base",
+      source_label: grounded
+        ? "Đoạn học liệu UniSynapse đã kiểm định"
+        : "Không tìm thấy nội dung tương thích trong kho tài liệu UniSynapse — cần kiểm chứng thêm",
+      citations,
     });
   }
 
   // 7. Bank VietQR Create Intent (/vi on-ramp)
   if (path === "rewards/bank/create-intent") {
     const amount = Number(body.amount_vnd || body.amount || 10000);
-    const payoutMode = body.payout_mode || "sol_swap";
+    const payoutMode = String(body.payout_mode || "sol_swap");
     const orderCode = `UP${Math.floor(10000 + Math.random() * 90000)}`;
 
     const points =
@@ -1969,7 +2027,7 @@ export async function POST(
       sol_amount: solAmount,
       payout_mode: payoutMode,
       target_wallet:
-        body.target_wallet || "4dLCMKsYEmQyDTvUUz3Uwu8yYXyNhsucXCQj9pEY5UAX",
+        String(body.target_wallet || "4dLCMKsYEmQyDTvUUz3Uwu8yYXyNhsucXCQj9pEY5UAX"),
       bank_name: "ACB",
       account_number: "38038627",
       account_name: "TRAN VAN TINH",
@@ -2033,7 +2091,7 @@ export async function POST(
     }
 
     // Match verified!
-    const txRef = body.bank_ref || `MANUAL_ACB_${Date.now()}`;
+    const txRef = String(body.bank_ref || `MANUAL_ACB_${Date.now()}`);
     verifiedBankTransactions.set(orderCode, {
       ref: txRef,
       verified_at: Date.now(),
@@ -2162,9 +2220,9 @@ export async function PUT(
   const { slug } = await params;
   const path = slug.join("/");
 
-  let body: any = {};
+  let body: Record<string, unknown> = {};
   try {
-    body = await request.json();
+    body = await request.json() as Record<string, unknown>;
   } catch {}
 
   if (path.startsWith("admin/tasks/")) {
