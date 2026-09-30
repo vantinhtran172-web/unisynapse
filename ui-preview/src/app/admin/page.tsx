@@ -96,14 +96,15 @@ interface AdminLedgerEntry {
 }
 
 interface AdminBankDeposit {
-  id: string;
-  order_code: string;
-  user_id: string;
+  id?: string;
+  order_code?: string;
+  user_id?: string;
   username?: string;
   wallet_address?: string;
   target_wallet?: string;
   amount_vnd: number;
-  unipoints_awarded: number;
+  points?: number;
+  unipoints_awarded?: number;
   sol_amount?: number;
   payout_mode?: string;
   status: string;
@@ -374,7 +375,10 @@ export default function OnlineAdminPage() {
       setChunks(Array.isArray(c?.chunks) ? c.chunks : Array.isArray(c) ? c : []);
       setLedger(Array.isArray(l) ? l : []);
       setAuditEvents(Array.isArray(a) ? a : []);
-      setBankDeposits(Array.isArray(b) ? b : []);
+      setBankDeposits(Array.isArray(b) ? b.map((deposit: AdminBankDeposit) => ({
+        ...deposit,
+        unipoints_awarded: deposit.unipoints_awarded ?? deposit.points ?? 0,
+      })) : []);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Lỗi khi tải dữ liệu";
       showToast(msg, "error");
@@ -1749,9 +1753,9 @@ export default function OnlineAdminPage() {
                       ) : (
                         ledger.map((entry) => (
                           <tr key={entry.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                            <td className="py-3 px-4 text-slate-500">{entry.id.substring(0, 8)}...</td>
+                            <td className="py-3 px-4 text-slate-500">{String(entry.id || "--").substring(0, 8)}...</td>
                             <td className="py-3 px-4 font-sans font-medium text-slate-800 dark:text-slate-200">
-                              {entry.username || entry.user_id.substring(0, 8)}
+                              {entry.username || String(entry.user_id || "System").substring(0, 8)}
                             </td>
                             <td className="py-3 px-4">
                               <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-bold">
@@ -1842,7 +1846,7 @@ export default function OnlineAdminPage() {
                               </span>
                             </td>
                             <td className="py-3 px-4 font-sans font-medium text-slate-800 dark:text-slate-200">
-                              {dep.username || dep.user_id.substring(0, 8)}
+                              {dep.username || String(dep.user_id || "System").substring(0, 8)}
                             </td>
                             <td className="py-3 px-4 font-bold text-slate-700 dark:text-slate-300 font-sans">
                               {dep.amount_vnd ? dep.amount_vnd.toLocaleString("vi-VN") : "--"} đ
@@ -1931,7 +1935,7 @@ export default function OnlineAdminPage() {
                       ) : (
                         auditEvents.map((evt) => (
                           <tr key={evt.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                            <td className="py-3 px-4 text-slate-400">{evt.id.substring(0, 8)}...</td>
+                            <td className="py-3 px-4 text-slate-400">{String(evt.id || "--").substring(0, 8)}...</td>
                             <td className="py-3 px-4">
                               <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-500 font-bold text-[10px]">
                                 {evt.action || evt.event_type}

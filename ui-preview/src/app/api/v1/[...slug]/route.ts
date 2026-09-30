@@ -4,6 +4,48 @@ import { sampleLedger, LedgerItemData } from "@/lib/sampleLedger";
 import { sampleAuditEvents, AuditItemData } from "@/lib/sampleAudit";
 import tutorKnowledge from "@/lib/tutorKnowledge.json";
 
+const API_UPSTREAM_URL = (process.env.API_UPSTREAM_URL || "https://cybercore-backend-cprt.onrender.com").replace(/\/+$/, "");
+
+async function proxyToPersistentApi(request: NextRequest, path: string): Promise<NextResponse | null> {
+  if (!API_UPSTREAM_URL) return null;
+
+  const base = API_UPSTREAM_URL.endsWith("/api/v1")
+    ? API_UPSTREAM_URL
+    : `${API_UPSTREAM_URL}/api/v1`;
+  const target = new URL(`${base}/${path}`);
+  request.nextUrl.searchParams.forEach((value, key) => target.searchParams.append(key, value));
+
+  const headers = new Headers(request.headers);
+  headers.delete("host");
+  headers.delete("content-length");
+  headers.delete("connection");
+
+  try {
+    const upstream = await fetch(target, {
+      method: request.method,
+      headers,
+      body: request.method === "GET" || request.method === "HEAD"
+        ? undefined
+        : await request.arrayBuffer(),
+      redirect: "manual",
+      cache: "no-store",
+    });
+    const responseHeaders = new Headers(upstream.headers);
+    responseHeaders.delete("content-encoding");
+    responseHeaders.delete("content-length");
+    return new NextResponse(await upstream.arrayBuffer(), {
+      status: upstream.status,
+      headers: responseHeaders,
+    });
+  } catch (error) {
+    console.error("Persistent API unavailable", error);
+    return NextResponse.json(
+      { detail: "Máy chủ dữ liệu bền vững chưa sẵn sàng. Không dùng dữ liệu giả cho giao dịch tài chính." },
+      { status: 502 },
+    );
+  }
+}
+
 // Payment destination must never be confused with the Devnet genesis hash.
 const UNISYNAPSE_DEVNET_TREASURY = "DaWyQs198XXbHNNqnM9wHEhjsMRsW8D47bmvtFXtF4Dn";
 
@@ -971,6 +1013,8 @@ export async function GET(
 ) {
   const { slug } = await params;
   const path = slug.join("/");
+  const proxied = await proxyToPersistentApi(request, path);
+  if (proxied) return proxied;
 
   // 1. Session check
   if (path === "auth/session") {
@@ -1515,6 +1559,8 @@ export async function POST(
 ) {
   const { slug } = await params;
   const path = slug.join("/");
+  const proxied = await proxyToPersistentApi(request, path);
+  if (proxied) return proxied;
 
   // Parse body
   let body: Record<string, unknown> = {};
@@ -2225,6 +2271,8 @@ export async function PUT(
 ) {
   const { slug } = await params;
   const path = slug.join("/");
+  const proxied = await proxyToPersistentApi(request, path);
+  if (proxied) return proxied;
 
   let body: Record<string, unknown> = {};
   try {
@@ -2277,6 +2325,8 @@ export async function DELETE(
 ) {
   const { slug } = await params;
   const path = slug.join("/");
+  const proxied = await proxyToPersistentApi(request, path);
+  if (proxied) return proxied;
 
   if (path.startsWith("admin/tasks/")) {
     const taskId = slug[2];

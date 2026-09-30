@@ -5,6 +5,7 @@
 [build.environment]
   NODE_VERSION = "20"
   NPM_FLAGS = "--legacy-peer-deps"
+  API_UPSTREAM_URL = "https://cybercore-backend-cprt.onrender.com"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
