@@ -79,9 +79,9 @@ def ensure_vhu_resources() -> Dict[str, Any]:
         owner_id = demo_user[0] if demo_user else "usr_vhu_system"
         if not demo_user:
             cursor.execute(
-                "INSERT INTO users (id, username, password_hash, display_name, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                ("usr_vhu_system", "vhu_academic_office", "argon2_system_managed", "Phòng Đào Tạo VHU", now)
+                "INSERT OR IGNORE INTO users (id, username, password_hash, role, created_at) "
+                "VALUES (?, ?, ?, 'student', ?)",
+                ("usr_vhu_system", "vhu_academic_office", "argon2_system_managed", now)
             )
 
         for doc_file in extracted_files:
