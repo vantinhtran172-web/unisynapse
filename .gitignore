@@ -75,3 +75,7 @@ index.html
 *keypair*.json
 id.json
 
+
+# Agent and IDE internal configurations
+.agents/
+.gemini/
