@@ -66,7 +66,10 @@ DEVNET_TREASURY_ADDRESS = os.getenv("DEVNET_TREASURY_ADDRESS", "").strip()
 DEVNET_DEPOSIT_COMMITMENT = os.getenv("DEVNET_DEPOSIT_COMMITMENT", "confirmed").strip().lower()
 DEVNET_MIN_DEPOSIT_LAMPORTS = 1_000_000
 DEVNET_DAILY_DEPOSIT_LIMIT_LAMPORTS = 0
-DEVNET_DEPOSITS_ENABLED = os.getenv("DEVNET_DEPOSITS_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
+DEVNET_DEPOSITS_ENABLED = (
+    os.getenv("DEVNET_DEPOSITS_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
+    and bool(DEVNET_TREASURY_ADDRESS)
+)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 ADMIN_SECURITY_KEY = (os.getenv("ADMIN_SECURITY_KEY") or os.getenv("ADMIN_ACCESS_KEY") or "").strip()
 ADMIN_ACCESS_KEY = ADMIN_SECURITY_KEY

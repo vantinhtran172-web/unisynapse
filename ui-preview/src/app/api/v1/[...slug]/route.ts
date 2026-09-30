@@ -15,10 +15,13 @@ async function proxyToPersistentApi(request: NextRequest, path: string): Promise
   const target = new URL(`${base}/${path}`);
   request.nextUrl.searchParams.forEach((value, key) => target.searchParams.append(key, value));
 
-  const headers = new Headers(request.headers);
-  headers.delete("host");
-  headers.delete("content-length");
-  headers.delete("connection");
+  const headers = new Headers();
+  const contentType = request.headers.get("content-type");
+  const authorization = request.headers.get("authorization");
+  const cookie = request.headers.get("cookie");
+  if (contentType) headers.set("content-type", contentType);
+  if (authorization) headers.set("authorization", authorization);
+  if (cookie) headers.set("cookie", cookie);
 
   try {
     const upstream = await fetch(target, {
