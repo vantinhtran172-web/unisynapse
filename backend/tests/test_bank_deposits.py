@@ -11,10 +11,12 @@ def setup_db():
 
 
 def test_acb_service_vietqr_and_points():
-    qr = ACBService.generate_vietqr(20000, "UPTEST01")
+    qr = ACBService.generate_vietqr(10000, "UPTEST01")
     assert "38038627" in qr
     assert "ACB" in qr
     assert "UPTEST01" in qr
+    assert "amount=10000" in qr
+    assert "amount=20000" not in qr
 
     # Test points calculation with bonus tiers
     assert ACBService.calculate_points(10000) == 1000
@@ -35,15 +37,17 @@ def test_bank_deposit_strict_verification_flow(member_client):
         res_bad = client.post("/api/v1/rewards/bank/create-intent", json={"amount_vnd": 5000})
         assert res_bad.status_code == 400
 
-        # 2. Create valid deposit intent
+        # 2. Create a 10,000 VNĐ deposit intent and preserve that exact amount in the QR.
         with patch.object(ACBService, "get_live_balance", return_value=10000.0):
-            res = client.post("/api/v1/rewards/bank/create-intent", json={"amount_vnd": 20000})
+            res = client.post("/api/v1/rewards/bank/create-intent", json={"amount_vnd": 10000})
             assert res.status_code == 200
             data = res.json()
             assert data["ok"] is True
             assert data["order_code"].startswith("UP")
-            assert data["amount_vnd"] == 20000
-            assert data["points"] == 2200
+            assert data["amount_vnd"] == 10000
+            assert data["points"] == 1000
+            assert "amount=10000" in data["qr_url"]
+            assert "amount=20000" not in data["qr_url"]
             order_code = data["order_code"]
 
         # 3. Check when bank has NOT received the money yet
@@ -83,7 +87,7 @@ def test_bank_deposit_strict_verification_flow(member_client):
         underpaid_txs = [
             {
                 "type": "IN",
-                "amount": 10000,
+                "amount": 5000,
                 "description": f"NAP DIEM {order_code}",
                 "transactionNumber": "123457",
             }
@@ -100,7 +104,7 @@ def test_bank_deposit_strict_verification_flow(member_client):
         valid_txs = [
             {
                 "type": "IN",
-                "amount": 20000,
+                "amount": 10000,
                 "description": f"CHUYEN KHOAN NAP DIEM {order_code}",
                 "transactionNumber": "ACB_TX_8888",
             }
@@ -111,11 +115,11 @@ def test_bank_deposit_strict_verification_flow(member_client):
             res4 = chk4.json()
             assert res4["status"] == "paid"
             assert res4["credited"] is True
-            assert res4["points"] == 2200
+            assert res4["points"] == 1000
 
         # 7. Verify ledger entry and points credited
         summary3 = client.get("/api/v1/rewards/summary").json()
-        assert summary3["unipoints"] >= 2200
+        assert summary3["unipoints"] >= 1000
 
         # 8. Check bank history confirms status is paid
         history = client.get("/api/v1/rewards/bank/history").json()

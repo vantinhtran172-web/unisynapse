@@ -13,6 +13,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import styles from "./wallet.module.css";
 
 const DEVNET = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+const UNISYNAPSE_DEVNET_TREASURY = "DaWyQs198XXbHNNqnM9wHEhjsMRsW8D47bmvtFXtF4Dn";
 
 type Review = { sender: string; recipient: string; amount: string; lamports: bigint; fee: number };
 
@@ -70,9 +71,9 @@ export default function WalletPage() {
   // ACB VietQR Bank Deposit & Solana On-Ramp State
   const [bankPayoutMode, setBankPayoutMode] = useState<"sol_swap" | "unipoints">("sol_swap");
   const [customSolWallet, setCustomSolWallet] = useState<string>("");
-  const [bankAmount, setBankAmount] = useState<number>(20000);
-  const [bankCustomInput, setBankCustomInput] = useState<string>("20000");
-  const [bankSelectedPreset, setBankSelectedPreset] = useState<number | null>(20000);
+  const [bankAmount, setBankAmount] = useState<number>(10000);
+  const [bankCustomInput, setBankCustomInput] = useState<string>("10000");
+  const [bankSelectedPreset, setBankSelectedPreset] = useState<number | null>(10000);
   const [bankOrder, setBankOrder] = useState<BankDepositIntent | null>(null);
   const [bankLoading, setBankLoading] = useState<boolean>(false);
   const [bankTimeLeft, setBankTimeLeft] = useState<number>(600);
@@ -102,10 +103,16 @@ export default function WalletPage() {
     let active = true;
 
     void api.economy().then((econ) => {
-      if (active && econ.treasury) {
-        setRecipient(econ.treasury);
+      if (!active) return;
+      if (econ.treasury !== UNISYNAPSE_DEVNET_TREASURY) {
+        setRecipient(UNISYNAPSE_DEVNET_TREASURY);
+        setMessage("Đã chặn cấu hình ví tiếp nhận không khớp treasury UniSynapse.");
+        return;
       }
-    }).catch(() => {});
+      setRecipient(UNISYNAPSE_DEVNET_TREASURY);
+    }).catch(() => {
+      if (active) setRecipient(UNISYNAPSE_DEVNET_TREASURY);
+    });
 
     void api.getMe().then((profile) => {
       if (!active) return;
@@ -121,12 +128,16 @@ export default function WalletPage() {
           if (
             typeof pending.signature === "string" &&
             typeof pending.deposit?.intent_id === "string" &&
-            typeof pending.deposit?.treasury === "string"
+            pending.deposit?.treasury === UNISYNAPSE_DEVNET_TREASURY
           ) {
             setDeposit(pending.deposit);
-            setRecipient(pending.deposit.treasury);
+            setRecipient(UNISYNAPSE_DEVNET_TREASURY);
             setSignature(pending.signature);
             setMessage("Giao dịch nạp gần nhất đã được lưu. Bạn có thể đối soát lại bất kỳ lúc nào.");
+          } else if (pending.deposit?.treasury) {
+            localStorage.removeItem(recoveryKey.current);
+            setRecipient(UNISYNAPSE_DEVNET_TREASURY);
+            setMessage("Đã xóa yêu cầu nạp cũ vì địa chỉ nhận không khớp treasury UniSynapse.");
           }
         }
       } catch {
@@ -280,8 +291,9 @@ export default function WalletPage() {
   function handleBankCustomChange(val: string) {
     setBankCustomInput(val);
     setBankSelectedPreset(null);
-    const num = parseInt(val, 10);
-    if (!isNaN(num) && num > 0) {
+    setBankOrder(null);
+    const num = Number(val);
+    if (Number.isSafeInteger(num) && num > 0) {
       setBankAmount(num);
     } else {
       setBankAmount(0);
@@ -293,10 +305,15 @@ export default function WalletPage() {
       setMessage("Vui lòng đăng nhập tài khoản sinh viên trước khi thực hiện giao dịch.");
       return;
     }
-    if (bankAmount < 10000) {
-      setMessage("Số tiền nạp tối thiểu là 10.000 VNĐ.");
+
+    // Snapshot the exact value visible at click time. This prevents a stale React
+    // state value or an older QR from being reused after the input changes.
+    const requestedAmount = Number(bankCustomInput);
+    if (!Number.isSafeInteger(requestedAmount) || requestedAmount < 10000) {
+      setMessage("Số tiền nạp tối thiểu là 10.000 VNĐ và phải là số nguyên hợp lệ.");
       return;
     }
+
     let targetWallet = customSolWallet.trim();
     if (bankPayoutMode === "sol_swap") {
       if (!targetWallet && wallet.publicKey) {
@@ -309,17 +326,24 @@ export default function WalletPage() {
     }
 
     setBankLoading(true);
+    setBankOrder(null);
     setMessage("");
     try {
-      const intent = await api.createBankDeposit(bankAmount, bankPayoutMode, targetWallet || undefined);
+      const intent = await api.createBankDeposit(requestedAmount, bankPayoutMode, targetWallet || undefined);
+      if (intent.amount_vnd !== requestedAmount) {
+        throw new Error(`Hệ thống trả về sai số tiền (${intent.amount_vnd.toLocaleString("vi-VN")} VNĐ). Mã QR đã bị chặn; vui lòng thử lại.`);
+      }
+      setBankAmount(intent.amount_vnd);
+      setBankCustomInput(String(intent.amount_vnd));
       setBankOrder(intent);
       setBankTimeLeft(600);
       if (bankPayoutMode === "sol_swap") {
-        setMessage(`Đã tạo mã VietQR đổi ${intent.sol_amount || calculateSolAmount(bankAmount)} SOL vào ví Phantom (${targetWallet.slice(0, 4)}...${targetWallet.slice(-4)}). Quét mã để nhận SOL trong 5 giây!`);
+        setMessage(`Đã tạo mã VietQR ${intent.amount_vnd.toLocaleString("vi-VN")} VNĐ đổi ${intent.sol_amount || calculateSolAmount(intent.amount_vnd)} SOL vào ví Phantom (${targetWallet.slice(0, 4)}...${targetWallet.slice(-4)}). Quét mã để nhận SOL trong 5 giây!`);
       } else {
-        setMessage(`Đã tạo mã VietQR thanh toán cho đơn ${intent.order_code}. Mã có hiệu lực trong 10 phút. Quét mã bằng app ACB hoặc bất kỳ app ngân hàng nào.`);
+        setMessage(`Đã tạo mã VietQR ${intent.amount_vnd.toLocaleString("vi-VN")} VNĐ cho đơn ${intent.order_code}. Mã có hiệu lực trong 10 phút.`);
       }
     } catch (err) {
+      setBankOrder(null);
       setMessage((err as Error).message || "Không thể tạo mã VietQR. Vui lòng thử lại.");
     } finally {
       setBankLoading(false);
@@ -529,10 +553,13 @@ export default function WalletPage() {
 
       // 2. Create deposit intent from backend
       const intentData = await api.createDeposit();
+      if (intentData.treasury !== UNISYNAPSE_DEVNET_TREASURY) {
+        throw new Error("Địa chỉ nhận SOL từ máy chủ không khớp treasury UniSynapse (...F4Dn). Giao dịch đã bị chặn trước khi ký.");
+      }
       setDeposit(intentData);
-      setRecipient(intentData.treasury);
+      setRecipient(UNISYNAPSE_DEVNET_TREASURY);
 
-      const target = new PublicKey(intentData.treasury);
+      const target = new PublicKey(UNISYNAPSE_DEVNET_TREASURY);
       const latest = await connection.getLatestBlockhash("confirmed");
       let tx = new Transaction({ ...latest, feePayer: wallet.publicKey }).add(
         SystemProgram.transfer({ fromPubkey: wallet.publicKey, toPubkey: target, lamports })

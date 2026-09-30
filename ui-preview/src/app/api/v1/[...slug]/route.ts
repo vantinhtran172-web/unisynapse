@@ -3,6 +3,9 @@ import { sampleTasks, TaskItemData } from "@/lib/sampleTasks";
 import { sampleLedger, LedgerItemData } from "@/lib/sampleLedger";
 import { sampleAuditEvents, AuditItemData } from "@/lib/sampleAudit";
 
+// Payment destination must never be confused with the Devnet genesis hash.
+const UNISYNAPSE_DEVNET_TREASURY = "DaWyQs198XXbHNNqnM9wHEhjsMRsW8D47bmvtFXtF4Dn";
+
 // In-memory persistent registries for Edge / Serverless / Netlify
 interface RegisteredUser {
   id: string;
@@ -21,10 +24,22 @@ const mockUsers: Map<string, RegisteredUser> = new Map([
       id: "usr_vhu_demo_001",
       username: "sinhvien_vhu",
       passwordHash: "demo_hash",
-      unipoints: 180,
-      reputation: 92,
+      unipoints: 5420,
+      reputation: 98,
       role: "student",
-      address: "8xTXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurV",
+      address: "4dLCMKsYEmQyDTvUUz3Uwu8yYXyNhsucXCQj9pEY5UAX",
+    },
+  ],
+  [
+    "4dLCMKsYEmQyDTvUUz3Uwu8yYXyNhsucXCQj9pEY5UAX",
+    {
+      id: "usr_4dLCMK",
+      username: "4dLCMKsYEmQyDTvUUz3Uwu8yYXyNhsucXCQj9pEY5UAX",
+      passwordHash: "",
+      unipoints: 5420,
+      reputation: 98,
+      role: "student",
+      address: "4dLCMKsYEmQyDTvUUz3Uwu8yYXyNhsucXCQj9pEY5UAX",
     },
   ],
 ]);
@@ -1027,7 +1042,7 @@ export async function GET(
   // 7. Rewards economy (/vi on-ramp)
   if (path === "rewards/economy") {
     return NextResponse.json({
-      treasury: "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
+      treasury: UNISYNAPSE_DEVNET_TREASURY,
       network: "devnet",
       chat_cost: 80,
       points_per_sol: 1000,
@@ -1039,9 +1054,9 @@ export async function GET(
   if (path === "rewards/summary") {
     const user = getUserFromCookie(request);
     return NextResponse.json({
-      total_points: user?.unipoints || 100,
+      total_points: user?.unipoints || 5420,
       pending_rewards: 0,
-      solana_settled: user?.unipoints || 100,
+      solana_settled: user?.unipoints || 5420,
     });
   }
 
@@ -1558,6 +1573,68 @@ export async function POST(
     return response;
   }
 
+  // 3b. Wallet Authentication Challenge
+  if (path === "auth/wallet/challenge") {
+    const pubkey = String(body.publicKey || body.address || "").trim();
+    return NextResponse.json({
+      nonce: `nonce_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      message: `UniSynapse Authentication Challenge: Sign this message to authenticate your wallet with UniSynapse.\n\nWallet: ${pubkey}\nTimestamp: ${Date.now()}`,
+      expires_at: Math.floor(Date.now() / 1000) + 300,
+    });
+  }
+
+  // 3c. Wallet Authentication Verify
+  if (path === "auth/wallet/verify") {
+    const pubkey = String(body.publicKey || body.address || "").trim();
+    let existing = mockUsers.get(pubkey);
+    if (!existing) {
+      for (const u of mockUsers.values()) {
+        if (u.address === pubkey) {
+          existing = u;
+          break;
+        }
+      }
+    }
+    if (!existing) {
+      existing = {
+        id: `usr_${pubkey.slice(0, 8)}`,
+        username: `${pubkey.slice(0, 4)}...${pubkey.slice(-4)}`,
+        passwordHash: "",
+        unipoints: pubkey === "4dLCMKsYEmQyDTvUUz3Uwu8yYXyNhsucXCQj9pEY5UAX" ? 5420 : 180,
+        reputation: 98,
+        role: "student",
+        address: pubkey,
+      };
+      mockUsers.set(pubkey, existing);
+      mockUsers.set(existing.username, existing);
+    } else {
+      existing.address = pubkey;
+    }
+    const response = NextResponse.json({
+      authenticated: true,
+      user: {
+        id: existing.id,
+        username: existing.username,
+        role: existing.role,
+        unipoints: existing.unipoints,
+        reputation: existing.reputation,
+        address: existing.address,
+      },
+    });
+    setAuthCookies(response, existing);
+    return response;
+  }
+
+  // 3d. Wallet Unlink
+  if (path === "auth/wallet/unlink") {
+    const user = getUserFromCookie(request);
+    if (user) {
+      user.address = "";
+      mockUsers.set(user.username, user);
+    }
+    return NextResponse.json({ authenticated: true, unlinked: true });
+  }
+
   // 4. Task submission (Gán nhãn dữ liệu với anti-duplicate constraint: 1 tài khoản cùng 1 nhiệm vụ chỉ làm 1 lần)
   if (path === "tasks/submit") {
     const user = getUserFromCookie(request);
@@ -1866,9 +1943,9 @@ export async function POST(
 
   // 7. Bank VietQR Create Intent (/vi on-ramp)
   if (path === "rewards/bank/create-intent") {
-    const amount = Number(body.amount || 20000);
+    const amount = Number(body.amount_vnd || body.amount || 10000);
     const payoutMode = body.payout_mode || "sol_swap";
-    const orderCode = `VHU${Math.floor(100000 + Math.random() * 900000)}`;
+    const orderCode = `UP${Math.floor(10000 + Math.random() * 90000)}`;
 
     const points =
       payoutMode === "sol_swap"
@@ -1892,12 +1969,12 @@ export async function POST(
       sol_amount: solAmount,
       payout_mode: payoutMode,
       target_wallet:
-        body.target_wallet || "8xTXUUcJ8BzYHP83z5hDHjzJCEV2A2TBqaroK1SZBurV",
+        body.target_wallet || "4dLCMKsYEmQyDTvUUz3Uwu8yYXyNhsucXCQj9pEY5UAX",
       bank_name: "ACB",
       account_number: "38038627",
       account_name: "TRAN VAN TINH",
-      transfer_content: `UNISYNAPSE ${orderCode}`,
-      qr_url: `https://img.vietqr.io/image/ACB-38038627-compact2.png?amount=${amount}&addInfo=UNISYNAPSE%20${orderCode}&accountName=TRAN%20VAN%20TINH`,
+      transfer_content: orderCode,
+      qr_url: `https://img.vietqr.io/image/ACB-38038627-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(orderCode)}&accountName=TRAN%20VAN%20TINH`,
       status: "pending",
       created_at: Math.floor(Date.now() / 1000),
       expires_at: Math.floor(Date.now() / 1000) + 600,
@@ -1933,6 +2010,7 @@ export async function POST(
     // Strict validation: transfer content MUST include orderCode AND amount MUST be >= order.amount_vnd
     const contentMatches =
       content.includes(orderCode) ||
+      content.includes(orderCode.replace("UP", "")) ||
       content.includes(orderCode.replace("VHU", ""));
     const amountMatches = amount >= order.amount_vnd;
 
@@ -2023,7 +2101,7 @@ export async function POST(
     return NextResponse.json({
       intent_id: `intent_sol_${Date.now()}`,
       memo: `UNISYNAPSE_DEVNET_${Date.now()}`,
-      treasury: "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
+      treasury: UNISYNAPSE_DEVNET_TREASURY,
     });
   }
 
