@@ -29,7 +29,7 @@ async function proxyToPersistentApi(request: NextRequest, path: string): Promise
       headers,
       body: request.method === "GET" || request.method === "HEAD"
         ? undefined
-        : await request.arrayBuffer(),
+        : await request.text(),
       redirect: "manual",
       cache: "no-store",
     });
