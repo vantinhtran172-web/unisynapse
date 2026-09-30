@@ -21,7 +21,12 @@ const outside = await ask("Tàu Apollo 11 hạ cánh xuống Mặt Trăng năm n
 if (!grounded.grounded || grounded.citations.length === 0) {
   throw new Error("Expected approved-document citation for in-corpus question");
 }
-if (outside.grounded || outside.citations.length !== 0 || outside.source_type !== "ai_outside_knowledge_base") {
+if (
+  outside.grounded ||
+  outside.citations.length !== 0 ||
+  outside.source_type !== "ai_outside_knowledge_base" ||
+  !outside.answer.startsWith("⚠️ Nội dung sau nằm ngoài kho tài liệu UniSynapse")
+) {
   throw new Error("Expected outside-knowledge warning without citations");
 }
 console.log(`Tutor RAG OK: ${grounded.citations[0].document_name}; outside warning OK`);

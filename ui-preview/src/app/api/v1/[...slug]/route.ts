@@ -1985,8 +1985,14 @@ export async function POST(
         : null,
     }));
 
+    const outsideKnowledgeWarning =
+      "⚠️ Nội dung sau nằm ngoài kho tài liệu UniSynapse và cần được kiểm chứng thêm.";
+    const answer = grounded
+      ? answerText
+      : `${outsideKnowledgeWarning}\n\n${answerText.replace(/^⚠️[^\n]*\n*/u, "")}`;
+
     return NextResponse.json({
-      answer: answerText,
+      answer,
       grounded,
       engine: engineUsed,
       points_cost: 0,
