@@ -26,7 +26,7 @@ async function proxyToPersistentApi(request: NextRequest, path: string): Promise
   if (cookie) headers.set("cookie", cookie);
 
   try {
-    const upstream = await fetch(target, {
+    const upstream = await fetch(target.toString(), {
       method: request.method,
       headers,
       body: request.method === "GET" || request.method === "HEAD"
@@ -37,10 +37,10 @@ async function proxyToPersistentApi(request: NextRequest, path: string): Promise
     });
     const responseHeaders = new Headers();
     const responseContentType = upstream.headers.get("content-type");
-    const responseSetCookie = upstream.headers.get("set-cookie");
     if (responseContentType) responseHeaders.set("content-type", responseContentType);
-    if (responseSetCookie) responseHeaders.append("set-cookie", responseSetCookie);
-    return new NextResponse(await upstream.arrayBuffer(), {
+    const responseSetCookie = upstream.headers.get("set-cookie");
+    if (responseSetCookie) responseHeaders.set("set-cookie", responseSetCookie);
+    return new NextResponse(await upstream.text(), {
       status: upstream.status,
       headers: responseHeaders,
     });
