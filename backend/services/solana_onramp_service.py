@@ -19,6 +19,7 @@ from ..core.config import (
     SOLANA_NETWORK,
     SOLANA_EXPLORER_BASE,
     SOLANA_SUBMISSION_ENABLED,
+    SOLANA_AUTHORITY_SECRET_REF,
 )
 
 logger = logging.getLogger("solana_onramp")
@@ -49,9 +50,15 @@ class SolanaOnRampService:
         if cls._keypair is not None:
             return cls._keypair
 
+        referenced_secret = (
+            os.getenv(SOLANA_AUTHORITY_SECRET_REF, "")
+            if SOLANA_AUTHORITY_SECRET_REF
+            else ""
+        )
         secret = (
             os.getenv("SOLANA_TREASURY_SECRET_KEY")
             or os.getenv("SOLANA_SIGNER_SECRET_KEY")
+            or referenced_secret
             or ""
         ).strip()
         configured_pubkey = None
