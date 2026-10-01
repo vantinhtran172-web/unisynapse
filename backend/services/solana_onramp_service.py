@@ -14,7 +14,13 @@ import os
 import urllib.request
 from typing import Any, Dict, Optional
 
-from ..core.config import SOLANA_RPC_URL, SOLANA_NETWORK, SOLANA_EXPLORER_BASE
+from ..core.config import (
+    SOLANA_RPC_URL,
+    SOLANA_NETWORK,
+    SOLANA_EXPLORER_BASE,
+    SOLANA_SUBMISSION_ENABLED,
+    SOLANA_AUTHORITY_SECRET_REF,
+)
 
 logger = logging.getLogger("solana_onramp")
 
@@ -44,7 +50,12 @@ class SolanaOnRampService:
         if cls._keypair is not None:
             return cls._keypair
 
-        secret = (os.getenv("SOLANA_TREASURY_SECRET_KEY") or os.getenv("SOLANA_SIGNER_SECRET_KEY") or "").strip()
+        secret = (
+            os.getenv("SOLANA_TREASURY_SECRET_KEY")
+            or os.getenv("SOLANA_SIGNER_SECRET_KEY")
+            or SOLANA_AUTHORITY_SECRET_REF
+            or ""
+        ).strip()
         configured_pubkey = None
         if not secret and os.getenv("ENVIRONMENT", "development").lower() != "production":
             if os.path.exists(TREASURY_KEYPAIR_FILE):
@@ -253,6 +264,9 @@ class SolanaOnRampService:
         Dispatches an on-chain transaction signed by Treasury Keypair.
         Returns base58 signature and Solana Explorer Devnet URL.
         """
+        if not SOLANA_SUBMISSION_ENABLED:
+            return {"ok": False, "onchain_confirmed": False, "signature": None,
+                    "explorer_url": None, "error": "Solana submission disabled"}
         try:
             recipient = owner_pubkey if (owner_pubkey and len(owner_pubkey) >= 32) else cls.get_treasury_pubkey()
             memo = f"UniSynapse:DocProof:v1:{doc_id}:{checksum[:16]}:q{quality_score}"
@@ -282,6 +296,9 @@ class SolanaOnRampService:
         Dispatches an on-chain transaction signed by Treasury Keypair.
         Returns base58 signature and Solana Explorer Devnet URL.
         """
+        if not SOLANA_SUBMISSION_ENABLED:
+            return {"ok": False, "onchain_confirmed": False, "signature": None,
+                    "explorer_url": None, "error": "Solana submission disabled"}
         try:
             recipient = recipient_pubkey if (recipient_pubkey and len(recipient_pubkey) >= 32) else cls.get_treasury_pubkey()
             memo = f"UniSynapse:Consensus:v1:{task_id[:12]}:{winning_label}:{int(confidence * 100)}pct:{total_votes}v"
@@ -309,6 +326,9 @@ class SolanaOnRampService:
         Dispatches an on-chain transaction signed by Treasury Keypair.
         Returns base58 signature and Solana Explorer Devnet URL.
         """
+        if not SOLANA_SUBMISSION_ENABLED:
+            return {"ok": False, "onchain_confirmed": False, "signature": None,
+                    "explorer_url": None, "error": "Solana submission disabled"}
         memo = f"UniSynapse:LabelSub:v1:{task_id[:12]}:{label[:10]}:{user_id[:8]}"
         try:
             recipient = recipient_pubkey if (recipient_pubkey and len(recipient_pubkey) >= 32) else cls.get_treasury_pubkey()
