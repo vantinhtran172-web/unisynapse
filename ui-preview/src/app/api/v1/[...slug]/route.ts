@@ -46,8 +46,12 @@ async function proxyToPersistentApi(request: NextRequest, path: string): Promise
     });
   } catch (error) {
     console.error("Persistent API unavailable", error);
+    const upstreamError = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { detail: "Máy chủ dữ liệu bền vững chưa sẵn sàng. Không dùng dữ liệu giả cho giao dịch tài chính." },
+      {
+        detail: "Máy chủ dữ liệu bền vững chưa sẵn sàng. Không dùng dữ liệu giả cho giao dịch tài chính.",
+        upstream_error: upstreamError,
+      },
       { status: 502 },
     );
   }
