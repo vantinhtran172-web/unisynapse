@@ -4,6 +4,8 @@ import { sampleLedger, LedgerItemData } from "@/lib/sampleLedger";
 import { sampleAuditEvents, AuditItemData } from "@/lib/sampleAudit";
 import tutorKnowledge from "@/lib/tutorKnowledge.json";
 
+export const runtime = "nodejs";
+
 const API_UPSTREAM_URL = (process.env.API_UPSTREAM_URL || "https://cybercore-backend-cprt.onrender.com").replace(/\/+$/, "");
 
 async function proxyToPersistentApi(request: NextRequest, path: string): Promise<NextResponse | null> {
