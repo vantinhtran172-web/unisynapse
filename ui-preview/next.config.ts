@@ -5,6 +5,16 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname, ".."),
   },
+  async rewrites() {
+    return {
+      beforeFiles: [
+        {
+          source: "/api/v1/:path*",
+          destination: "https://cybercore-backend-cprt.onrender.com/api/v1/:path*",
+        },
+      ],
+    };
+  },
   async redirects() {
     return [
       {
