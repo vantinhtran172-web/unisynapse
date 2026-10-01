@@ -33,9 +33,11 @@ async function proxyToPersistentApi(request: NextRequest, path: string): Promise
       redirect: "manual",
       cache: "no-store",
     });
-    const responseHeaders = new Headers(upstream.headers);
-    responseHeaders.delete("content-encoding");
-    responseHeaders.delete("content-length");
+    const responseHeaders = new Headers();
+    const responseContentType = upstream.headers.get("content-type");
+    const responseSetCookie = upstream.headers.get("set-cookie");
+    if (responseContentType) responseHeaders.set("content-type", responseContentType);
+    if (responseSetCookie) responseHeaders.append("set-cookie", responseSetCookie);
     return new NextResponse(await upstream.arrayBuffer(), {
       status: upstream.status,
       headers: responseHeaders,
