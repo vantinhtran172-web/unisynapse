@@ -26,15 +26,21 @@ async function proxyToPersistentApi(request: NextRequest, path: string): Promise
   if (cookie) headers.set("cookie", cookie);
 
   try {
-    const upstream = await fetch(target.toString(), {
+    const rawBody = request.method === "GET" || request.method === "HEAD"
+      ? undefined
+      : await request.text();
+    const body = rawBody && (request.headers.get("content-type") || "").includes("application/json")
+      ? JSON.stringify(JSON.parse(rawBody))
+      : rawBody;
+    const init: RequestInit & { duplex?: "half" } = {
       method: request.method,
       headers,
-      body: request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : await request.text(),
+      body,
+      duplex: "half",
       redirect: "manual",
       cache: "no-store",
-    });
+    };
+    const upstream = await fetch(target.toString(), init);
     const responseHeaders = new Headers();
     const responseContentType = upstream.headers.get("content-type");
     if (responseContentType) responseHeaders.set("content-type", responseContentType);
