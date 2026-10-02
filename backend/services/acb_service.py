@@ -95,7 +95,7 @@ class ACBService:
                 f"{cls.api_url}/mb/v2/auth/tokens",
                 headers=headers,
                 json=data,
-                verify=False,
+                verify=True,
                 timeout=12,
             )
             if res.status_code >= 400:
@@ -115,7 +115,7 @@ class ACBService:
                             "authorization": f"Bearer {refresh_token}",
                             "User-Agent": "ACB-MBA/5 CFNetwork/1325.0.1 Darwin/21.1.0",
                         },
-                        verify=False,
+                        verify=True,
                         timeout=10,
                     )
                     if ref_res.status_code < 400:
@@ -172,14 +172,14 @@ class ACBService:
             "User-Agent": "ACB-MBA/5 CFNetwork/1325.0.1 Darwin/21.1.0",
         }
         try:
-            r = requests.get(url, headers=headers, verify=False, timeout=12)
+            r = requests.get(url, headers=headers, verify=True, timeout=12)
             if r.status_code < 400:
                 return r.json()
             elif r.status_code in (401, 403):
                 # Retry once after fresh login
                 fresh_token = cls.login()
                 if fresh_token:
-                    r2 = requests.get(url, headers={"authorization": f"Bearer {fresh_token}"}, verify=False, timeout=12)
+                    r2 = requests.get(url, headers={"authorization": f"Bearer {fresh_token}"}, verify=True, timeout=12)
                     if r2.status_code < 400:
                         return r2.json()
         except Exception as exc:
@@ -215,7 +215,7 @@ class ACBService:
             "Accept": "application/json, text/plain, */*",
         }
         try:
-            resp = requests.get(url, headers=headers, verify=False, timeout=12)
+            resp = requests.get(url, headers=headers, verify=True, timeout=12)
             if resp.status_code == 200:
                 data = resp.json()
                 return data.get("data", [])

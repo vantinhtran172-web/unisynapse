@@ -218,8 +218,8 @@ with TestClient(app) as client:
         assert client.post('/api/v1/compute/' + action, json={}).status_code == 404
 """
             result = subprocess.run(
-                [sys.executable, "-c", script],
-                cwd=root, env=env, capture_output=True, text=True, timeout=30,
+                [sys.executable, "-X", "utf8", "-c", script],
+                cwd=root, env=env, capture_output=True, text=True, encoding="utf-8", timeout=30,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
 
