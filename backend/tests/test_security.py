@@ -232,3 +232,25 @@ def test_admin_requires_security_key():
         assert res_verify.status_code == 200
         assert res_verify.json()["valid"] is True
 
+
+def test_admin_can_delete_user():
+    from fastapi.testclient import TestClient
+    from backend.main import app
+    from backend.core.config import ADMIN_SECURITY_KEY
+
+    headers = {"X-Admin-Security-Key": ADMIN_SECURITY_KEY}
+    username = f"delete_regression_{uuid.uuid4().hex[:10]}"
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/v1/admin/users",
+            headers=headers,
+            json={"username": username, "password": "DeleteRegression123!", "role": "student"},
+        )
+        assert created.status_code == 200
+
+        deleted = client.delete(
+            f"/api/v1/admin/users/{created.json()['user_id']}",
+            headers=headers,
+        )
+        assert deleted.status_code == 200
+        assert deleted.json()["success"] is True

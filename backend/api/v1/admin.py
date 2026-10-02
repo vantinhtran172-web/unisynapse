@@ -670,7 +670,6 @@ def delete_user_by_admin(user_id: str):
         cursor.execute("DELETE FROM oracle_jobs WHERE owner_id = ? OR document_id IN (SELECT id FROM documents WHERE owner_id = ?)", (user_id, user_id))
         cursor.execute("DELETE FROM document_chunks WHERE document_id IN (SELECT id FROM documents WHERE owner_id = ?)", (user_id,))
         cursor.execute("DELETE FROM documents WHERE owner_id = ?", (user_id,))
-        cursor.execute("DELETE FROM compute_jobs WHERE user_id = ?", (user_id,))
         cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
         log_audit(cursor, "user_deleted", f"Admin deleted user: {user['username']} ({user_id})")
 
