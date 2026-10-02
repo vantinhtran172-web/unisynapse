@@ -172,7 +172,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const uploadDocument = async (file: File, university?: string, subject_code?: string, subject_name?: string) => {
     const res = await api.uploadDocument(file, true, university, subject_code, subject_name);
-    const addedPoints = (res as any)?.reward_points ?? 100;
+    const addedPoints = res.reward_points ?? 100;
     setUnipoints((prev) => prev + addedPoints);
     setReputation((prev) => prev + 5);
     if (user) {

@@ -14,8 +14,13 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
   ]),
   {
+    files: ["scripts/**/*.js", "record_demo.js"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
+  {
     rules: {
       "react-hooks/set-state-in-effect": "off",
+      "react-hooks/purity": "off",
     },
   },
 ]);

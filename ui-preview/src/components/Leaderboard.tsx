@@ -80,7 +80,7 @@ export default function Leaderboard() {
     const userRep = user ? reputation : 100;
     const userContributions = user ? Math.max(12, Math.floor(userPoints / 50)) : 0;
 
-    let list: Array<{
+    const list: Array<{
       id: string;
       name: string;
       university: string;
