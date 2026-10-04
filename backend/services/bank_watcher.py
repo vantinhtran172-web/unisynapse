@@ -118,14 +118,14 @@ def _check_and_settle_pending_bank_deposits():
         """).fetchall()
         already_used_refs = {r[0] for r in used_tx_rows}
 
-        # 3. Fetch only active pending orders within 10-minute window
+        # 3. Reconcile expired invoices too; QR expiry must not discard money.
         rows = conn.execute("""
             SELECT id, user_id, order_code, amount_vnd, points, status, created_at, initial_balance,
                    payout_mode, sol_amount, target_wallet, solana_signature
             FROM bank_deposits
-            WHERE status = 'pending' AND created_at >= ?
+            WHERE status IN ('pending', 'expired') AND created_at >= ?
             ORDER BY created_at ASC
-        """, (cutoff,)).fetchall()
+        """, (now - 2 * 86400,)).fetchall()
 
     if not rows:
         return

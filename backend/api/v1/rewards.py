@@ -618,20 +618,8 @@ def check_bank_deposit_status(
             "credited": True,
         }
 
-    if order["status"] == "expired":
-        return {
-            "ok": True,
-            "status": "expired",
-            "order_code": order["order_code"],
-            "amount_vnd": order["amount_vnd"],
-            "points": order["points"],
-            "payout_mode": order.get("payout_mode", "unipoints"),
-            "sol_amount": order.get("sol_amount", 0.0),
-            "message": "Đơn giao dịch đã hết thời gian chờ thanh toán (tối đa 10 phút). Mã QR đã bị vô hiệu hóa.",
-            "credited": False,
-        }
-
-    # Strict 10-minute (600 seconds) timeout enforcement
+    # QR expires after 10 minutes; a bank payment may arrive after that or
+    # become visible only when ACB recovers. Still verify expired invoices.
     if order["status"] == "pending" and (time.time() - order["created_at"] > 600):
         with get_db() as conn:
             conn.execute(
@@ -639,17 +627,7 @@ def check_bank_deposit_status(
                 (order_code,)
             )
             conn.commit()
-        return {
-            "ok": True,
-            "status": "expired",
-            "order_code": order["order_code"],
-            "amount_vnd": order["amount_vnd"],
-            "points": order["points"],
-            "payout_mode": order.get("payout_mode", "unipoints"),
-            "sol_amount": order.get("sol_amount", 0.0),
-            "message": "Đơn giao dịch đã hết thời gian chờ thanh toán (tối đa 10 phút). Mã QR đã bị vô hiệu hóa.",
-            "credited": False,
-        }
+        order["status"] = "expired"
 
     # Query already credited bank transaction references to prevent duplicate matching
     with get_db() as conn:
@@ -774,14 +752,18 @@ def check_bank_deposit_status(
 
     return {
         "ok": True,
-        "status": "pending",
+        "status": order["status"],
         "order_code": order["order_code"],
         "amount_vnd": order["amount_vnd"],
         "points": order["points"],
         "payout_mode": order.get("payout_mode", "unipoints"),
         "sol_amount": order.get("sol_amount", 0.0),
         "target_wallet": order.get("target_wallet"),
-        "message": check_res.get("message", "Đang chờ chuyển khoản từ ngân hàng..."),
+        "message": (
+            "Đơn đã hết thời gian chờ; mã QR đã bị vô hiệu hóa. "
+            if order["status"] == "expired" else ""
+        ) + check_res.get("message", "Đang chờ chuyển khoản từ ngân hàng..."),
+        "api_available": check_res.get("api_available", False),
         "credited": False,
     }
 

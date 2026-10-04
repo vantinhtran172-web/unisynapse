@@ -145,16 +145,8 @@ class ACBService:
         if cls._cached_token and time.time() < cls._token_expires_at:
             return cls._cached_token
 
-        if cls._token_path.exists():
-            try:
-                disk_token = cls._token_path.read_text(encoding="utf-8").strip()
-                if disk_token:
-                    cls._cached_token = disk_token
-                    cls._token_expires_at = time.time() + 180
-                    return disk_token
-            except Exception:
-                pass
-
+        # Disk token has no trustworthy expiry metadata. Never renew its lifetime
+        # by reading it again; refresh through bank authentication instead.
         return cls.login()
 
     @classmethod
@@ -214,16 +206,31 @@ class ACBService:
             "x-app-version": "3.25.0",
             "Accept": "application/json, text/plain, */*",
         }
-        try:
-            resp = requests.get(url, headers=headers, verify=True, timeout=12)
-            if resp.status_code == 200:
-                data = resp.json()
-                return data.get("data", [])
-            elif resp.status_code in (401, 403):
-                logger.info(f"ACB Transaction History returned {resp.status_code}: {resp.text[:120]}")
+        for attempt in range(2):
+            try:
+                resp = requests.get(url, headers=headers, verify=True, timeout=12)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    transactions = data.get("data")
+                    return transactions if isinstance(transactions, list) else None
+                if resp.status_code == 401 and attempt == 0:
+                    cls._cached_token = None
+                    cls._token_expires_at = 0.0
+                    fresh_token = cls.login()
+                    if fresh_token:
+                        headers["Authorization"] = f"Bearer {fresh_token}"
+                        continue
+                # 403 is a permission denial, not evidence of an expired token.
+                logger.warning("ACB Transaction History HTTP %s", resp.status_code)
                 return None
-        except Exception as err:
-            logger.warning(f"Error fetching ACB transactions: {err}")
+            except (requests.ConnectionError, requests.Timeout) as err:
+                logger.warning("ACB history transport failure (%s), attempt %s/2",
+                               type(err).__name__, attempt + 1)
+                if attempt == 0:
+                    time.sleep(0.5)
+            except (ValueError, TypeError, AttributeError) as err:
+                logger.warning("ACB history invalid response (%s)", type(err).__name__)
+                return None
         return None
 
     @classmethod

@@ -135,6 +135,7 @@ def test_bank_deposit_strict_verification_flow(member_client):
             conn.execute("DELETE FROM ledger_transactions WHERE source_type = 'acb_bank_deposit'")
             conn.execute("DELETE FROM ledger_accounts WHERE id = ?", (f"member:{member_id}",))
             conn.execute("DELETE FROM reward_ledger WHERE user_id = ?", (member_id,))
+            conn.execute("DELETE FROM documents WHERE owner_id = ?", (member_id,))
             conn.execute("DELETE FROM bank_deposits WHERE user_id = ?", (member_id,))
             conn.commit()
 
@@ -202,15 +203,33 @@ def test_bank_deposit_10min_timeout(member_client):
             )
             conn.commit()
 
-        # Run watcher tick
-        _check_and_settle_pending_bank_deposits()
+        # Run watcher tick without touching the real bank.
+        with patch.object(ACBService, "get_transaction_history", return_value=[]):
+            _check_and_settle_pending_bank_deposits()
 
         with get_db() as conn:
             row2 = conn.execute("SELECT status FROM bank_deposits WHERE order_code = ?", (order_code2,)).fetchone()
             assert row2["status"] == "expired"
 
+        # Late bank visibility must recover an expired invoice exactly once.
+        late_tx = [{"type": "IN", "amount": 20000,
+                    "description": order_code, "transactionNumber": order_code + "_late"}]
+        with patch.object(ACBService, "get_transaction_history", return_value=late_tx):
+            recovered = client.get(f"/api/v1/rewards/bank/check/{order_code}").json()
+            assert recovered["status"] == "paid"
+            assert recovered["credited"] is True
+            first_balance = client.get("/api/v1/rewards/summary").json()["unipoints"]
+            assert first_balance == 2200
+            assert client.get(f"/api/v1/rewards/bank/check/{order_code}").json()["status"] == "paid"
+            assert client.get("/api/v1/rewards/summary").json()["unipoints"] == first_balance
+
     finally:
         with get_db() as conn:
+            conn.execute("DELETE FROM ledger_entries WHERE account_id = ?", (f"member:{member_id}",))
+            conn.execute("DELETE FROM ledger_transactions WHERE source_type = 'acb_bank_deposit' AND source_id IN (SELECT id FROM bank_deposits WHERE user_id = ?)", (member_id,))
+            conn.execute("DELETE FROM ledger_accounts WHERE id = ?", (f"member:{member_id}",))
+            conn.execute("DELETE FROM reward_ledger WHERE user_id = ?", (member_id,))
+            conn.execute("DELETE FROM documents WHERE owner_id = ?", (member_id,))
             conn.execute("DELETE FROM bank_deposits WHERE user_id = ?", (member_id,))
             conn.commit()
 
